@@ -32,7 +32,7 @@ namespace stenos
 {
 	/**
 	@brief Returns the maximum compressed size for given bytes.
-	Similar to stenos_bound but for C++ and constexpr. 
+	Similar to stenos_bound but for C++ and constexpr.
 	*/
 	inline constexpr size_t compress_bound(size_t bytes)
 	{
@@ -41,7 +41,6 @@ namespace stenos
 		return 12 + (super_block_count == 0 ? 1 : super_block_count) * 4 + bytes;
 	}
 }
-
 
 extern "C" {
 #endif
@@ -88,20 +87,17 @@ Stenos error codes
 extern "C" {
 #endif
 
-
 /********************************************
  Compression/decompression API
 ********************************************/
 
-
-
 /**
 @brief Compression/decompression context object.
 
-stenos_context stores compression/decompression parameters 
+stenos_context stores compression/decompression parameters
 as well as required buffers.
 
-It is usually wise to reuse compression contexts as they will 
+It is usually wise to reuse compression contexts as they will
 (if possible) reuse previously allocated memory.
 */
 typedef struct stenos_context_s stenos_context;
@@ -133,7 +129,7 @@ STENOS_EXPORT void stenos_reset_context(stenos_context* ctx);
 /**
 @brief Set the compression level to a compression context.
 
-The compression level ranges from 0 (copy without compression) 
+The compression level ranges from 0 (copy without compression)
 to 9 (maximum compression).
 */
 STENOS_EXPORT size_t stenos_set_level(stenos_context* ctx, int level);
@@ -147,7 +143,7 @@ STENOS_EXPORT size_t stenos_set_threads(stenos_context* ctx, int threads);
 @brief Set the maximum time in nanoseconds allowed for compression.
 Set to 0 to disable time bounded compression.
 
-The compression process will automatically and continually adjust 
+The compression process will automatically and continually adjust
 its compression level to avoid (if possible) reaching the maximum
 time. If, no matter what, the compression process is too slow
 to fulfill the time limit, direct memcpy will be used to "compress"
@@ -165,8 +161,8 @@ STENOS_EXPORT size_t stenos_set_max_nanoseconds(stenos_context* ctx, uint64_t na
 The custom superblock size is expressed in block shift, where the actual
 block size becomes : (bytesoftype * 256) << blocksize_shift.
 
-Custom superblock size should only be used in order to deserialize the 
-compressed content from a stenos::cvector. In this case, the BlockSize 
+Custom superblock size should only be used in order to deserialize the
+compressed content from a stenos::cvector. In this case, the BlockSize
 template parameter of stenos::cvector must be equal to blocksize_shift.
 */
 STENOS_EXPORT size_t stenos_set_block_size(stenos_context* ctx, size_t blocksize_shift);
@@ -235,14 +231,13 @@ STENOS_EXPORT size_t stenos_compress(const void* src, size_t bytesoftype, size_t
 */
 STENOS_EXPORT size_t stenos_decompress(const void* src, size_t bytesoftype, size_t bytes, void* dst, size_t dst_size);
 
-
 /**
 @brief Small class gathering information on a compressed frame.
 */
 typedef struct stenos_info_s
 {
-	size_t decompressed_size;	/* Total decompressed size (bytes) */
-	size_t superblock_size		/* Superblock size (bytes) */;
+	size_t decompressed_size; /* Total decompressed size (bytes) */
+	size_t superblock_size /* Superblock size (bytes) */;
 } stenos_info;
 
 /**
@@ -255,15 +250,9 @@ typedef struct stenos_info_s
 */
 STENOS_EXPORT size_t stenos_get_info(const void* src, size_t bytesoftype, size_t bytes, stenos_info* info);
 
-
-
-
-
-
 /********************************************
  Timer API
 ********************************************/
-
 
 /**
 @brief Precise timer class used to compute elapsed time in nanoseconds.
@@ -293,15 +282,9 @@ STENOS_EXPORT void stenos_tick(stenos_timer* timer);
 */
 STENOS_EXPORT uint64_t stenos_tock(stenos_timer* timer);
 
-
-
-
-
-
 /********************************************
  Private API used by stenos::cvector
 ********************************************/
-
 
 STENOS_EXPORT size_t stenos_private_compress_block(stenos_context* ctx, const void* src, size_t bytesoftype, size_t super_block_size, size_t bytes, void* dst, size_t dst_size);
 
@@ -310,9 +293,6 @@ STENOS_EXPORT size_t stenos_private_decompress_block(stenos_context* ctx, const 
 STENOS_EXPORT size_t stenos_private_block_size(const void* _src, size_t src_size);
 
 STENOS_EXPORT size_t stenos_private_create_compression_header(size_t decompressed_size, size_t super_block_size, void* _dst, size_t dst_size);
-
-
-
 
 #ifdef __cplusplus
 }

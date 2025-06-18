@@ -43,7 +43,6 @@
 #include "lz_compress.h"
 #include "zstd_wrapper.h"
 
-
 #ifdef min
 #undef min
 #undef max
@@ -63,7 +62,6 @@
 // Compression methods
 #define __STENOS_COMP_NORMAL 0
 #define __STENOS_COMP_RLE 1
-
 
 #ifdef __SSE3__
 
@@ -406,7 +404,6 @@ namespace stenos
 				return pack->size = 1;
 			}
 
-
 			bit_scan_reverse_8_2(_mm_sub_epi8(max, min), _mm_sub_epi8(max_sub, min_sub), &bits0, &bits1);
 			// Replace 6 by 8 in bits0 to reserve header 6 for delta rle
 			bits0 = replace(bits0, 6, 8);
@@ -687,9 +684,9 @@ namespace stenos
 
 		static inline uint8_t* encode_lines(const vector16* STENOS_RESTRICT src, uint8_t first, PackBits* STENOS_RESTRICT pack, uint8_t* STENOS_RESTRICT dst, unsigned lines) noexcept
 		{
-			//static const uint8_t header_0[2][9] = {
+			// static const uint8_t header_0[2][9] = {
 			//	{ 0, 1, 2, 3, 4, 5, 6, 15, 15 }, { 8, 9, 10, 11, 12, 13, 14, 15, 15 } // 15 is for 8 bits
-			//};
+			// };
 			if (pack->all_type == __STENOS_BLOCK_ALL_SAME) {
 
 				*dst++ = first;
@@ -1095,7 +1092,7 @@ namespace stenos
 	}
 #endif
 
-	static inline unsigned max_histogram(const uint8_t* src, size_t bytes) 
+	static inline unsigned max_histogram(const uint8_t* src, size_t bytes)
 	{
 		unsigned hist[256];
 		memset(hist, 0, sizeof(hist));
@@ -1119,7 +1116,7 @@ namespace stenos
 							  double* STENOS_RESTRICT target_ratio,
 							  const void* STENOS_RESTRICT __shuffled) noexcept
 	{
-		static const uint32_t diff[3] = { 25, 16, 0 }; 
+		static const uint32_t diff[3] = { 25, 16, 0 };
 		static const int methods[3] = { 0, __STENOS_COMP_RLE, __STENOS_COMP_RLE };
 		static constexpr size_t test_fraction = 16; // if target_ratio non null, test on 1/16 of input size
 
@@ -1165,7 +1162,7 @@ namespace stenos
 #ifdef STENOS_STRONG_DEBUG
 			uint8_t* debug_dst = dst;
 #endif
-			
+
 			if (t.nanoseconds) {
 				if (level != -2) {
 					size_t consummed = (size_t)(src - (const uint8_t*)__src);
@@ -1190,10 +1187,10 @@ namespace stenos
 			offset = 0;
 			dst += header_size;
 
-			if(!__shuffled)
+			if (!__shuffled)
 				// read source transposed
 				shuffle(bytesoftype, block_size, src, (uint8_t*)(encoder.arrays));
-			
+
 			// copy first value for each bytesoftype
 			memcpy(encoder.firsts, src, bytesoftype);
 
@@ -1202,7 +1199,7 @@ namespace stenos
 			for (uint32_t i = 0; i < (uint32_t)bytesoftype; i++) {
 
 				const void* input_tr = encoder.arrays[i][0].i8;
-				if (__shuffled) 
+				if (__shuffled)
 					input_tr = (char*)__shuffled + elements * i + bcount * 256;
 
 				uint32_t size = detail::compute_block_generic(&encoder, input_tr, encoder.firsts[i], i, methods[level], transpose);
@@ -1220,7 +1217,7 @@ namespace stenos
 				uint16_t buffer[256];
 
 				// To avoid dst overflow, we need at least 8 * bytesoftype + 1 bytes above full_size
-				if STENOS_UNLIKELY (dst_end  > dst + (full_size + bytesoftype * 8u + 2u)) { // add one byte for __STENOS_BLOCK_LZ
+				if STENOS_UNLIKELY (dst_end > dst + (full_size + bytesoftype * 8u + 2u)) { // add one byte for __STENOS_BLOCK_LZ
 					auto* out = anchor;
 					*out++ = __STENOS_BLOCK_LZ;
 					out = lz_compress_generic((uint8_t*)src, out, bytesoftype, full_size, buffer);
@@ -1231,9 +1228,8 @@ namespace stenos
 				}
 			}
 
-			if STENOS_UNLIKELY (dst + full_size > dst_end) 
+			if STENOS_UNLIKELY (dst + full_size > dst_end)
 				return STENOS_ERROR_DST_OVERFLOW;
-			
 
 			for (uint32_t i = 0; i < (uint32_t)bytesoftype; ++i) {
 				const void* input_tr = encoder.arrays[i][0].i8;
@@ -1246,7 +1242,7 @@ namespace stenos
 				}
 				else {
 					// Add at least 16 bytes to take into account RLE writing that might write 15 bytes beyong dst
-					if STENOS_UNLIKELY(dst + encoder.packs[i].size + 16 > dst_end)
+					if STENOS_UNLIKELY (dst + encoder.packs[i].size + 16 > dst_end)
 						return STENOS_ERROR_DST_OVERFLOW;
 					dst = detail::encode16x16_generic((const detail::vector16*)input_tr, static_cast<uint8_t>(encoder.firsts[i]), encoder.packs + i, dst);
 				}
@@ -1274,7 +1270,7 @@ namespace stenos
 			// Check target ratio
 			if (target_ratio && (size_t)((src + block_size) - (const uint8_t*)__src) >= bytes / test_fraction) {
 				double ratio = ((src + block_size) - (const uint8_t*)__src) / (double)(dst - (uint8_t*)__dst);
-				
+
 				if (ratio < *target_ratio && level >= 0) // avoid going through zstd if block compression is too slow (level < 0)
 					return STENOS_ERROR_DST_OVERFLOW;
 
@@ -1317,8 +1313,8 @@ namespace stenos
 
 namespace stenos
 {
-	template<class ...Args>
-	static STENOS_ALWAYS_INLINE size_t block_compress(Args... ) noexcept
+	template<class... Args>
+	static STENOS_ALWAYS_INLINE size_t block_compress(Args...) noexcept
 	{
 		return STENOS_ERROR_INVALID_INSTRUCTION_SET;
 	}

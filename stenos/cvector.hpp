@@ -648,7 +648,7 @@ namespace stenos
 			  , buffer(other.buffer)
 			  , csize(other.csize)
 			  , used(other.used)
-			  
+
 			{
 				other.decompressed = nullptr;
 				other.buffer = nullptr;
@@ -1318,7 +1318,7 @@ namespace stenos
 				if (d_buckets.size() && d_buckets.back().csize == 0)
 					--decompressed_size;
 				decompressed_size *= block_size * sizeof(T);
-				return (d_compress_size && decompressed_size) ? decompressed_size/ static_cast<float>(d_compress_size) : 0.f;
+				return (d_compress_size && decompressed_size) ? decompressed_size / static_cast<float>(d_compress_size) : 0.f;
 			}
 
 			/// @brief Returns the current compression ratio, that is the total memory footprint of this container divided by its thoric size (size()*sizeof(T))
@@ -1533,11 +1533,11 @@ namespace stenos
 
 					if (r != found_bucket->csize) {
 						// Free old memory, alloc new one
-						char* buff = allocate_buffer_for_compression(r, found_bucket, saved_index, found_raw);
+						char* buff = allocate_buffer_for_compression((unsigned)r, found_bucket, saved_index, found_raw);
 						if (found_bucket->buffer)
 							RebindAlloc<char>(*this).deallocate(found_bucket->buffer, found_bucket->csize);
 						d_compress_size -= found_bucket->csize;
-						d_compress_size += found_bucket->csize = r;
+						d_compress_size += found_bucket->csize = (unsigned)r;
 						found_bucket->buffer = buff;
 					}
 
@@ -1578,7 +1578,7 @@ namespace stenos
 				// Compress
 				size_t r = compress(decompressed->storage);
 				if (r != bucket->csize) {
-					char* buff = allocate_buffer_for_compression(r, bucket, index, decompressed);
+					char* buff = allocate_buffer_for_compression((unsigned)r, bucket, index, decompressed);
 					if (bucket->buffer)
 						RebindAlloc<char>(*this).deallocate(bucket->buffer, bucket->csize);
 					bucket->buffer = buff;
@@ -1588,7 +1588,7 @@ namespace stenos
 				bucket->decompressed = nullptr;
 				// free buckets
 				d_compress_size -= bucket->csize;
-				d_compress_size += bucket->csize = r;
+				d_compress_size += bucket->csize = (unsigned)r;
 				decompressed->reset();
 				return decompressed;
 			}
@@ -1782,7 +1782,7 @@ namespace stenos
 							try {
 								// might throw, see below
 								buff = RebindAlloc<char>(*this).allocate(r);
-								d_buckets.push_back(BucketType(nullptr, buff, r));
+								d_buckets.push_back(BucketType(nullptr, buff, (unsigned)r));
 								memcpy(buff, compression_buffer(), r);
 							}
 							catch (...) {
@@ -1837,7 +1837,7 @@ namespace stenos
 							char* buff = nullptr;
 							try {
 								buff = RebindAlloc<char>(*this).allocate(r);
-								d_buckets.push_back(BucketType(nullptr, buff, r));
+								d_buckets.push_back(BucketType(nullptr, buff, (unsigned)r));
 								memcpy(buff, compression_buffer(), r);
 							}
 							catch (...) {
@@ -2126,7 +2126,7 @@ namespace stenos
 	///
 	/// stenos::cvector is a is a random-access container with an interface similar to std::vector but storing its element in a compressed way.
 	/// Its goal is to reduce the memory footprint of the container while providing performances as close as possible to std::vector.
-	/// 
+	///
 	template<class T, unsigned BlockSize = 0, int Level = 1, class Allocator = std::allocator<T>>
 	class cvector : private Allocator
 	{
@@ -2948,11 +2948,7 @@ namespace stenos
 
 		template<class Istream>
 		size_t deserialize(Istream& iss);
-		
 	};
-
-
-	
 
 } // end namespace stenos
 
@@ -3005,15 +3001,14 @@ namespace std
 
 }
 
-
 #include <iostream>
 
 namespace stenos
 {
-	
+
 	template<class T, unsigned BlockSize, int Level, class Alloc>
 	template<class Ostream>
-	size_t cvector<T,BlockSize,Level,Alloc>::serialize(Ostream& oss)
+	size_t cvector<T, BlockSize, Level, Alloc>::serialize(Ostream& oss)
 	{
 		uint8_t header[12];
 		size_t pos = oss.tellp();
@@ -3071,7 +3066,7 @@ namespace stenos
 
 	template<class T, unsigned BlockSize, int Level, class Alloc>
 	template<class Istream>
-	size_t cvector<T,BlockSize,Level,Alloc>::deserialize(Istream& iss)
+	size_t cvector<T, BlockSize, Level, Alloc>::deserialize(Istream& iss)
 	{
 		clear();
 		make_data_if_null();
@@ -3185,10 +3180,10 @@ namespace stenos
 	}
 
 	/// @brief Read binary objects from a std::istream
-	/// 
+	///
 	/// stenos::istreambuf_iterator is similar to std::istreambuf_iterator
 	/// but is used to read binary data of any size from a std::istream object.
-	/// 
+	///
 	template<class T>
 	class istreambuf_iterator
 	{
@@ -3217,7 +3212,7 @@ namespace stenos
 		{
 		}
 
-		istreambuf_iterator( istreambuf_iterator&& other) noexcept
+		istreambuf_iterator(istreambuf_iterator&& other) noexcept
 		  : d_in(&other.d_in)
 		  , d_has_value(other.d_has_value)
 		{

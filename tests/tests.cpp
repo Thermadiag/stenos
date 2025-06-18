@@ -30,8 +30,8 @@
 #include <algorithm>
 #include <array>
 
-#define TEST( cond)\
-	if (!(cond)) \
+#define TEST(cond)                                                                                                                                                                                     \
+	if (!(cond))                                                                                                                                                                                   \
 		STENOS_ABORT("Test error in %s line %i distribution %s level %i threads %i dst_size %i\n", __FILE__, __LINE__, distribution, level, threads, (int)dst_size);
 
 template<class T>
@@ -84,10 +84,8 @@ std::vector<T> generate_same(size_t size)
 	return res;
 }
 
-
-
 template<class T>
-void test_vector(const std::vector<T>& vec, const char * distribution, int level, int threads, size_t dst_size)
+void test_vector(const std::vector<T>& vec, const char* distribution, int level, int threads, size_t dst_size)
 {
 	size_t bytesoftype = sizeof(T);
 	size_t bytes = vec.size() * bytesoftype;
@@ -101,27 +99,26 @@ void test_vector(const std::vector<T>& vec, const char * distribution, int level
 	stenos_set_level(ctx, level);
 	stenos_set_threads(ctx, threads); // TEST
 	auto r = stenos_compress_generic(ctx, vec.data(), bytesoftype, bytes, dst.data(), dst_size);
-	
+
 	// Test no write beyong output end
 	for (size_t i = 0; i < 1024 / 8; ++i) {
 
 		uint64_t new_sentinel = stenos::read_LE_64(dst.data() + dst_size + i * 8);
 
-		//DEBUG
-		if(new_sentinel != sentinel)
+		// DEBUG
+		if (new_sentinel != sentinel)
 			stenos_compress_generic(ctx, vec.data(), bytesoftype, bytes, dst.data(), dst_size);
 
 		TEST(new_sentinel == sentinel);
 	}
 
 	if (stenos_has_error(r)) {
-		if(dst_size >= stenos_bound(bytes))
-			stenos_compress_generic(ctx, vec.data(), bytesoftype, bytes, dst.data(), dst_size);//TEST
+		if (dst_size >= stenos_bound(bytes))
+			stenos_compress_generic(ctx, vec.data(), bytesoftype, bytes, dst.data(), dst_size); // TEST
 		TEST(dst_size < stenos_bound(bytes));
 		stenos_destroy_context(ctx);
 		return;
 	}
-
 
 	std::vector<char> vec2(bytes + 1024);
 	for (size_t i = 0; i < 1024 / 8; ++i)
@@ -130,7 +127,7 @@ void test_vector(const std::vector<T>& vec, const char * distribution, int level
 	// Test decompression error
 	auto r2 = stenos_decompress_generic(ctx, dst.data(), bytesoftype, r, vec2.data(), vec2.size());
 
-	//DEBUG
+	// DEBUG
 	if (!(!stenos_has_error(r2) && r2 == bytes))
 		stenos_decompress_generic(ctx, dst.data(), bytesoftype, r, vec2.data(), vec2.size());
 
@@ -163,10 +160,9 @@ void test_distribution(const char* distribution, const std::vector<T>& vec)
 	std::mt19937 rng(0);
 	std::uniform_int_distribution<int> dist(0, (int)(bytes > 100 ? bytes / 10 : 10));
 
-
 	for (int threads = 1; threads <= 8; ++threads) {
 		for (int level = 0; level <= 5; ++level) {
-			
+
 			int dst_size = (int)stenos_bound(bytes);
 			for (;;) {
 				printf("Test %s BPP %i with level %i, %i threads, %i dst_size...", distribution, (int)sizeof(T), level, threads, (int)dst_size);
@@ -178,7 +174,6 @@ void test_distribution(const char* distribution, const std::vector<T>& vec)
 				if (dst_size < 0)
 					dst_size = 0;
 			}
-			
 		}
 	}
 }
@@ -217,19 +212,15 @@ struct TestDistribution
 template<size_t Start>
 struct TestDistribution<Start, Start>
 {
-	static void apply(const char* ) {}
+	static void apply(const char*) {}
 };
 
-
-
-
-int tests(int, char* [])
+int tests(int, char*[])
 {
-	
+
 	TestDistribution<1, 16>::apply("same");
 	TestDistribution<1, 16>::apply("sorted");
 	TestDistribution<1, 16>::apply("random");
 
 	return 0;
-
 }
