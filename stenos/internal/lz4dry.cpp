@@ -731,8 +731,8 @@ namespace stenos
 				if ((outputLimited) && /* Check output buffer overflow */
 				    ((count + litLength + (2 + 1 + LASTLITERALS) + (litLength / 255) > maxOutputSize)))
 					return 0;
-				if (litLength >= RUN_MASK) {
-					int len = (int)litLength - RUN_MASK;
+				if (litLength >= (int)RUN_MASK) {
+					int len = (int)litLength - (int)RUN_MASK;
 					/*for (; len >= 255; len -= 255)
 						count++;
 					count++;*/
@@ -757,8 +757,8 @@ namespace stenos
 				if (outputLimited && /* Check output buffer overflow */
 				    ((count + (1 + LASTLITERALS) + (matchCode >> 8) > maxOutputSize)))
 					return 0;
-				if (matchCode >= ML_MASK) {
-					matchCode -= ML_MASK;
+				if (matchCode >= (int)ML_MASK) {
+					matchCode -= (int)ML_MASK;
 
 					while (matchCode >= 4 * 255) {
 						count += 4;
@@ -796,8 +796,8 @@ namespace stenos
 			if ((outputLimited) && /* Check output buffer overflow */
 			    ((count) + lastRun + 1 + ((lastRun + 255 - RUN_MASK) / 255) > (U32)maxOutputSize))
 				return 0;
-			if (lastRun >= RUN_MASK) {
-				int accumulator = lastRun - RUN_MASK;
+			if (lastRun >= (int)RUN_MASK) {
+				int accumulator = lastRun - (int)RUN_MASK;
 				/*++count;
 				for (; accumulator >= 255; accumulator -= 255)
 					++count;

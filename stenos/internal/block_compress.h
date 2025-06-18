@@ -406,7 +406,7 @@ namespace stenos
 				return pack->size = 1;
 			}
 
-			__m128i diff_sub = _mm_sub_epi8(max_sub, min_sub);
+
 			bit_scan_reverse_8_2(_mm_sub_epi8(max, min), _mm_sub_epi8(max_sub, min_sub), &bits0, &bits1);
 			// Replace 6 by 8 in bits0 to reserve header 6 for delta rle
 			bits0 = replace(bits0, 6, 8);
@@ -687,9 +687,9 @@ namespace stenos
 
 		static inline uint8_t* encode_lines(const vector16* STENOS_RESTRICT src, uint8_t first, PackBits* STENOS_RESTRICT pack, uint8_t* STENOS_RESTRICT dst, unsigned lines) noexcept
 		{
-			static const uint8_t header_0[2][9] = {
-				{ 0, 1, 2, 3, 4, 5, 6, 15, 15 }, { 8, 9, 10, 11, 12, 13, 14, 15, 15 } // 15 is for 8 bits
-			};
+			//static const uint8_t header_0[2][9] = {
+			//	{ 0, 1, 2, 3, 4, 5, 6, 15, 15 }, { 8, 9, 10, 11, 12, 13, 14, 15, 15 } // 15 is for 8 bits
+			//};
 			if (pack->all_type == __STENOS_BLOCK_ALL_SAME) {
 
 				*dst++ = first;
@@ -1022,8 +1022,8 @@ namespace stenos
 	// on provided time constraint
 	struct FindCLevel
 	{
-		double denom_bytes;
-		double denom_time;
+		double denom_bytes = 0;
+		double denom_time = 0;
 		FindCLevel() noexcept {}
 		FindCLevel(const FindCLevel&) noexcept = default;
 		FindCLevel& operator=(const FindCLevel&) noexcept = default;
@@ -1073,8 +1073,9 @@ namespace stenos
 		}
 	};
 
-	size_t block_decompress(const void* STENOS_RESTRICT _src, size_t size, size_t bytesoftype, size_t bytes, void* STENOS_RESTRICT _dst) noexcept;
-	size_t block_decompress_sse(const void* STENOS_RESTRICT _src, size_t size, size_t bytesoftype, size_t bytes, void* STENOS_RESTRICT _dst) noexcept;
+#ifdef STENOS_STRONG_DEBUG
+	static size_t block_decompress(const void* STENOS_RESTRICT _src, size_t size, size_t bytesoftype, size_t bytes, void* STENOS_RESTRICT _dst) noexcept;
+	static size_t block_decompress_sse(const void* STENOS_RESTRICT _src, size_t size, size_t bytesoftype, size_t bytes, void* STENOS_RESTRICT _dst) noexcept;
 
 	static void test_block_decompress(const void* src, size_t size, size_t bytesoftype, size_t bytes, const void* input)
 	{
@@ -1092,6 +1093,7 @@ namespace stenos
 		if (memcmp(dst.data(), input, bytes) != 0)
 			throw std::runtime_error("decompression error");
 	}
+#endif
 
 	static inline unsigned max_histogram(const uint8_t* src, size_t bytes) 
 	{
@@ -1138,7 +1140,6 @@ namespace stenos
 		size_t block_count = block_size == bytes ? 1 : bytes / block_size;
 		size_t remaining_bytes = 0;
 
-		uint8_t* last = dst;
 		FindCLevel clevel;
 		if (t.nanoseconds) {
 			level = 2;
@@ -1279,8 +1280,6 @@ namespace stenos
 
 				target_ratio = nullptr;
 			}
-
-			last = dst;
 		}
 
 		remaining_bytes = bytes - (block_count * block_size);
@@ -1454,7 +1453,7 @@ namespace stenos
 				out[15] = _UCH((r2 >> _bits * 7ULL) & mask);
 			}
 
-			return src + bits;
+			return _src + bits * 2;
 		}
 
 		static STENOS_ALWAYS_INLINE const uint8_t* read_16_bits(const uint8_t* STENOS_RESTRICT src, const uint8_t* STENOS_RESTRICT end, uint8_t* STENOS_RESTRICT out, uint32_t bits) noexcept
@@ -1813,7 +1812,6 @@ namespace stenos
 		const uint8_t* end = src + size;
 		const uint32_t header_len = (uint32_t)((bytesoftype >> 1) + ((bytesoftype & 1) ? 1 : 0));
 		uint8_t* dst = static_cast<uint8_t*>(_dst);
-		uint8_t* dst_end = dst + bytes;
 		uint32_t outer_stride = (uint32_t)bytesoftype * 16;
 		uint32_t inner_stride = (uint32_t)bytesoftype;
 
@@ -2105,7 +2103,6 @@ namespace stenos
 		const uint8_t* end = src + size;
 		const uint32_t header_len = (uint32_t)((bytesoftype >> 1) + ((bytesoftype & 1) ? 1 : 0));
 		uint8_t* dst = static_cast<uint8_t*>(_dst);
-		uint8_t* dst_end = dst + bytes;
 
 		size_t block_size = bytesoftype * 256;
 		size_t block_count = bytes == block_size ? 1 : bytes / block_size;

@@ -58,7 +58,7 @@ std::vector<T> generate_random_subpart(size_t size)
 	std::vector<T> res(size);
 	memset(res.data(), 0, res.size() * sizeof(T));
 	for (size_t i = 0; i < size; ++i) {
-		uint8_t* data = (uint8_t*)&vec[i];
+		uint8_t* data = (uint8_t*)&res[i];
 		for (size_t j = Start; j < End; ++j)
 			data[j] = (uint8_t)dist(rng);
 	}

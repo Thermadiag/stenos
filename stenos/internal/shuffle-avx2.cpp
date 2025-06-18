@@ -8,6 +8,11 @@
   See LICENSE.txt for details about copyright and rights to use.
 **********************************************************************/
 
+#ifdef __GNUC__
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wmaybe-uninitialized"
+#endif
+
 #include "shuffle-avx2.h"
 #include "shuffle-generic.h"
 #include "simd.h"
@@ -17,9 +22,10 @@
 /* Make sure AVX2 is available for the compilation target and compiler. */
 #if defined(__AVX2__)
 
+extern "C" {
 #include <immintrin.h>
-
 #include <stdint.h>
+}
 
 /* The next is useful for debugging purposes */
 #if 0
@@ -56,19 +62,19 @@ static void printymm(__m256i ymm0)
 /* GCC doesn't include the split load/store intrinsics
    needed for the tiled shuffle, so define them here. */
 #if defined(__GNUC__) && !defined(__clang__) && !defined(__ICC)
-static inline __m256i
-__attribute__((__always_inline__))
+#if __GNUC__ < 10
+static STENOS_ALWAYS_INLINE __m256i
 _mm256_loadu2_m128i(const __m128i* const hiaddr, const __m128i* const loaddr) {
   return _mm256_inserti128_si256(
       _mm256_castsi128_si256(_mm_loadu_si128(loaddr)), _mm_loadu_si128(hiaddr), 1);
 }
 
-static inline void
-__attribute__((__always_inline__))
+static STENOS_ALWAYS_INLINE void
 _mm256_storeu2_m128i(__m128i* const hiaddr, __m128i* const loaddr, const __m256i a) {
   _mm_storeu_si128(loaddr, _mm256_castsi256_si128(a));
   _mm_storeu_si128(hiaddr, _mm256_extracti128_si256(a, 1));
 }
+#endif
 #endif  /* defined(__GNUC__) */
 
 /* Routine optimized for shuffling a buffer for a type size of 2 bytes. */
@@ -855,3 +861,8 @@ void unshuffle_avx2(const int32_t bytesoftype, const int32_t blocksize,
 }
 
 #endif /* defined(__AVX2__) */
+
+#ifdef __GNUC__
+#pragma GCC diagnostic pop
+#endif
+

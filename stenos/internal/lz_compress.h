@@ -59,7 +59,7 @@ namespace stenos
 	void hash_8(const uint8_t* in, unsigned* out) noexcept {};
 
 	template<>
-	static STENOS_ALWAYS_INLINE void hash_8<8>(const uint8_t* in, unsigned* out) noexcept
+	STENOS_ALWAYS_INLINE void hash_8<8>(const uint8_t* in, unsigned* out) noexcept
 	{
 		// Hash 8 * 64 bits values
 		out[0] = hash_val64(read_64(in));
@@ -72,7 +72,7 @@ namespace stenos
 		out[7] = hash_val64(read_64(in + 56));
 	}
 	template<>
-	static STENOS_ALWAYS_INLINE void hash_8<4>(const uint8_t* in, unsigned* out) noexcept
+	STENOS_ALWAYS_INLINE void hash_8<4>(const uint8_t* in, unsigned* out) noexcept
 	{
 		// Hash 8 * 32 bits values
 		out[0] = hash_val(read_32(in));
@@ -85,7 +85,7 @@ namespace stenos
 		out[7] = hash_val(read_32(in + 28));
 	}
 	template<>
-	static STENOS_ALWAYS_INLINE void hash_8<3>(const uint8_t* in, unsigned* out) noexcept
+	STENOS_ALWAYS_INLINE void hash_8<3>(const uint8_t* in, unsigned* out) noexcept
 	{
 		// Hash 8 * 24 bits values
 		out[0] = hash_val(read_24(in));
@@ -98,7 +98,7 @@ namespace stenos
 		out[7] = hash_val(read_32(in + 21));
 	}
 	template<>
-	static STENOS_ALWAYS_INLINE void hash_8<6>(const uint8_t* in, unsigned* out) noexcept
+	STENOS_ALWAYS_INLINE void hash_8<6>(const uint8_t* in, unsigned* out) noexcept
 	{
 		// Hash 8 * 48 bits values
 		out[0] = hash_val64(read_48(in));
@@ -112,27 +112,27 @@ namespace stenos
 	}
 
 	template<unsigned Bytes>
-	static STENOS_ALWAYS_INLINE bool compare_equal(const void* v1, const void* v2) noexcept
+	STENOS_ALWAYS_INLINE bool compare_equal(const void* v1, const void* v2) noexcept
 	{
 		return false;
 	}
 	template<>
-	static STENOS_ALWAYS_INLINE bool compare_equal<3>(const void* v1, const void* v2) noexcept
+	STENOS_ALWAYS_INLINE bool compare_equal<3>(const void* v1, const void* v2) noexcept
 	{
 		return read_24(v1) == read_24(v2);
 	}
 	template<>
-	static STENOS_ALWAYS_INLINE bool compare_equal<4>(const void* v1, const void* v2) noexcept
+	STENOS_ALWAYS_INLINE bool compare_equal<4>(const void* v1, const void* v2) noexcept
 	{
 		return read_32(v1) == read_32(v2);
 	}
 	template<>
-	static STENOS_ALWAYS_INLINE bool compare_equal<6>(const void* v1, const void* v2) noexcept
+	STENOS_ALWAYS_INLINE bool compare_equal<6>(const void* v1, const void* v2) noexcept
 	{
 		return read_48(v1) == read_48(v2);
 	}
 	template<>
-	static STENOS_ALWAYS_INLINE bool compare_equal<8>(const void* v1, const void* v2) noexcept
+	STENOS_ALWAYS_INLINE bool compare_equal<8>(const void* v1, const void* v2) noexcept
 	{
 		return read_64(v1) == read_64(v2);
 	}

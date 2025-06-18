@@ -26,6 +26,7 @@
 #define STENOS_H
 
 #ifdef __cplusplus
+#include <cstddef>
 
 namespace stenos
 {

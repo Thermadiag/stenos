@@ -769,7 +769,8 @@ size_t stenos_private_block_size(const void* _src, size_t src_size)
 	if (src_size < 4)
 		return STENOS_ERROR_SRC_OVERFLOW;
 	const uint8_t* src = (const uint8_t*)_src;
-	uint8_t code = *src++;
+	//uint8_t code = *src++;
+	++src; // skip code
 	unsigned csize = stenos::read_uint32_3(src);
 	return csize + 4;
 }
@@ -1243,7 +1244,7 @@ int stenos_private_test(const void* data, size_t bytes)
 	for (int i = 0; i <= 10; ++i) {
 
 		t.tick();
-		double r = stenos::lz4_guess_ratio((char*)data, bytes, 10);
+		/*double r =*/ stenos::lz4_guess_ratio((char*)data, bytes, 10);
 		auto el = t.tock() * 1e-9;
 		std::cout << (bytes / el) / 1000000000 << std::endl;
 	}
@@ -1261,7 +1262,7 @@ int stenos_private_test_delta()
 		stenos::delta(vec, dst, 127);
 
 		stenos::delta_inv(dst, vec2, 127);
-		bool stop = true;
+		//bool stop = true;
 	}
 	std::vector<char> src(9999);
 	for (size_t i = 0; i < src.size(); ++i)

@@ -2,6 +2,7 @@
 #define STENOS_TESTING_HPP
 
 #include <stenos/bits.hpp>
+#include <memory>
 
 
 template<class T>

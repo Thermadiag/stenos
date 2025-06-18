@@ -8,17 +8,21 @@
   See LICENSE.txt for details about copyright and rights to use.
 **********************************************************************/
 
+#ifdef __GNUC__
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wmaybe-uninitialized"
+#endif
+
+
+#include <utility>
+
 #include "shuffle-sse2.h"
 #include "shuffle-generic.h"
-
 #include "simd.h"
 
 /* Make sure SSE2 is available for the compilation target and compiler. */
 #if defined(__SSE2__)
 
-#include <emmintrin.h>
-
-#include <stdint.h>
 
 /* The next is useful for debugging purposes */
 #if 0
@@ -711,3 +715,8 @@ void unshuffle_sse2(const int32_t bytesoftype, const int32_t blocksize,
 }
 
 #endif /* defined(__SSE2__) */
+
+#ifdef __GNUC__
+#pragma GCC diagnostic pop
+#endif
+

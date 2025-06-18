@@ -27,6 +27,7 @@
 
 #include <atomic>
 #include <thread>
+#include <algorithm> // std::lower_bound
 #include <zstd.h>
 #include <zstd_errors.h>
 #include "../bits.hpp"
@@ -39,7 +40,7 @@ namespace stenos
 	// Small class gathering information on a time constraint
 	struct TimeConstraint
 	{
-		timer timer;								// Timer
+		stenos::timer timer;								// Timer
 		uint64_t nanoseconds{ 0 };					// Maximum nanoseconds
 		uint64_t total_bytes{ 0 };					// Total number of bytes to compress
 		std::atomic<uint64_t> processed_bytes{ 0 }; // Currently processed bytes
@@ -142,8 +143,8 @@ namespace stenos
 
 				if (clevel > 6)
 					clevel = 6; // Use levels > 6 only if time advance is low
+
 				// adjust level based on current advance
-				int prev = clevel;
 
 				double advance = processed_bytes / (double)t.total_bytes;
 				double advance_time = el / (double)t.nanoseconds;

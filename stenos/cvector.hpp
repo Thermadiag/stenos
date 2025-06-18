@@ -99,6 +99,38 @@ namespace stenos
 		{
 			return (last > first) ? static_cast<size_t>(last - first) : 0;
 		}
+
+		// Equivalent to void_t
+		template<class T>
+		struct make_void
+		{
+			using type = void;
+		};
+
+		// Check if an allcoator has is_always_equal type
+		template<class T, class = void>
+		struct has_is_always_equal : std::false_type
+		{
+		};
+
+		template<class T>
+		struct has_is_always_equal<T, typename make_void<typename T::is_always_equal>::type> : std::true_type
+		{
+		};
+
+		/// Provide a is_always_equal type traits for allocators in case current compiler
+		/// std::allocator_traits::is_always_equal is not present.
+		template<class Alloc, bool HasIsAlwaysEqual = has_is_always_equal<Alloc>::value>
+		struct is_always_equal
+		{
+			using equal = typename std::allocator_traits<Alloc>::is_always_equal;
+			static constexpr bool value = equal::value;
+		};
+		template<class Alloc>
+		struct is_always_equal<Alloc, false>
+		{
+			static constexpr bool value = std::is_empty<Alloc>::value;
+		};
 	}
 
 	/// @brief Enum type used by context_ratio
@@ -614,8 +646,9 @@ namespace stenos
 			PackBuffer(PackBuffer&& other) noexcept
 			  : decompressed(other.decompressed)
 			  , buffer(other.buffer)
-			  , used(other.used)
 			  , csize(other.csize)
+			  , used(other.used)
+			  
 			{
 				other.decompressed = nullptr;
 				other.buffer = nullptr;
@@ -1732,7 +1765,6 @@ namespace stenos
 					if (new_size > block_size) {
 
 						// temporary storage for chunks of block_size elements
-						T value{};
 						RawType raw;
 						raw.size = 0;
 
@@ -1872,7 +1904,7 @@ namespace stenos
 			auto insert(const_iterator pos, InputIt first, InputIt last) -> iterator
 			{
 				// Check back insertion
-				if (pos.abspos == size()) {
+				if ((size_t)pos.abspos == size()) {
 					for (; first != last; ++first)
 						push_back(*first);
 					return iterator(this, pos.abspos);
@@ -2106,6 +2138,8 @@ namespace stenos
 		using bucket_type = typename internal_type::BucketType;
 		template<class U>
 		using RebindAlloc = typename std::allocator_traits<Allocator>::template rebind_alloc<U>;
+
+		static constexpr size_t shift = internal_type::shift;
 
 		internal_type* d_data; // Store a pointer to internal data, easier to provide noexcept move constructor/copy and iterator stability on swap
 
@@ -2575,7 +2609,7 @@ namespace stenos
 		STENOS_ALWAYS_INLINE lock_type& lock_for_pos(size_t pos)
 		{
 			make_data_if_null();
-			return d_data->d_buckets[pos >> shift].lock
+			return d_data->d_buckets[pos >> shift].lock;
 		}
 
 		/// @brief Returns a reference wrapper to the element at specified location pos, with bounds checking.
@@ -2811,61 +2845,8 @@ namespace stenos
 		}
 
 		/// @brief Serialize cvector content into a std::ostream object
-		size_t serialize(std::ostream& oss)
-		{
-			uint8_t header[12];
-			size_t pos = oss.tellp();
-			size_t r = stenos_private_create_compression_header(size() * sizeof(T), block_bytes, header, 12);
-			if STENOS_UNLIKELY (stenos_has_error(r))
-				return r;
-
-			oss.write((char*)header, r);
-			if STENOS_UNLIKELY (!oss)
-				return STENOS_ERROR_DST_OVERFLOW;
-
-			if (!d_data || size() == 0)
-				goto end;
-
-			// Write all compressed blocks
-			for (size_t i = 0; i < d_data->d_buckets.size(); ++i) {
-				// Last bucket
-				if (i == d_data->d_buckets.size() - 1) {
-					// check if last bucket is empty
-					auto* buffer = &d_data->d_buckets.back();
-					auto* raw = buffer->decompressed;
-					if (!raw || raw->size == 0)
-						goto end;
-
-					// check if last bucket is full and compressed
-					if (raw->size == block_size && buffer->buffer) {
-						oss.write((char*)buffer->buffer, buffer->csize);
-						if STENOS_UNLIKELY (!oss)
-							return STENOS_ERROR_DST_OVERFLOW;
-						goto end;
-					}
-
-					// compress last bucket
-					r = d_data->compress(raw->storage, raw->size * sizeof(T));
-					if STENOS_UNLIKELY (stenos_has_error(r))
-						return r;
-					oss.write((char*)d_data->compression_buffer(), r);
-					if STENOS_UNLIKELY (!oss)
-						return STENOS_ERROR_DST_OVERFLOW;
-					goto end;
-				}
-
-				auto buf = compressed_block(i);
-				if STENOS_UNLIKELY (!buf.first)
-					return STENOS_ERROR_ALLOC;
-
-				oss.write((char*)buf.first, buf.second);
-				if STENOS_UNLIKELY (!oss)
-					return STENOS_ERROR_DST_OVERFLOW;
-			}
-
-		end:
-			return (size_t)oss.tellp() - pos;
-		}
+		template<class Ostream>
+		size_t serialize(Ostream& oss);
 
 		size_t deserialize(const void* _src, size_t src_size)
 		{
@@ -2965,120 +2946,243 @@ namespace stenos
 			return size();
 		}
 
-		size_t deserialize(std::istream& iss)
-		{
-			clear();
-			make_data_if_null();
+		template<class Istream>
+		size_t deserialize(Istream& iss);
+		
+	};
 
-			uint8_t header[12];
-			iss.read((char*)header, 12);
+
+	
+
+} // end namespace stenos
+
+namespace std
+{
+	namespace stenos_detail
+	{
+		template<class T, bool MoveOnly = !std::is_copy_assignable<T>::value>
+		struct MoveObject
+		{
+			static STENOS_ALWAYS_INLINE T apply(T&& ref) { return std::move(ref); }
+		};
+		template<class T>
+		struct MoveObject<T, true>
+		{
+			static STENOS_ALWAYS_INLINE T apply(T&& ref)
+			{
+				T tmp = std::move(ref);
+				return tmp;
+			}
+		};
+	}
+
+	/////////////////////////////
+	// std::swap overloads. This is illegal considering C++ standard, but works in practice, and is mandatory to make cvector work with standard algorithms, like std::sort
+	/////////////////////////////
+
+	template<class Compressed>
+	STENOS_ALWAYS_INLINE void swap(stenos::detail::ValueWrapper<Compressed>&& a, stenos::detail::ValueWrapper<Compressed>&& b)
+	{
+		a.swap(b);
+	}
+
+	///////////////////////////
+	// Completely illegal overload of std::move.
+	// That's currently the only way I found to use generic algorithms (like std::move(It, It, Dst) ) with cvector. Works with msvc, gcc and clang.
+	///////////////////////////
+
+	template<class Compress>
+	STENOS_ALWAYS_INLINE typename Compress::value_type move(stenos::detail::ValueWrapper<Compress>& other)
+	{
+		return stenos_detail::MoveObject<typename Compress::value_type>::apply(other.move());
+	}
+
+	template<class Compress>
+	STENOS_ALWAYS_INLINE typename Compress::value_type move(stenos::detail::ValueWrapper<Compress>&& other)
+	{
+		return stenos_detail::MoveObject<typename Compress::value_type>::apply(other.move());
+	}
+
+}
+
+
+#include <iostream>
+
+namespace stenos
+{
+	
+	template<class T, unsigned BlockSize, int Level, class Alloc>
+	template<class Ostream>
+	size_t cvector<T,BlockSize,Level,Alloc>::serialize(Ostream& oss)
+	{
+		uint8_t header[12];
+		size_t pos = oss.tellp();
+		size_t r = stenos_private_create_compression_header(size() * sizeof(T), block_bytes, header, 12);
+		if STENOS_UNLIKELY (stenos_has_error(r))
+			return r;
+
+		oss.write((char*)header, r);
+		if STENOS_UNLIKELY (!oss)
+			return STENOS_ERROR_DST_OVERFLOW;
+
+		if (!d_data || size() == 0)
+			goto end;
+
+		// Write all compressed blocks
+		for (size_t i = 0; i < d_data->d_buckets.size(); ++i) {
+			// Last bucket
+			if (i == d_data->d_buckets.size() - 1) {
+				// check if last bucket is empty
+				auto* buffer = &d_data->d_buckets.back();
+				auto* raw = buffer->decompressed;
+				if (!raw || raw->size == 0)
+					goto end;
+
+				// check if last bucket is full and compressed
+				if (raw->size == block_size && buffer->buffer) {
+					oss.write((char*)buffer->buffer, buffer->csize);
+					if STENOS_UNLIKELY (!oss)
+						return STENOS_ERROR_DST_OVERFLOW;
+					goto end;
+				}
+
+				// compress last bucket
+				r = d_data->compress(raw->storage, raw->size * sizeof(T));
+				if STENOS_UNLIKELY (stenos_has_error(r))
+					return r;
+				oss.write((char*)d_data->compression_buffer(), r);
+				if STENOS_UNLIKELY (!oss)
+					return STENOS_ERROR_DST_OVERFLOW;
+				goto end;
+			}
+
+			auto buf = compressed_block(i);
+			if STENOS_UNLIKELY (!buf.first)
+				return STENOS_ERROR_ALLOC;
+
+			oss.write((char*)buf.first, buf.second);
+			if STENOS_UNLIKELY (!oss)
+				return STENOS_ERROR_DST_OVERFLOW;
+		}
+
+	end:
+		return (size_t)oss.tellp() - pos;
+	}
+
+	template<class T, unsigned BlockSize, int Level, class Alloc>
+	template<class Istream>
+	size_t cvector<T,BlockSize,Level,Alloc>::deserialize(Istream& iss)
+	{
+		clear();
+		make_data_if_null();
+
+		uint8_t header[12];
+		iss.read((char*)header, 12);
+		if STENOS_UNLIKELY (!iss)
+			return STENOS_ERROR_SRC_OVERFLOW;
+
+		stenos_info info;
+		// Read frame info
+		size_t r = stenos_get_info(header, sizeof(T), 12, &info);
+		if STENOS_UNLIKELY (stenos_has_error(r))
+			return r;
+
+		// Invalid superblock size
+		if STENOS_UNLIKELY (block_bytes != info.superblock_size)
+			return STENOS_ERROR_INVALID_INPUT;
+
+		// Empty vector
+		if STENOS_UNLIKELY (info.decompressed_size == 0)
+			return 0;
+
+		// Check decompressed size validity
+		if STENOS_UNLIKELY (info.decompressed_size % sizeof(T) != 0)
+			return STENOS_ERROR_INVALID_INPUT;
+
+		size_t s = info.decompressed_size / sizeof(T);
+
+		// Number of full blocks
+		size_t full_blocks = s / block_size;
+
+		RebindAlloc<char> al = get_allocator();
+
+		for (size_t i = 0; i < full_blocks; ++i) {
+			char bheader[4];
+			iss.read((char*)bheader, 4);
 			if STENOS_UNLIKELY (!iss)
 				return STENOS_ERROR_SRC_OVERFLOW;
 
-			stenos_info info;
-			// Read frame info
-			size_t r = stenos_get_info(header, sizeof(T), 12, &info);
+			size_t bsize = stenos_private_block_size(bheader, 4);
+			if STENOS_UNLIKELY (stenos_has_error(bsize))
+				return bsize;
+
+			iss.seekg(-4, std::ios::cur);
+			// might throw, fine
+			char* data = al.allocate(bsize);
+			iss.read(data, bsize);
+			if STENOS_UNLIKELY (!iss) {
+				al.deallocate(data, bsize);
+				return STENOS_ERROR_SRC_OVERFLOW;
+			}
+
+			try {
+				d_data->d_buckets.push_back(bucket_type());
+			}
+			catch (...) {
+				al.deallocate(data, bsize);
+				throw;
+			}
+			d_data->d_buckets.back().buffer = data;
+			d_data->d_buckets.back().csize = bsize;
+			d_data->d_buckets.back().decompressed = nullptr;
+			d_data->d_size += block_size;
+			d_data->d_compress_size += bsize;
+		}
+
+		if (size_t rem = s % block_size) {
+
+			// last bucket
+
+			char bheader[4];
+			iss.read((char*)bheader, 4);
+			if STENOS_UNLIKELY (!iss)
+				return STENOS_ERROR_SRC_OVERFLOW;
+
+			size_t bsize = stenos_private_block_size(bheader, 4);
+			if STENOS_UNLIKELY (stenos_has_error(bsize))
+				return bsize;
+
+			iss.seekg(-4, std::ios::cur);
+			std::vector<char> buffer(bsize);
+			iss.read(buffer.data(), bsize);
+			if STENOS_UNLIKELY (!iss)
+				return STENOS_ERROR_SRC_OVERFLOW;
+
+			// create a raw buffer, might throw, fine
+			detail::RawBuffer<T, internal_type::elems_per_block>* raw = d_data->make_raw();
+			// add to contexts
+			d_data->d_contexts.push_front(raw);
+
+			size_t r = stenos_private_decompress_block(d_data->d_ctx, buffer.data(), sizeof(T), block_bytes, buffer.size(), raw->storage, rem * sizeof(T));
 			if STENOS_UNLIKELY (stenos_has_error(r))
 				return r;
-
-			// Invalid superblock size
-			if STENOS_UNLIKELY (block_bytes != info.superblock_size)
+			if STENOS_UNLIKELY (r != rem * sizeof(T))
 				return STENOS_ERROR_INVALID_INPUT;
 
-			// Empty vector
-			if STENOS_UNLIKELY (info.decompressed_size == 0)
-				return 0;
+			// might throw, fine
+			d_data->d_buckets.push_back(bucket_type());
+			d_data->d_buckets.back().buffer = nullptr;
+			d_data->d_buckets.back().csize = 0;
+			d_data->d_buckets.back().decompressed = raw;
 
-			// Check decompressed size validity
-			if STENOS_UNLIKELY (info.decompressed_size % sizeof(T) != 0)
-				return STENOS_ERROR_INVALID_INPUT;
-
-			size_t s = info.decompressed_size / sizeof(T);
-
-			// Number of full blocks
-			size_t full_blocks = s / block_size;
-
-			RebindAlloc<char> al = get_allocator();
-
-			for (size_t i = 0; i < full_blocks; ++i) {
-				char bheader[4];
-				iss.read((char*)bheader, 4);
-				if STENOS_UNLIKELY (!iss)
-					return STENOS_ERROR_SRC_OVERFLOW;
-
-				size_t bsize = stenos_private_block_size(bheader, 4);
-				if STENOS_UNLIKELY (stenos_has_error(bsize))
-					return bsize;
-
-				iss.seekg(-4, std::ios::cur);
-				// might throw, fine
-				char* data = al.allocate(bsize);
-				iss.read(data, bsize);
-				if STENOS_UNLIKELY (!iss) {
-					al.deallocate(data, bsize);
-					return STENOS_ERROR_SRC_OVERFLOW;
-				}
-
-				try {
-					d_data->d_buckets.push_back(bucket_type());
-				}
-				catch (...) {
-					al.deallocate(data, bsize);
-					throw;
-				}
-				d_data->d_buckets.back().buffer = data;
-				d_data->d_buckets.back().csize = bsize;
-				d_data->d_buckets.back().decompressed = nullptr;
-				d_data->d_size += block_size;
-				d_data->d_compress_size += bsize;
-			}
-
-			if (size_t rem = s % block_size) {
-
-				// last bucket
-
-				char bheader[4];
-				iss.read((char*)bheader, 4);
-				if STENOS_UNLIKELY (!iss)
-					return STENOS_ERROR_SRC_OVERFLOW;
-
-				size_t bsize = stenos_private_block_size(bheader, 4);
-				if STENOS_UNLIKELY (stenos_has_error(bsize))
-					return bsize;
-
-				iss.seekg(-4, std::ios::cur);
-				std::vector<char> buffer(bsize);
-				iss.read(buffer.data(), bsize);
-				if STENOS_UNLIKELY (!iss)
-					return STENOS_ERROR_SRC_OVERFLOW;
-
-				// create a raw buffer, might throw, fine
-				detail::RawBuffer<T, internal_type::elems_per_block>* raw = d_data->make_raw();
-				// add to contexts
-				d_data->d_contexts.push_front(raw);
-
-				size_t r = stenos_private_decompress_block(d_data->d_ctx, buffer.data(), sizeof(T), block_bytes, buffer.size(), raw->storage, rem * sizeof(T));
-				if STENOS_UNLIKELY (stenos_has_error(r))
-					return r;
-				if STENOS_UNLIKELY (r != rem * sizeof(T))
-					return STENOS_ERROR_INVALID_INPUT;
-
-				// might throw, fine
-				d_data->d_buckets.push_back(bucket_type());
-				d_data->d_buckets.back().buffer = nullptr;
-				d_data->d_buckets.back().csize = 0;
-				d_data->d_buckets.back().decompressed = raw;
-
-				raw->size = (unsigned)rem;
-				raw->dirty = 1;
-				d_data->d_size += raw->size;
-				raw->block_index = d_data->d_buckets.size() - 1;
-			}
-
-			return size();
+			raw->size = (unsigned)rem;
+			raw->dirty = 1;
+			d_data->d_size += raw->size;
+			raw->block_index = d_data->d_buckets.size() - 1;
 		}
-	};
 
+		return size();
+	}
 
 	/// @brief Read binary objects from a std::istream
 	/// 
@@ -3090,7 +3194,7 @@ namespace stenos
 	{
 		mutable std::istream* d_in; // the input stream
 		mutable bool d_has_value;
-		mutable alignas(alignof(T)) char d_value[sizeof(T)]; // next element to deliver
+		alignas(alignof(T)) mutable char d_value[sizeof(T)]; // next element to deliver
 
 	public:
 		static_assert(is_relocatable<T>::value, "non relocatable type");
@@ -3202,56 +3306,6 @@ namespace stenos
 	{
 		return !(left == right);
 	}
-
-} // end namespace stenos
-
-namespace std
-{
-	namespace stenos_detail
-	{
-		template<class T, bool MoveOnly = !std::is_copy_assignable<T>::value>
-		struct MoveObject
-		{
-			static STENOS_ALWAYS_INLINE T apply(T&& ref) { return std::move(ref); }
-		};
-		template<class T>
-		struct MoveObject<T, true>
-		{
-			static STENOS_ALWAYS_INLINE T apply(T&& ref)
-			{
-				T tmp = std::move(ref);
-				return tmp;
-			}
-		};
-	}
-
-	/////////////////////////////
-	// std::swap overloads. This is illegal considering C++ standard, but works in practice, and is mandatory to make cvector work with standard algorithms, like std::sort
-	/////////////////////////////
-
-	template<class Compressed>
-	STENOS_ALWAYS_INLINE void swap(stenos::detail::ValueWrapper<Compressed>&& a, stenos::detail::ValueWrapper<Compressed>&& b)
-	{
-		a.swap(b);
-	}
-
-	///////////////////////////
-	// Completely illegal overload of std::move.
-	// That's currently the only way I found to use generic algorithms (like std::move(It, It, Dst) ) with cvector. Works with msvc, gcc and clang.
-	///////////////////////////
-
-	template<class Compress>
-	STENOS_ALWAYS_INLINE typename Compress::value_type move(stenos::detail::ValueWrapper<Compress>& other)
-	{
-		return stenos_detail::MoveObject<typename Compress::value_type>::apply(other.move());
-	}
-
-	template<class Compress>
-	STENOS_ALWAYS_INLINE typename Compress::value_type move(stenos::detail::ValueWrapper<Compress>&& other)
-	{
-		return stenos_detail::MoveObject<typename Compress::value_type>::apply(other.move());
-	}
-
 }
 
 #endif

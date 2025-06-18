@@ -38,7 +38,9 @@
 #endif
 
 #if defined(__MINGW64_VERSION_MAJOR) || defined(_MSC_VER)
+extern "C" {
 #include <intrin.h>
+}
 #endif
 
 // With msvc, try to auto detect AVX and thus sse4.2
@@ -60,6 +62,8 @@
 
 // SSE intrinsics
 #if defined(__SSE2__)
+
+extern "C" {
 #if defined(__unix) || defined(__linux) || defined(__posix)
 #include <emmintrin.h>
 #include <xmmintrin.h>
@@ -67,7 +71,7 @@
 #include <emmintrin.h>
 #include <xmmintrin.h>
 #endif
-
+}
 #endif
 
 #if defined(_MSC_VER) && (defined(_M_AVX) || defined(__AVX__))
@@ -94,6 +98,7 @@
 #endif
 #endif
 
+extern "C" {
 // SSE3 intrinsics
 #if defined(__SSE3__)
 #include <pmmintrin.h>
@@ -108,10 +113,14 @@
 #if defined(__SSE4_1__)
 #include <smmintrin.h>
 #endif
+}
 
 // SSE4.2 intrinsics
 #if defined(__SSE4_2__)
+
+extern "C" {
 #include <nmmintrin.h>
+}
 
 #if defined(__SSE4_2__) && (defined(__INTEL_COMPILER) || defined(_MSC_VER))
 // POPCNT instructions:
@@ -124,7 +133,9 @@
 // AVX intrinsics
 #if defined(__AVX__)
 // immintrin.h is the ultimate header, we don't need anything else after this
+extern "C" {
 #include <immintrin.h>
+}
 
 #if defined(__AVX__) && (defined(__INTEL_COMPILER) || defined(_MSC_VER))
 // AES, PCLMULQDQ instructions:
@@ -144,11 +155,14 @@
 #endif
 
 #if defined(__AES__) || defined(__PCLMUL__)
+extern "C" {
 #include <wmmintrin.h>
+}
 #endif
 
 // other x86 intrinsics
 #if defined(_M_IX86) && ((defined(__GNUC__) && (__GNUC__ >= 4)) || (defined(__clang_major__) && (__clang_major__ >= 2)) || defined(__INTEL_COMPILER))
+extern "C" {
 #ifdef __INTEL_COMPILER
 // The Intel compiler has no <x86intrin.h> -- all intrinsics are in <immintrin.h>;
 #include <immintrin.h>
@@ -156,12 +170,15 @@
 // GCC 4.4 and Clang 2.8 added a few more intrinsics there
 #include <x86intrin.h>
 #endif
+}
 #endif
 
 // NEON intrinsics
 // note: as of GCC 4.9, does not support function targets for ARM
 #if defined(__ARM_NEON) || defined(__ARM_NEON__)
+extern "C" {
 #include <arm_neon.h>
+}
 #ifndef __ARM_NEON__
 // __ARM_NEON__ is not defined on AArch64, but we need it in our NEON detection.
 #define __ARM_NEON__
@@ -169,7 +186,9 @@
 #endif
 // AArch64/ARM64
 #if (defined(_M_ARM64) || defined(__arm__)) && defined(__ARM_FEATURE_CRC32)
+extern "C" {
 #include <arm_acle.h>
+}
 #endif
 
 #include <cstdint>
