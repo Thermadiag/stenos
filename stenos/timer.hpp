@@ -36,7 +36,7 @@
 #include <cstdint>
 #include <chrono>
 
-#include "../bits.hpp"
+#include "bits.hpp"
 
 namespace stenos
 {

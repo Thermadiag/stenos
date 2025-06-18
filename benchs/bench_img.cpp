@@ -327,7 +327,7 @@ std::string test_to_csv(const std::vector<T>& vec)
 	oss << "sep=;" << std::endl;
 	oss << "Level;StenosSpeed;StenosRatio;BloscZstdShuffleSpeed;BloscZstdShuffleRatio;BloscZstdBitshuffleSpeed;BloscZstdBitshuffleRatio;BloscLZ4ShuffleSpeed;BloscLZ4ShuffleRatio;BloscLZ4BitshuffleSpeed;BloscLZ4BitshuffleRatio" << std::endl;
 
-	int iterations = iteration_count(vec);
+	int iterations = iteration_count(vec)*5;
 
 	std::vector<char> out(stenos_bound(vec.size() * sizeof(T)));
 
@@ -338,22 +338,26 @@ std::string test_to_csv(const std::vector<T>& vec)
 	funs.push_back([&](int level) { return compress_vec_blosc2_shuffle_lz4(vec, out.data(), out.size(), level, 1, iterations); });
 	funs.push_back([&](int level) { return compress_vec_blosc2_bitshuffle_lz4(vec, out.data(), out.size(), level, 1, iterations); });
 
+	auto timer = stenos_make_timer();
+
 	for (int level = 1; level <= 9; ++level) {
 	
 		oss << level << ";";
 		for (size_t i = 0; i < funs.size(); ++i) {
 
-			auto st = msecs_since_epoch();
+			stenos_tick(timer);
 			auto r = funs[i](level);
-			auto el = msecs_since_epoch() - st;
+			auto el = stenos_tock(timer) * 1e-9;
 
 			double ratio = (double)(vec.size() * sizeof(T)) / r;
-			double speed = (double)(vec.size() * sizeof(T)) / ((el * 1e-3) / iterations);
+			double speed = (double)(vec.size() * sizeof(T)) / (el  / iterations);
 
 			oss << speed << ";" << ratio << ";";
 		}
 		oss << std::endl;
 	}
+
+	stenos_destroy_timer(timer);
 
 	return oss.str();
 }
@@ -365,8 +369,65 @@ std::string test_to_csv(const std::vector<T>& vec)
 #include <cvector.hpp>
 #include <array>
 
+
+#include <stenos/cvector.hpp>
+#include <stenos/timer.hpp>	
+
+#include <iostream>
+#include <algorithm>
+#include <random>
+
 int bench_img(int, char** const)
 {
+	{
+		// Fill a std::vector with sorted data
+		std::vector<int> vec(1000000);
+		for (size_t i = 0; i < vec.size(); ++i)
+			vec[i] = (int)i;
+
+		// Compute input bytes
+		size_t bytes = vec.size() * sizeof(int);
+
+		// Create the compressed buffer
+		std::vector<char> dst(stenos_bound(bytes));
+
+		// Compress with level 2
+		size_t r = stenos_compress(vec.data(), sizeof(int), bytes, dst.data(), dst.size(), 2);
+		// Check for error
+		if (stenos_has_error(r))
+			return -1;
+
+		// Print compression ratio
+		std::cout << "Ratio: " << (double)vec.size() / r << std::endl;
+
+
+
+
+		// Advanced way: use a compression context
+
+		stenos_context* ctx = stenos_make_context();
+		stenos_set_level(ctx, 2); // set the compression level
+		stenos_set_threads(ctx, 4); // set the number of threads
+		r = stenos_compress_generic(ctx, vec.data(), sizeof(int), bytes, dst.data(), dst.size());
+		stenos_destroy_context(ctx);
+
+
+
+
+		// Decompress
+
+		std::vector<int> vec2(vec.size());
+		size_t d = stenos_decompress(dst.data(), sizeof(int), r, vec2.data(), bytes);
+		// Check for error
+		if (stenos_has_error(d))
+			return -1;
+
+		// Check dceompression
+		if (!std::equal(vec.begin(), vec.end(), vec2.begin()))
+			return -1;
+
+		return 0;
+	}
 	{
 		{
 			
@@ -544,7 +605,7 @@ int bench_img(int, char** const)
 		//auto vec = read_text<uint16_t>("C:\\src\\stenos\\dataset\\WA.txt");
 		//auto vec = read_text<uint16_t>("C:\\src\\stenos\\dataset\\LH1.txt");
 		//auto vec = read_text<uint16_t>("C:\\src\\stenos\\dataset\\DIV.txt");
-		auto vec = read_binary<2>("C:\\src\\stenos\\dataset\\PI240_15s.wav");
+		auto vec = read_binary<2>("C:\\src\\stenos\\dataset\\2_PI240_15s.wav");
 		//auto vec = read_text<double>("C:\\src\\stenos\\dataset\\UTOR.txt");
 		//auto vec = read_text<double>("C:\\src\\stenos\\dataset\\SHYBPTOT.txt");
 		//auto vec = read_text<uint8_t>("C:\\src\\stenos\\dataset\\javascript.js");

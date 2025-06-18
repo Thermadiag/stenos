@@ -14,12 +14,29 @@ create_test_sourcelist (Benchs
 add_executable (stenos_benchs ${Benchs})
 
 #Add blosc2
-find_package(Blosc2)
-if(Blosc2_FOUND)
-	message(STATUS "Add blosc2 to benchmarks")
-	target_link_libraries(stenos_benchs PRIVATE Blosc2::blosc2_static)
-	target_compile_definitions(stenos_benchs PRIVATE -DHAS_BLOSC)
+find_package(Blosc2 QUIET)
+if(NOT Blosc2_FOUND)
+	message(STATUS "Fetching Blosc2")
+	set(BUILD_SHARED OFF CACHE INTERNAL "" FORCE)
+	set(BUILD_FUZZERS OFF CACHE INTERNAL "" FORCE)
+	set(BUILD_BENCHMARKS OFF CACHE INTERNAL "" FORCE)
+	set(BUILD_EXAMPLES OFF CACHE INTERNAL "" FORCE)
+	set(BUILD_PLUGINS OFF CACHE INTERNAL "" FORCE)
+	set(BUILD_TESTS OFF CACHE INTERNAL "" FORCE)
+	set(DEACTIVATE_ZLIB ON CACHE INTERNAL "" FORCE)
+	set(PREFER_EXTERNAL_ZSTD ON CACHE INTERNAL "" FORCE)
+	FetchContent_Declare(
+			blosc_fetch
+			GIT_REPOSITORY "https://github.com/Blosc/c-blosc2"
+			GIT_TAG main
+			OVERRIDE_FIND_PACKAGE
+			#SOURCE_SUBDIR build/cmake
+		)
+	FetchContent_MakeAvailable(blosc_fetch)
 endif()
+
+target_link_libraries(stenos_benchs PRIVATE Blosc2::blosc2_static)
+target_compile_definitions(stenos_benchs PRIVATE -DHAS_BLOSC)
 
 
 set_property(TARGET stenos_benchs PROPERTY CXX_STANDARD 14)

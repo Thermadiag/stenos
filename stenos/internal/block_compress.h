@@ -403,7 +403,7 @@ namespace stenos
 
 			if (all_same) {
 				pack->all_type = __STENOS_BLOCK_ALL_SAME;
-				return 1;
+				return pack->size = 1;
 			}
 
 			__m128i diff_sub = _mm_sub_epi8(max_sub, min_sub);

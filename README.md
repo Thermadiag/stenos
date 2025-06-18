@@ -1,25 +1,100 @@
 Stenos
-Fast binary compression for C/C++
-Stenos is a compression library primarily designed to compress binary structured data like arrays of integers or floating-point values. It serves the same purpose as the great blosc library, and borrowed its optimized shuffling routines. Stenos relies on zstd compression library.
-As opposed to blosc, stenos does not need to be specified a filter like byte shuffling or bit shuffling. Instead, it tests several approaches and pick the most efficient compression among:
--	SIMD Block compression. This algorithm compresses blocks of 256 elements using a combination of bit packing, delta coding, RLE and fast LZ-like algorithm using SSE 4.1 and/or AVX2 instruction sets. This algorithm can compress at more or less 2GB/s and decompress at 3GB/s. ZSTD compression can then be applied on the residuals.
--	ZSTD compression on the shuffled (transposed) input (similar to blosc + zstd)
--	ZSTD compression on the shuffled + byte delta input
--	Direct ZSTD compression without shuffling.
-Despite all these possibilities, stenos usually compress better and faster than blosc + zstd or lz4. The following graphs show the compression ratio versus speed for different types of data and testing stenos, blosc+zstd (byte shuffling + bit shuffling), blosc+lz4.
+------
+
+Stenos is a compression library designed to compress binary structured data like arrays of integers or floating-point values. It serves the same purpose as the great <a href="https://github.com/Blosc/c-blosc2/tree/main">Blosc</a> library, and borrowed its optimized shuffling routines. 
+Stenos relies on <a href="https://github.com/facebook/Zstd">Zstd</a> compression library.
+
+As opposed to Blosc, Stenos does not need to be specified a filter like byte shuffling or bit shuffling. Instead, it tests several approaches and pick the most efficient compression method among:
+-	SIMD Block compression. This algorithm compresses blocks of 256 elements using a combination of bit packing, delta coding, RLE and fast LZ-like algorithm using SSE 4.1 and/or AVX2 instruction sets. This algorithm can compress at more or less 2GB/s and decompress at 3GB/s. Zstd can then be applied on the residuals.
+-	Zstd compression on the shuffled (transposed) input (similar to Blosc + Zstd)
+-	Zstd compression on the shuffled + byte delta input
+-	Direct Zstd compression without shuffling.
+
+Despite all these possibilities, Stenos usually compress better and faster than Blosc + Zstd or lz4. The following graphs show the compression ratio versus speed for different types of data and testing Stenos, Blosc+Zstd (byte shuffling + bit shuffling), Blosc+lz4.
 
 Stenos supports multi-threaded compression and decompression, but not (yet) streaming compression.
+
 Usage
-TODO
+-----
+
+Basic usage in C++ (similar in C):
+
+```cpp
+
+#include <stenos/stenos.h>
+
+#include <iostream>
+#include <vector>
+#include <algorithm>
+
+int  main  (int , char** )
+{
+	// Fill a std::vector with sorted data
+	std::vector<int> vec(1000000);
+	for (size_t i = 0; i < vec.size(); ++i)
+		vec[i] = (int)i;
+
+	// Compute input bytes
+	size_t bytes = vec.size() * sizeof(int);
+
+	// Create the compressed buffer
+	std::vector<char> dst(stenos_bound(bytes));
+
+	// Compress with level 2 using the C interface
+	size_t r = stenos_compress(vec.data(), sizeof(int), bytes, dst.data(), dst.size(), 2);
+	// Check for error
+	if (stenos_has_error(r))
+		return -1;
+
+	// Print compression ratio
+	std::cout << "Ratio: " << (double)vec.size() / r << std::endl;
+
+
+
+
+	// Advanced way: use a compression context (C interface)
+
+	stenos_context* ctx = stenos_make_context();
+	stenos_set_level(ctx, 2); // set the compression level
+	stenos_set_threads(ctx, 4); // set the number of threads
+	r = stenos_compress_generic(ctx, vec.data(), sizeof(int), bytes, dst.data(), dst.size());
+	stenos_destroy_context(ctx);
+
+
+
+
+	// Decompress
+
+	std::vector<int> vec2(vec.size());
+	size_t d = stenos_decompress(dst.data(), sizeof(int), r, vec2.data(), bytes);
+	// Check for error
+	if (stenos_has_error(d))
+		return -1;
+
+	// Check dceompression
+	if (!std::equal(vec.begin(), vec.end(), vec2.begin()))
+		return -1;
+
+	return 0;
+}
+
+```
+
 Compressed vector
-Stenos library provides the C++ cvector class providing a compressed vector container with a similar interface to std::vector. See this documentation for more details.
+-----------------
+
+Stenos library provides the C++ [stenos::devector](docs/devector.md) class providing a compressed vector container with a similar interface to std::vector. See this [documentation](docs/devector.md) for more details.
+
 Build
+-----
+
 The following cmake options are available:
--	STENOS_ENABLE_AVX2(ON): force AVX2 support
--	STENOS_BUILD_ZSTD(OFF) : build zstd without trying to find it first
--	STENOS_BUILD_TESTS(ON): build the tests
--	STENOS_BUILD_BENCHS(ON): build the benchmarks
--	STENOS_NO_WARNINGS(OFF): treat warnings as errors
--	STENOS_BUILD_SHARED(ON): build shared version of stenos
--	STENOS_BUILD_STATIC(ON): build static version of stenos
+-	*STENOS_ENABLE_AVX2*(ON): force AVX2 support
+-	*STENOS_BUILD_ZSTD*(OFF) : build Zstd without trying to find it first
+-	*STENOS_BUILD_TESTS*(ON): build the tests
+-	*STENOS_BUILD_BENCHS*(ON): build the benchmarks
+-	*STENOS_NO_WARNINGS*(OFF): treat warnings as errors
+-	*STENOS_BUILD_SHARED*(ON): build shared version of Stenos
+-	*STENOS_BUILD_STATIC*(ON): build static version of Stenos
+
 If you link with the static version without using cmake, you must define STENOS_STATIC yourself.

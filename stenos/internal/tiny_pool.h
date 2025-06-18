@@ -238,7 +238,7 @@ namespace stenos
 		void do_work() noexcept
 		{
 			while (!finish) {
-				std::unique_lock lock(mutex);
+				std::unique_lock<std::mutex> lock(mutex);
 				--processing;
 
 				if (waiting && processing == 0 && list.empty())
@@ -273,7 +273,7 @@ namespace stenos
 		~tiny_pool() noexcept
 		{
 			{
-				std::unique_lock lock(mutex);
+				std::unique_lock<std::mutex> lock(mutex);
 				finish = true;
 				condition.notify_all();
 			}
@@ -283,7 +283,7 @@ namespace stenos
 
 		void wait() noexcept
 		{
-			std::unique_lock lock(mutex);
+			std::unique_lock<std::mutex> lock(mutex);
 			waiting = true;
 			wait_condition.wait(lock, [this] { return (this->processing == 0) && this->list.empty(); });
 			waiting = false;
@@ -294,7 +294,7 @@ namespace stenos
 		{
 			auto t = list.make_task(std::forward<U>(u));
 			if (t) {
-				std::scoped_lock lock(mutex);
+				std::lock_guard<std::mutex> lock(mutex);
 				list.push_back(t);
 			}
 			condition.notify_one();

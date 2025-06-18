@@ -8,7 +8,7 @@ project(stenos
     LANGUAGES CXX
 )
 
-set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD 14)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 include(GNUInstallDirs)
 
@@ -69,6 +69,7 @@ if(NOT zstd_FOUND)
 
 	if(NOT zstd_POPULATED)
 		FetchContent_Populate(zstd)
+		message(STATUS "zstd_SOURCE_DIR: ${zstd_SOURCE_DIR}")
 		add_subdirectory(${zstd_SOURCE_DIR}/build/cmake ${zstd_BINARY_DIR} EXCLUDE_FROM_ALL)
 	endif()
 	set(ZSTD_INCLUDE_DIR ${zstd_SOURCE_DIR}/lib CACHE INTERNAL "")
