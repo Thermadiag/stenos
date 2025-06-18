@@ -149,11 +149,11 @@ Set to 0 to disable time bounded compression.
 The compression process will automatically and continually adjust 
 its compression level to avoid (if possible) reaching the maximum
 time. If, no matter what, the compression process is too slow
-to fullfill the time limit, direct memcpy will be used to "compress"
+to fulfill the time limit, direct memcpy will be used to "compress"
 the remaining bytes.
 
-The time precision higly depends on the targetted platform. Typically,
-on Windows, the compression process (almost) never exceed the
+The time precision highly depends on the target platform. Typically,
+on Windows, the compression process (almost) never exceeds the
 compression time by more than a millisecond.
 */
 STENOS_EXPORT size_t stenos_set_max_nanoseconds(stenos_context* ctx, uint64_t nanoseconds);

@@ -391,8 +391,13 @@ int bench_img(int, char** const)
 		// Create the compressed buffer
 		std::vector<char> dst(stenos_bound(bytes));
 
-		// Compress with level 2
-		size_t r = stenos_compress(vec.data(), sizeof(int), bytes, dst.data(), dst.size(), 2);
+		// Advanced way: use a compression context
+
+		stenos_context* ctx = stenos_make_context();
+		stenos_set_max_nanoseconds(ctx, 1000000); // maximum 1 ms to compress
+		size_t r = stenos_compress_generic(ctx, vec.data(), sizeof(int), bytes, dst.data(), dst.size());
+		stenos_destroy_context(ctx);
+
 		// Check for error
 		if (stenos_has_error(r))
 			return -1;
@@ -400,31 +405,6 @@ int bench_img(int, char** const)
 		// Print compression ratio
 		std::cout << "Ratio: " << (double)vec.size() / r << std::endl;
 
-
-
-
-		// Advanced way: use a compression context
-
-		stenos_context* ctx = stenos_make_context();
-		stenos_set_level(ctx, 2); // set the compression level
-		stenos_set_threads(ctx, 4); // set the number of threads
-		r = stenos_compress_generic(ctx, vec.data(), sizeof(int), bytes, dst.data(), dst.size());
-		stenos_destroy_context(ctx);
-
-
-
-
-		// Decompress
-
-		std::vector<int> vec2(vec.size());
-		size_t d = stenos_decompress(dst.data(), sizeof(int), r, vec2.data(), bytes);
-		// Check for error
-		if (stenos_has_error(d))
-			return -1;
-
-		// Check dceompression
-		if (!std::equal(vec.begin(), vec.end(), vec2.begin()))
-			return -1;
 
 		return 0;
 	}

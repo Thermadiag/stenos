@@ -14,6 +14,7 @@ Despite all these possibilities, Stenos usually compress better and faster than 
 
 Stenos supports multi-threaded compression and decompression, but not (yet) streaming compression.
 
+
 Usage
 -----
 
@@ -51,7 +52,6 @@ int  main  (int , char** )
 
 
 
-
 	// Advanced way: use a compression context (C interface)
 
 	stenos_context* ctx = stenos_make_context();
@@ -59,7 +59,6 @@ int  main  (int , char** )
 	stenos_set_threads(ctx, 4); // set the number of threads
 	r = stenos_compress_generic(ctx, vec.data(), sizeof(int), bytes, dst.data(), dst.size());
 	stenos_destroy_context(ctx);
-
 
 
 
@@ -71,7 +70,7 @@ int  main  (int , char** )
 	if (stenos_has_error(d))
 		return -1;
 
-	// Check dceompression
+	// Check decompression
 	if (!std::equal(vec.begin(), vec.end(), vec2.begin()))
 		return -1;
 
@@ -80,10 +79,72 @@ int  main  (int , char** )
 
 ```
 
+
+Compression levels
+------------------
+
+Stenos compression levels range from 0 (no compression) to 9 (maximum compression).
+For multi-bytes elements (like arrays of 2-4-8 byte integers), the level 1 uses SIMD block compression without Zstd. This should only be used for situations where high compression speed is required (> 1GB/s), and higher compression levels should be used otherwise.
+
+
+Time limited compression
+------------------------
+
+Stenos supports time limited compression. With this mode, the compression level is continuously adjusted during the compression process to achieve the highest possible compression ratio within a given time.
+If, no matter what, the compression process is too slow to fulfill the required time limit, direct memcpy will be used to "compress" the remaining bytes.
+
+The time precision highly depends on the target platform. Typically, on Windows, the compression process (almost) never exceeds the compression time by more than a millisecond.
+
+Basic usage:
+
+```cpp
+
+#include <stenos/stenos.h>
+
+#include <iostream>
+#include <vector>
+#include <algorithm>
+
+int  main  (int , char** )
+{
+	// Fill a std::vector with sorted data
+	std::vector<int> vec(1000000);
+	for (size_t i = 0; i < vec.size(); ++i)
+		vec[i] = (int)i;
+
+	// Compute input bytes
+	size_t bytes = vec.size() * sizeof(int);
+
+	// Create the compressed buffer
+	std::vector<char> dst(stenos_bound(bytes));
+
+
+	// Advanced way: use a compression context
+
+	stenos_context* ctx = stenos_make_context();
+	stenos_set_max_nanoseconds(ctx, 1000000); // maximum 1 ms to compress
+	size_t r = stenos_compress_generic(ctx, vec.data(), sizeof(int), bytes, dst.data(), dst.size());
+	stenos_destroy_context(ctx);
+	
+	// Check for error
+	if (stenos_has_error(r))
+		return -1;
+		
+	// Print compression ratio
+	std::cout << "Ratio: " << (double)vec.size() / r << std::endl;
+
+	
+	return 0;
+}
+
+```
+
+
 Compressed vector
 -----------------
 
-Stenos library provides the C++ [stenos::devector](docs/devector.md) class providing a compressed vector container with a similar interface to std::vector. See this [documentation](docs/devector.md) for more details.
+Stenos library provides the C++ [stenos::cvector](docs/cvector.md) class providing a compressed vector container with a similar interface to std::vector. See this [documentation](docs/cvector.md) for more details.
+
 
 Build
 -----
