@@ -83,7 +83,7 @@ int  main  (int , char** )
 Compression levels
 ------------------
 
-Stenos compression levels range from 0 (no compression) to 9 (maximum compression).
+Stenos compression level ranges from 0 (no compression) to 9 (maximum compression).
 For multi-bytes elements (like arrays of 2-4-8 byte integers), the level 1 uses SIMD block compression without Zstd. This should only be used for situations where high compression speed is required (> 1GB/s), and higher compression levels should be used otherwise.
 
 
