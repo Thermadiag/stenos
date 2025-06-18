@@ -1285,11 +1285,11 @@ namespace stenos
 				if (d_buckets.size() && d_buckets.back().csize == 0)
 					--decompressed_size;
 				decompressed_size *= block_size * sizeof(T);
-				return (d_compress_size && decompressed_size) ? static_cast<float>(d_compress_size) / decompressed_size : 0;
+				return (d_compress_size && decompressed_size) ? decompressed_size/ static_cast<float>(d_compress_size) : 0.f;
 			}
 
 			/// @brief Returns the current compression ratio, that is the total memory footprint of this container divided by its thoric size (size()*sizeof(T))
-			auto current_compression_ratio() const noexcept -> float { return static_cast<float>(memory_footprint()) / static_cast<float>(d_size * sizeof(T)); }
+			auto current_compression_ratio() const noexcept -> float { return static_cast<float>(d_size * sizeof(T)) / static_cast<float>(memory_footprint()); }
 
 			/// @brief Returns the maximum number of decompression contexts as a fraction of the bucket count
 			STENOS_ALWAYS_INLINE auto max_contexts() const noexcept -> context_ratio { return d_max_contexts; }
@@ -1973,7 +1973,7 @@ namespace stenos
 					remaining -= to_process;
 					size_t en = pos + to_process;
 					for (size_t p = pos; p != en; ++p, ++res)
-						if (!eval_functor(std::forward<Fun>(fun), cur->at(p)))
+						if (!eval_functor(std::forward<Functor>(fun), cur->at(p)))
 							return res;
 					pos = 0;
 					++bindex;

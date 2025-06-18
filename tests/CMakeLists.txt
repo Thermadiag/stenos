@@ -8,6 +8,7 @@ enable_testing()
 create_test_sourcelist (Tests
 stenos_tests.cpp
   tests.cpp
+  test_cvector.cpp
  )
 
 # add the executable

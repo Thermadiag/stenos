@@ -380,31 +380,32 @@ std::string test_to_csv(const std::vector<T>& vec)
 int bench_img(int, char** const)
 {
 	{
-		// Fill a std::vector with sorted data
-		std::vector<int> vec(1000000);
-		for (size_t i = 0; i < vec.size(); ++i)
-			vec[i] = (int)i;
+		using namespace stenos;
+		cvector<int> w;
 
-		// Compute input bytes
-		size_t bytes = vec.size() * sizeof(int);
+		// fill with consecutive values
+		for (size_t i = 0; i < 10000000; ++i)
+			w.push_back((int)i);
 
-		// Create the compressed buffer
-		std::vector<char> dst(stenos_bound(bytes));
+		// very good compression ratio as data are sorted
+		std::cout << "push_back: " << w.current_compression_ratio() << std::endl;
 
-		// Advanced way: use a compression context
+		// shuffle the cvector
+		timer t;
+		t.tick();
+		std::mt19937 rng(0);
+		std::shuffle(w.begin(), w.end(), rng);
+		auto elapsed_ms = t.tock() * 1e-6;
 
-		stenos_context* ctx = stenos_make_context();
-		stenos_set_max_nanoseconds(ctx, 1000000); // maximum 1 ms to compress
-		size_t r = stenos_compress_generic(ctx, vec.data(), sizeof(int), bytes, dst.data(), dst.size());
-		stenos_destroy_context(ctx);
+		// Bad compression ratio on random values (but still better than 1)
+		std::cout << "random_shuffle: " << w.current_compression_ratio() << " in " << elapsed_ms << " ms" << std::endl;
 
-		// Check for error
-		if (stenos_has_error(r))
-			return -1;
-
-		// Print compression ratio
-		std::cout << "Ratio: " << (double)vec.size() / r << std::endl;
-
+		// sort the cvector
+		t.tick();
+		std::sort(w.begin(), w.end());
+		elapsed_ms = t.tock() * 1e-6;
+		// Go back to original ratio
+		std::cout << "sort: " << w.current_compression_ratio() << " in " << elapsed_ms << " ms" << std::endl;
 
 		return 0;
 	}

@@ -1,3 +1,27 @@
+/**
+ * MIT License
+ *
+ * Copyright (c) 2025 Victor Moncada <vtr.moncada@gmail.com>
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in
+ * all copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ * SOFTWARE.
+ */
+
 #include "stenos.h"
 #include "bits.hpp"
 
@@ -139,9 +163,6 @@ void test_distribution(const char* distribution, const std::vector<T>& vec)
 	std::mt19937 rng(0);
 	std::uniform_int_distribution<int> dist(0, (int)(bytes > 100 ? bytes / 10 : 10));
 
-	//TEST
-	//test_vector(vec, distribution, 1, 1, 27720);
-
 
 	for (int threads = 1; threads <= 8; ++threads) {
 		for (int level = 0; level <= 5; ++level) {
@@ -172,9 +193,6 @@ struct TestDistribution
 
 		std::mt19937 rng(0);
 		std::uniform_int_distribution<int> dist(0, 100000);
-
-		//TEST
-		//int i = 54881;
 
 		// Test for different input size
 		for (int i = 0; i < 1000000; i += dist(rng)) {
@@ -207,12 +225,9 @@ struct TestDistribution<Start, Start>
 
 int tests(int, char* [])
 {
-	//TEST
-	//TestDistribution<7, 16>::apply("sorted");
-
+	
 	TestDistribution<1, 16>::apply("same");
 	TestDistribution<1, 16>::apply("sorted");
-	
 	TestDistribution<1, 16>::apply("random");
 
 	return 0;

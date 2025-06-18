@@ -67,9 +67,9 @@ In order for cvector to work with all STL algorithms, some latitudes with C++ st
 -	`std::swap` is overloaded for reference wrapper types. Overloading `std::swap` is forbidden by the standard, but works in practice with latest versions of msvc, gcc and clang.
 -	`std::move` is overloaded for reference wrapper types. This was mandatory for algorithms like `std::move(first,last,dst)` to work on move-only types.
 
-Thanks to this, it is possible to call `std::sort` or std::random_shuffle on a `cvector`. For instance, the following code snippet successively:
+Thanks to this, it is possible to call `std::sort` or `std::shuffle` on a `cvector`. For instance, the following code snippet successively:
 -	Call `cvector::push_back` to fill the cvector with sorted data. In this case the compression ratio (compressed size/raw size) is very low due to high values correlation.
--	Call `std::random_shuffle` to shuffle the cvector: the compression ratio becomes very high as compressing random data is basically impossible.
+-	Call `std::shuffle` to randomly shuffle the cvector: the compression ratio becomes very high as compressing random data is basically impossible.
 -	Sort again the cvector with `std::sort` to get back the initial compression ratio.
 
 ```cpp
@@ -117,9 +117,6 @@ int main(int, char** const)
 }
 ``` 
 
-Below is a curve representing the program memory footprint during previous operations (extracted with Visual Studio diagnostic tools):
-
-![cvector memory](images/cvector_memory.png)
 
 ## Restrictions
 
@@ -240,7 +237,7 @@ int  main  (int , char** )
 The level 1 block compressor provided with cvector works great for arbitrary structures, but compresses poorly raw ascii text.
 Using a `stenos::cvector<char>` in order to compress raw text is a bad idea as the resulting compression ratio will be very low.
 
-Instead, you should increase the BlockSize as well as the compression level to enable Zstd based comrpession.
+Instead, you should increase the BlockSize as well as the compression level to enable Zstd based compression.
 
 Example:
 
