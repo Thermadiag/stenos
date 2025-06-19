@@ -3008,6 +3008,12 @@ namespace std
 
 namespace stenos
 {
+	//TEST
+	template<class Compressed>
+	STENOS_ALWAYS_INLINE void swap(detail::ValueWrapper<Compressed> a, detail::ValueWrapper<Compressed> b) noexcept
+	{
+		a.swap(b);
+	}
 
 	template<class T, unsigned BlockSize, int Level, class Alloc>
 	template<class Ostream>
