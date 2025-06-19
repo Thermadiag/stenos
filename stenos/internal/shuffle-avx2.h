@@ -15,10 +15,6 @@
 
 #include <cstdint>
 
-/**
- * AVX2-accelerated (un)shuffle routines availability.
-*/
-extern const bool is_shuffle_avx2;
 
 /**
   AVX2-accelerated shuffle routine.

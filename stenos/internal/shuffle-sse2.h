@@ -17,11 +17,6 @@
 #include <cstdint>
 
 /**
- * SSE2-accelerated (un)shuffle routines availability.
-*/
-extern const bool is_shuffle_sse2;
-
-/**
   SSE2-accelerated shuffle routine.
 */
 void shuffle_sse2(int32_t bytesoftype, int32_t blocksize,

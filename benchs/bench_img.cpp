@@ -548,6 +548,7 @@ int bench_img(int, char** const)
 			*/
 		}
 
+		std::cout<<STENOS_DATA_DIR<<std::endl;
 		//auto vec = read_binary<12>("C:\\src\\stenos\\dataset\\953134_float3.bin");
 		//auto vec = read_binary<16>("C:\\src\\stenos\\dataset\\232630_float4.bin");
 		//auto vec = read_binary<16>("C:\\src\\stenos\\dataset\\1024_sq_float4.bin");
@@ -557,7 +558,7 @@ int bench_img(int, char** const)
 		//auto vec = read_text<uint16_t>("C:\\src\\stenos\\dataset\\WA.txt");
 		//auto vec = read_text<uint16_t>("C:\\src\\stenos\\dataset\\LH1.txt");
 		//auto vec = read_text<uint16_t>("C:\\src\\stenos\\dataset\\DIV.txt");
-		auto vec = read_binary<2>("C:\\src\\stenos\\dataset\\2_PI240_15s.wav");
+		auto vec = read_binary<2>(STENOS_DATA_DIR "/dataset/2_PI240_15s.wav");
 		//auto vec = read_text<double>("C:\\src\\stenos\\dataset\\UTOR.txt");
 		//auto vec = read_text<double>("C:\\src\\stenos\\dataset\\SHYBPTOT.txt");
 		//auto vec = read_text<uint8_t>("C:\\src\\stenos\\dataset\\javascript.js");

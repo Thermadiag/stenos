@@ -203,7 +203,7 @@ namespace stenos
 		};
 		static STENOS_ALWAYS_INLINE __m128i from_vector16(const vector16& v) noexcept
 		{
-			return _mm_load_si128((const __m128i*)&v);
+			return _mm_loadu_si128((const __m128i*)&v);
 		}
 		static STENOS_ALWAYS_INLINE void to_vector16(vector16& v, const __m128i& sse) noexcept
 		{
@@ -868,11 +868,13 @@ namespace stenos
 			__m128i w30, w31, w32, w33;
 
 			const __m128i shuffle = _mm_setr_epi8(0, 4, 8, 12, 1, 5, 9, 13, 2, 6, 10, 14, 3, 7, 11, 15);
+#define STENOS_LOAD(x) _mm_loadu_si128(x)
 
-			transpose_4x4_dwords(_mm_load_si128(in), _mm_load_si128(in + 1), _mm_load_si128(in + 2), _mm_load_si128(in + 3), w00, w01, w02, w03);
-			transpose_4x4_dwords(_mm_load_si128(in + 4), _mm_load_si128(in + 5), _mm_load_si128(in + 6), _mm_load_si128(in + 7), w10, w11, w12, w13);
-			transpose_4x4_dwords(_mm_load_si128(in + 8), _mm_load_si128(in + 9), _mm_load_si128(in + 10), _mm_load_si128(in + 11), w20, w21, w22, w23);
-			transpose_4x4_dwords(_mm_load_si128(in + 12), _mm_load_si128(in + 13), _mm_load_si128(in + 14), _mm_load_si128(in + 15), w30, w31, w32, w33);
+			transpose_4x4_dwords(STENOS_LOAD(in), STENOS_LOAD(in + 1), STENOS_LOAD(in + 2), STENOS_LOAD(in + 3), w00, w01, w02, w03);
+			transpose_4x4_dwords(STENOS_LOAD(in + 4), STENOS_LOAD(in + 5), STENOS_LOAD(in + 6), STENOS_LOAD(in + 7), w10, w11, w12, w13);
+			transpose_4x4_dwords(STENOS_LOAD(in + 8), STENOS_LOAD(in + 9), STENOS_LOAD(in + 10), STENOS_LOAD(in + 11), w20, w21, w22, w23);
+			transpose_4x4_dwords(STENOS_LOAD(in + 12), STENOS_LOAD(in + 13), STENOS_LOAD(in + 14), STENOS_LOAD(in + 15), w30, w31, w32, w33);
+#undef STENOS_LOAD			
 			w00 = _mm_shuffle_epi8(w00, shuffle); // transpos 4x4
 			w01 = _mm_shuffle_epi8(w01, shuffle);
 			w02 = _mm_shuffle_epi8(w02, shuffle);
@@ -1155,6 +1157,7 @@ namespace stenos
 		uint32_t target = 0;
 		size_t full_size = 0;
 
+		//__m128i input[16];
 		__m128i transpose[16];
 
 		for (size_t bcount = 0; bcount < block_count; ++bcount, src += block_size) {
@@ -1199,8 +1202,13 @@ namespace stenos
 			for (uint32_t i = 0; i < (uint32_t)bytesoftype; i++) {
 
 				const void* input_tr = encoder.arrays[i][0].i8;
-				if (__shuffled)
+				if (__shuffled){
 					input_tr = (char*)__shuffled + elements * i + bcount * 256;
+					/*if((uintptr_t)input_tr % 16 != 0){
+						memcpy(input,input_tr,256);
+						input_tr = (char*)input;
+					}*/
+				}
 
 				uint32_t size = detail::compute_block_generic(&encoder, input_tr, encoder.firsts[i], i, methods[level], transpose);
 				if (size > target) {
@@ -1233,8 +1241,13 @@ namespace stenos
 
 			for (uint32_t i = 0; i < (uint32_t)bytesoftype; ++i) {
 				const void* input_tr = encoder.arrays[i][0].i8;
-				if (__shuffled)
+				if (__shuffled) {
 					input_tr = (char*)__shuffled + elements * i + bcount * 256;
+					/*if((uintptr_t)input_tr % 16 != 0){
+						memcpy(input,input_tr,256);
+						input_tr = (char*)input;
+					}*/
+				}
 
 				if (encoder.packs[i].all_type == __STENOS_BLOCK_ALL_RAW) {
 					memcpy(dst, input_tr, 256);
@@ -2183,7 +2196,7 @@ namespace stenos
 
 namespace stenos
 {
-	static STENOS_ALWAYS_INLINE size_t block_decompress_generic(const void* STENOS_RESTRICT src, size_t size, size_t bytesoftype, size_t bytes, void* STENOS_RESTRICT dst) noexcept
+	static inline size_t block_decompress_generic(const void* STENOS_RESTRICT src, size_t size, size_t bytesoftype, size_t bytes, void* STENOS_RESTRICT dst) noexcept
 	{
 		STENOS_ASSERT_DEBUG(bytesoftype < STENOS_MAX_BYTESOFTYPE, "invalid bytesoftype");
 #ifdef __SSE4_1__
@@ -2193,7 +2206,7 @@ namespace stenos
 		return block_decompress(src, size, bytesoftype, bytes, dst);
 	}
 
-	static STENOS_ALWAYS_INLINE size_t block_compress_generic(const void* STENOS_RESTRICT src,
+	static inline size_t block_compress_generic(const void* STENOS_RESTRICT src,
 								  size_t bytesoftype,
 								  size_t bytes,
 								  void* STENOS_RESTRICT dst,

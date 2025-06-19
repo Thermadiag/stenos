@@ -698,11 +698,11 @@ unshuffle_sse2( int32_t bytesoftype,  int32_t blocksize,
   }
 }
 
-const bool is_shuffle_sse2 = true;
+//const bool is_shuffle_sse2 = true;
 
 #else /* defined(__SSE2__) */
 
-const bool is_shuffle_sse2 = false;
+//const bool is_shuffle_sse2 = false;
 
 void shuffle_sse2(const int32_t bytesoftype, const int32_t blocksize,
                   const uint8_t *_src, uint8_t *_dest) {

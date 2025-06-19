@@ -844,11 +844,11 @@ unshuffle_avx2(const int32_t bytesoftype, const int32_t blocksize,
   }
 }
 
-const bool is_shuffle_avx2 = true;
+//const bool is_shuffle_avx2 = true;
 
 #else
 
-const bool is_shuffle_avx2 = false;
+//const bool is_shuffle_avx2 = false;
 
 void shuffle_avx2(const int32_t bytesoftype, const int32_t blocksize,
                   const uint8_t *_src, uint8_t *_dest) {

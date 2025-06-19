@@ -59,6 +59,7 @@ namespace stenos
 
 			new (res) CBuffer();
 			res->bytes = (char*)detail::align_buffer((char*)res + sizeof(CBuffer));
+			STENOS_ASSERT_DEBUG((uintptr_t)res->bytes % 16 == 0, "Unaligned bytes!");
 			return res;
 		}
 
