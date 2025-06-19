@@ -63,13 +63,13 @@ namespace std
 	///////////////////////////
 
 	template<class Compress>
-	typename Compress::value_type move(stenos::detail::ValueWrapper<Compress>& other);
+	typename Compress::value_type move(stenos::detail::ValueWrapper<Compress>& other) noexcept;
 
 	template<class Compress>
-	typename Compress::value_type move(stenos::detail::ValueWrapper<Compress>&& other);
+	typename Compress::value_type move(stenos::detail::ValueWrapper<Compress>&& other) noexcept;
 
 	template<class Compressed>
-	void swap(stenos::detail::ValueWrapper<Compressed>&& a, stenos::detail::ValueWrapper<Compressed>&& b);
+	void swap(stenos::detail::ValueWrapper<Compressed>&& a, stenos::detail::ValueWrapper<Compressed>&& b) noexcept;
 }
 
 #include <algorithm>
