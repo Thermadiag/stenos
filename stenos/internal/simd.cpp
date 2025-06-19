@@ -24,7 +24,6 @@
 
 #include "simd.h"
 
-#include <mutex>
 
 #ifdef _MSC_VER
 
@@ -34,14 +33,23 @@
 
 #else
 
+#if defined(_M_ARM64) || defined(__arm__) || defined(__ARM_NEON__)
+inline void cpuid(int info[4], int InfoType)
+{
+	info[0] = info[1] = info[2] = info[3] = 0;
+	(void)InfoType;
+}
+#else
 //  GCC Intrinsics
 #include <cpuid.h>
 inline void cpuid(int info[4], int InfoType)
 {
 	__cpuid_count(InfoType, 0, info[0], info[1], info[2], info[3]);
 }
+#endif
 
 #endif
+
 
 // Undef min and max defined in Windows.h
 #ifdef min
@@ -58,6 +66,7 @@ namespace stenos
 		CPUFeatures compute_cpu_feature() noexcept
 		{
 			CPUFeatures features;
+			memset(&features, 0, sizeof(features));
 
 			int info[4];
 			cpuid(info, 0);
