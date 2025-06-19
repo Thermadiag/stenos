@@ -63,6 +63,31 @@
 #define __STENOS_COMP_NORMAL 0
 #define __STENOS_COMP_RLE 1
 
+
+namespace stenos
+{
+	namespace detail
+	{
+		// Overalign buffer to 16 bytes
+		static STENOS_ALWAYS_INLINE void* align_buffer(void* buf) noexcept
+		{
+			if ((uintptr_t)buf & 15u)
+				buf = (void*)(((uintptr_t)buf & (uintptr_t)(~15ull)) + (uintptr_t)16ull);
+			return buf;
+		}
+
+		// Usefull union, 16 byte aligned block of 16 bytes
+		union alignas(16) vector16
+		{
+			char i8[16];
+			uint8_t u8[16];
+			uint16_t u16[8];
+			uint32_t u32[4];
+			uint64_t u64[2];
+		};
+	}
+}
+
 #ifdef __SSE3__
 
 // RLE compression requires SSE3
@@ -192,15 +217,7 @@ namespace stenos
 {
 	namespace detail
 	{
-		// Usefull union, 16 byte aligned block of 16 bytes
-		union alignas(16) vector16
-		{
-			char i8[16];
-			uint8_t u8[16];
-			uint16_t u16[8];
-			uint32_t u32[4];
-			uint64_t u64[2];
-		};
+		
 		static STENOS_ALWAYS_INLINE __m128i from_vector16(const vector16& v) noexcept
 		{
 			// For reading only, we consider that v is not guaranteed to be aligned
@@ -286,12 +303,7 @@ namespace stenos
 	namespace detail
 	{
 
-		static STENOS_ALWAYS_INLINE void* align_buffer(void* buf) noexcept
-		{
-			if ((uintptr_t)buf & 15u)
-				buf = (void*)(((uintptr_t)buf & (uintptr_t)(~15ull)) + (uintptr_t)16ull);
-			return buf;
-		}
+		
 
 		struct BlockEncoder
 		{

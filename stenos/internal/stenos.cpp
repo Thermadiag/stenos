@@ -28,6 +28,7 @@
 #endif
 
 #include "block_compress.h"
+#include "zstd_wrapper.h"
 #include "delta.h"
 
 #define STENOS_FRAME_HEADER_BLOCK (1)		      // Bytes compressed with block encoder only
