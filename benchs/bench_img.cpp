@@ -286,7 +286,7 @@ void test_time_limited(const std::vector<T>& vec, unsigned threads)
 	std::vector<char> dst(stenos_bound(vec.size() * sizeof(T)));
 	size_t bytes = vec.size() * sizeof(T);
 
-	stenos_timer_t* timer = stenos_make_timer();
+	stenos_timer* timer = stenos_make_timer();
 
 	stenos_tick(timer);
 	auto r1 = stenos_compress(vec.data(), sizeof(T), vec.size() * sizeof(T), dst.data(), dst.size(), 8);
@@ -379,36 +379,7 @@ std::string test_to_csv(const std::vector<T>& vec)
 
 int bench_img(int, char** const)
 {
-	{
-		using namespace stenos;
-		cvector<int> w;
-
-		// fill with consecutive values
-		for (size_t i = 0; i < 10000000; ++i)
-			w.push_back((int)i);
-
-		// very good compression ratio as data are sorted
-		std::cout << "push_back: " << w.current_compression_ratio() << std::endl;
-
-		// shuffle the cvector
-		timer t;
-		t.tick();
-		std::mt19937 rng(0);
-		std::shuffle(w.begin(), w.end(), rng);
-		auto elapsed_ms = t.tock() * 1e-6;
-
-		// Bad compression ratio on random values (but still better than 1)
-		std::cout << "random_shuffle: " << w.current_compression_ratio() << " in " << elapsed_ms << " ms" << std::endl;
-
-		// sort the cvector
-		t.tick();
-		std::sort(w.begin(), w.end());
-		elapsed_ms = t.tock() * 1e-6;
-		// Go back to original ratio
-		std::cout << "sort: " << w.current_compression_ratio() << " in " << elapsed_ms << " ms" << std::endl;
-
-		return 0;
-	}
+	
 	{
 		{
 			
@@ -595,8 +566,8 @@ int bench_img(int, char** const)
 		//test_time_limited(vec,1);
 		//return 0;
 
-		std::cout << test_to_csv(vec) << std::endl;
-		return 0;
+		//std::cout << test_to_csv(vec) << std::endl;
+		//return 0;
 
 		blosc1_set_compressor("zstd");
 		std::cout << "Blosc2 zstd" << std::endl;
