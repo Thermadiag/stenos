@@ -61,14 +61,12 @@ bool equal_cvec(const Deq1& d1, const Deq2& d2)
 	}
 	auto it1 = d1.begin();
 	auto it2 = d2.begin();
-	int i = 0;
 	while (it1 != d1.end()) {
 		if (*it1 != *it2) {
 			return false;
 		}
 		++it1;
 		++it2;
-		++i;
 	}
 	return true;
 }

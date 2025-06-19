@@ -870,10 +870,13 @@ namespace stenos
 		template<class Compressed>
 		struct CompressedConstIter
 		{
+			using ref_type = typename Compressed::ref_type;
+			using const_ref_type = typename Compressed::const_ref_type;
+
 			using T = typename Compressed::value_type;
 			using value_type = T;
-			using reference = const T&;
-			using const_reference = const T&;
+			using reference = ref_type;
+			using const_reference = const_ref_type;
 			using pointer = const T*;
 			using const_pointer = const T*;
 			using difference_type = typename Compressed::difference_type;
@@ -969,10 +972,10 @@ namespace stenos
 		{
 			using base_type = CompressedConstIter<Compressed>;
 			using value_type = typename Compressed::value_type;
-			using reference = typename Compressed::reference;
-			using const_reference = typename Compressed::const_reference;
-			using pointer = typename Compressed::pointer;
-			using const_pointer = typename Compressed::const_pointer;
+			using reference = typename CompressedConstIter<Compressed>::reference;
+			using const_reference = typename CompressedConstIter<Compressed>::const_reference;
+			using pointer = typename CompressedConstIter<Compressed>::pointer;
+			using const_pointer = typename CompressedConstIter<Compressed>::const_pointer;
 
 			using difference_type = typename Compressed::difference_type;
 			using iterator_category = std::random_access_iterator_tag;

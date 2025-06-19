@@ -63,7 +63,6 @@
 #define __STENOS_COMP_NORMAL 0
 #define __STENOS_COMP_RLE 1
 
-
 namespace stenos
 {
 	namespace detail
@@ -132,7 +131,6 @@ namespace stenos
 namespace stenos
 {
 
-	
 	namespace detail
 	{
 		/* static inline const uint64_t* compute_shuffle_table()
@@ -221,7 +219,7 @@ namespace stenos
 {
 	namespace detail
 	{
-		
+
 		static STENOS_ALWAYS_INLINE __m128i from_vector16(const vector16& v) noexcept
 		{
 			// For reading only, we consider that v is not guaranteed to be aligned
@@ -890,7 +888,7 @@ namespace stenos
 			transpose_4x4_dwords(STENOS_LOAD(in + 4), STENOS_LOAD(in + 5), STENOS_LOAD(in + 6), STENOS_LOAD(in + 7), w10, w11, w12, w13);
 			transpose_4x4_dwords(STENOS_LOAD(in + 8), STENOS_LOAD(in + 9), STENOS_LOAD(in + 10), STENOS_LOAD(in + 11), w20, w21, w22, w23);
 			transpose_4x4_dwords(STENOS_LOAD(in + 12), STENOS_LOAD(in + 13), STENOS_LOAD(in + 14), STENOS_LOAD(in + 15), w30, w31, w32, w33);
-#undef STENOS_LOAD			
+#undef STENOS_LOAD
 			w00 = _mm_shuffle_epi8(w00, shuffle); // transpos 4x4
 			w01 = _mm_shuffle_epi8(w01, shuffle);
 			w02 = _mm_shuffle_epi8(w02, shuffle);
@@ -1218,7 +1216,7 @@ namespace stenos
 			for (uint32_t i = 0; i < (uint32_t)bytesoftype; i++) {
 
 				const void* input_tr = encoder.arrays[i][0].i8;
-				if (__shuffled){
+				if (__shuffled) {
 					// In this case,  input_tr is not guaranteed to be aligned
 					input_tr = (char*)__shuffled + elements * i + bcount * 256;
 				}
@@ -2204,7 +2202,6 @@ namespace stenos
 #endif
 }
 
-
 namespace stenos
 {
 	static inline size_t block_decompress_generic(const void* STENOS_RESTRICT src, size_t size, size_t bytesoftype, size_t bytes, void* STENOS_RESTRICT dst) noexcept
@@ -2218,15 +2215,15 @@ namespace stenos
 	}
 
 	static inline size_t block_compress_generic(const void* STENOS_RESTRICT src,
-								  size_t bytesoftype,
-								  size_t bytes,
-								  void* STENOS_RESTRICT dst,
-								  size_t dst_size,
-								  int block_level,
-								  int full_level,
-								  TimeConstraint& t,
-								  double* STENOS_RESTRICT target_ratio,
-								  const void* STENOS_RESTRICT __shuffled) noexcept
+						    size_t bytesoftype,
+						    size_t bytes,
+						    void* STENOS_RESTRICT dst,
+						    size_t dst_size,
+						    int block_level,
+						    int full_level,
+						    TimeConstraint& t,
+						    double* STENOS_RESTRICT target_ratio,
+						    const void* STENOS_RESTRICT __shuffled) noexcept
 	{
 		STENOS_ASSERT_DEBUG(bytesoftype < STENOS_MAX_BYTESOFTYPE, "invalid bytesoftype");
 #ifdef __SSE4_1__
