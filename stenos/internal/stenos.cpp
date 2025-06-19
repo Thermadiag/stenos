@@ -230,14 +230,14 @@ struct stenos_context_s
 
 stenos_context* stenos_make_context()
 {
-	stenos_context* ctx = (stenos_context*)malloc(sizeof(stenos_context));
+	stenos_context* ctx = (stenos_context*)malloc(sizeof(stenos_context_s));
 	return new (ctx) stenos_context_s();
 }
 
 void stenos_destroy_context(stenos_context* ctx)
 {
 	if (ctx) {
-		ctx->~stenos_context();
+		ctx->~stenos_context_s();
 		free(ctx);
 	}
 }

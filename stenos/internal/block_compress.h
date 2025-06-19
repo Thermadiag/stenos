@@ -85,7 +85,15 @@ namespace stenos
 			uint32_t u32[4];
 			uint64_t u64[2];
 		};
+
 	}
+
+	// Check result for error
+	static STENOS_ALWAYS_INLINE int has_error(size_t code)
+	{
+		return code >= STENOS_LAST_ERROR_CODE;
+	}
+
 }
 
 #ifdef __SSE3__
@@ -124,11 +132,7 @@ namespace stenos
 namespace stenos
 {
 
-	static STENOS_ALWAYS_INLINE int has_error(size_t code)
-	{
-		return code >= STENOS_LAST_ERROR_CODE;
-	}
-
+	
 	namespace detail
 	{
 		/* static inline const uint64_t* compute_shuffle_table()
