@@ -52,13 +52,13 @@ namespace stenos
 
 		static CBuffer* make(size_t bytes) noexcept
 		{
-			size_t alloc = bytes + sizeof(CBuffer);
+			size_t alloc = bytes + 16 + sizeof(CBuffer); // Add 16 to ensure aligned access
 			CBuffer* res = (CBuffer*)malloc(alloc);
 			if (!res)
 				return res;
 
 			new (res) CBuffer();
-			res->bytes = (char*)res + sizeof(CBuffer);
+			res->bytes = (char*)detail::align_buffer((char*)res + sizeof(CBuffer));
 			return res;
 		}
 
