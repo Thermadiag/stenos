@@ -1,0 +1,36 @@
+name: build
+on: 
+
+  push:
+    branches: [ "main", "dev" ]
+  pull_request:
+    branches: [ "main", "dev", "releases/**" ]
+  workflow_dispatch:
+  workflow_call:
+
+
+jobs: 
+    build-linux:
+        strategy:
+          matrix:
+            compiler: [gcc-13.2.0]
+        uses: ./.github/workflows/build-linux.yml
+        with:
+          compiler: ${{ matrix.compiler }}
+
+        
+    build-windows:
+        strategy:
+          matrix:
+            compiler: [ msvc]
+        uses: ./.github/workflows/build-windows.yml
+        with:
+          compiler: ${{ matrix.compiler }}
+      
+    build-macos:
+        strategy:
+          matrix:
+            compiler: [clang]
+        uses: ./.github/workflows/build-macos.yml
+        with:
+          compiler: ${{ matrix.compiler }}
