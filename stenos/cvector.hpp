@@ -797,7 +797,7 @@ namespace stenos
 			{
 			}
 
-			STENOS_ALWAYS_INLINE auto move() -> T&&
+			STENOS_ALWAYS_INLINE auto move() noexcept -> T&&
 			{
 				this->decompress_if_needed();
 				if (!std::is_trivially_move_assignable<T>::value)
@@ -2980,7 +2980,7 @@ namespace std
 	/////////////////////////////
 
 	template<class Compressed>
-	STENOS_ALWAYS_INLINE void swap(stenos::detail::ValueWrapper<Compressed>&& a, stenos::detail::ValueWrapper<Compressed>&& b)
+	STENOS_ALWAYS_INLINE void swap(stenos::detail::ValueWrapper<Compressed>&& a, stenos::detail::ValueWrapper<Compressed>&& b) noexcept
 	{
 		a.swap(b);
 	}
@@ -2991,13 +2991,13 @@ namespace std
 	///////////////////////////
 
 	template<class Compress>
-	STENOS_ALWAYS_INLINE typename Compress::value_type move(stenos::detail::ValueWrapper<Compress>& other)
+	STENOS_ALWAYS_INLINE typename Compress::value_type move(stenos::detail::ValueWrapper<Compress>& other) noexcept
 	{
 		return stenos_detail::MoveObject<typename Compress::value_type>::apply(other.move());
 	}
 
 	template<class Compress>
-	STENOS_ALWAYS_INLINE typename Compress::value_type move(stenos::detail::ValueWrapper<Compress>&& other)
+	STENOS_ALWAYS_INLINE typename Compress::value_type move(stenos::detail::ValueWrapper<Compress>&& other) noexcept
 	{
 		return stenos_detail::MoveObject<typename Compress::value_type>::apply(other.move());
 	}
