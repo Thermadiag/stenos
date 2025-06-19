@@ -526,14 +526,29 @@ static inline void test_copy()
 	}
 }
 
+
+
+
 int test_cvector(int, char*[])
 {
+	//TEST
+	using std::swap;
+	stenos::cvector<int> v1(1), v2(1);
+	auto i1 = v1.begin();
+	auto i2 = v2.begin();
+	auto t1 = *i1;
+	auto t2 = *i2;
+	swap(t1, t2);
+	swap(*i1, *i2);
+	std::iter_swap(i1, i2);
+
+
 	test_copy();
 
 	CountAlloc<size_t> al;
 	// Test cvector and potential memory leak or wrong allocator propagation
 	test_cvector<size_t>(50000, al);
 	STENOS_TEST(get_alloc_bytes(al) == 0);
-
+	
 	return 0;
 }

@@ -68,8 +68,6 @@ namespace std
 	template<class Compress>
 	typename Compress::value_type move(stenos::detail::ValueWrapper<Compress>&& other) noexcept;
 
-	template<class Compressed>
-	void swap(stenos::detail::ValueWrapper<Compressed>&& a, stenos::detail::ValueWrapper<Compressed>&& b) noexcept;
 }
 
 #include <algorithm>
@@ -792,6 +790,8 @@ namespace stenos
 			{
 			}
 			STENOS_ALWAYS_INLINE ValueWrapper(const ValueWrapper& other) noexcept = default;
+			//TEST
+			STENOS_ALWAYS_INLINE ValueWrapper( ValueWrapper&& other) noexcept = default;
 			STENOS_ALWAYS_INLINE ValueWrapper(const base_type& other) noexcept
 			  : base_type(other)
 			{
@@ -865,6 +865,20 @@ namespace stenos
 				}
 			}
 		};
+
+		// Overload swap function for ValueWrapper
+
+		template<class Compressed>
+		void swap(ValueWrapper<Compressed>&& a, ValueWrapper<Compressed>&& b) noexcept
+		{
+			using wrapper = ValueWrapper<Compressed>;
+			const_cast<wrapper&>(a).swap(const_cast<wrapper&>(b));
+		}
+		template<class Compressed>
+		void swap(ValueWrapper<Compressed>& a, ValueWrapper<Compressed>& b) noexcept
+		{
+			(a).swap((b));
+		}
 
 		/// @brief const iterator type for cvector
 		template<class Compressed>
@@ -2975,16 +2989,7 @@ namespace std
 		};
 	}
 
-	/////////////////////////////
-	// std::swap overloads. This is illegal considering C++ standard, but works in practice, and is mandatory to make cvector work with standard algorithms, like std::sort
-	/////////////////////////////
-
-	template<class Compressed>
-	STENOS_ALWAYS_INLINE void swap(stenos::detail::ValueWrapper<Compressed>&& a, stenos::detail::ValueWrapper<Compressed>&& b) noexcept
-	{
-		a.swap(b);
-	}
-
+	
 	///////////////////////////
 	// Completely illegal overload of std::move.
 	// That's currently the only way I found to use generic algorithms (like std::move(It, It, Dst) ) with cvector. Works with msvc, gcc and clang.
@@ -3001,20 +3006,15 @@ namespace std
 	{
 		return stenos_detail::MoveObject<typename Compress::value_type>::apply(other.move());
 	}
-
 }
 
 #include <iostream>
 
+
+
 namespace stenos
 {
-	//TEST
-	template<class Compressed>
-	STENOS_ALWAYS_INLINE void swap(detail::ValueWrapper<Compressed> a, detail::ValueWrapper<Compressed> b) noexcept
-	{
-		a.swap(b);
-	}
-
+	
 	template<class T, unsigned BlockSize, int Level, class Alloc>
 	template<class Ostream>
 	size_t cvector<T, BlockSize, Level, Alloc>::serialize(Ostream& oss)
