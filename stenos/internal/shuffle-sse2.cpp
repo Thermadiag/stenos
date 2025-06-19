@@ -8,7 +8,7 @@
   See LICENSE.txt for details about copyright and rights to use.
 **********************************************************************/
 
-#ifdef __GNUC__
+#if defined(__GNUC__) && !defined(__clang__)
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wmaybe-uninitialized"
 #endif
@@ -716,7 +716,7 @@ void unshuffle_sse2(const int32_t bytesoftype, const int32_t blocksize,
 
 #endif /* defined(__SSE2__) */
 
-#ifdef __GNUC__
+#if defined(__GNUC__) && !defined(__clang__)
 #pragma GCC diagnostic pop
 #endif
 
