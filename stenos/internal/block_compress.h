@@ -307,8 +307,6 @@ namespace stenos
 	namespace detail
 	{
 
-		
-
 		struct BlockEncoder
 		{
 			vector256* arrays;    // Arrays for each byte of type (256*BPP bytes)
@@ -1907,9 +1905,9 @@ namespace stenos
 		return static_cast<size_t>(src - saved);
 	}
 
-#ifdef __SSE3__
+#ifdef __SSE4_1__
 
-	// Faster decoding if SSE3 is available
+	// Faster decoding if SSE4.1 is available
 
 	namespace detail
 	{
@@ -2202,9 +2200,10 @@ namespace stenos
 
 		return static_cast<size_t>(src - saved);
 	}
-}
 
 #endif
+}
+
 
 namespace stenos
 {
