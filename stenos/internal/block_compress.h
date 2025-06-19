@@ -203,6 +203,7 @@ namespace stenos
 		};
 		static STENOS_ALWAYS_INLINE __m128i from_vector16(const vector16& v) noexcept
 		{
+			// For reading only, we consider that v is not guaranteed to be aligned
 			return _mm_loadu_si128((const __m128i*)&v);
 		}
 		static STENOS_ALWAYS_INLINE void to_vector16(vector16& v, const __m128i& sse) noexcept
@@ -868,8 +869,9 @@ namespace stenos
 			__m128i w30, w31, w32, w33;
 
 			const __m128i shuffle = _mm_setr_epi8(0, 4, 8, 12, 1, 5, 9, 13, 2, 6, 10, 14, 3, 7, 11, 15);
-#define STENOS_LOAD(x) _mm_loadu_si128(x)
 
+			// Use unaligned access as in is not ALWAYS guaranteed to be aligned
+#define STENOS_LOAD(x) _mm_loadu_si128(x)
 			transpose_4x4_dwords(STENOS_LOAD(in), STENOS_LOAD(in + 1), STENOS_LOAD(in + 2), STENOS_LOAD(in + 3), w00, w01, w02, w03);
 			transpose_4x4_dwords(STENOS_LOAD(in + 4), STENOS_LOAD(in + 5), STENOS_LOAD(in + 6), STENOS_LOAD(in + 7), w10, w11, w12, w13);
 			transpose_4x4_dwords(STENOS_LOAD(in + 8), STENOS_LOAD(in + 9), STENOS_LOAD(in + 10), STENOS_LOAD(in + 11), w20, w21, w22, w23);
@@ -1203,11 +1205,8 @@ namespace stenos
 
 				const void* input_tr = encoder.arrays[i][0].i8;
 				if (__shuffled){
+					// In this case,  input_tr is not guaranteed to be aligned
 					input_tr = (char*)__shuffled + elements * i + bcount * 256;
-					/*if((uintptr_t)input_tr % 16 != 0){
-						memcpy(input,input_tr,256);
-						input_tr = (char*)input;
-					}*/
 				}
 
 				uint32_t size = detail::compute_block_generic(&encoder, input_tr, encoder.firsts[i], i, methods[level], transpose);
@@ -1242,11 +1241,8 @@ namespace stenos
 			for (uint32_t i = 0; i < (uint32_t)bytesoftype; ++i) {
 				const void* input_tr = encoder.arrays[i][0].i8;
 				if (__shuffled) {
+					// In this case,  input_tr is not guaranteed to be aligned
 					input_tr = (char*)__shuffled + elements * i + bcount * 256;
-					/*if((uintptr_t)input_tr % 16 != 0){
-						memcpy(input,input_tr,256);
-						input_tr = (char*)input;
-					}*/
 				}
 
 				if (encoder.packs[i].all_type == __STENOS_BLOCK_ALL_RAW) {

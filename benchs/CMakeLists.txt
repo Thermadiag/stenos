@@ -7,7 +7,8 @@ enable_testing()
 # create the testing file and list of tests
 create_test_sourcelist (Benchs
   stenos_benchs.cpp
-  bench_img.cpp
+  bench_all.cpp
+  bench_to_csv.cpp
   )
 
 # add the executable
