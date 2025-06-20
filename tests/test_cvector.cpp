@@ -23,6 +23,7 @@
  */
 
 #include "stenos/cvector.hpp"
+#include "stenos/timer.hpp"
 #include "testing.hpp"
 
 #include <deque>
@@ -31,6 +32,12 @@
 #include <algorithm>
 #include <memory>
 #include <type_traits>
+#include <random>
+
+#ifdef max
+#undef min
+#undef max
+#endif
 
 namespace stenos
 {
@@ -95,7 +102,7 @@ inline void test_cvector_algorithms(size_t count = 5000000, const Alloc& al = Al
 
 	// Test sort
 	std::sort(deq.begin(), deq.end());
-	std::sort(cvec.begin(), cvec.end());
+	std::sort(cvec.begin(), cvec.end() , std::less<type>{}); //TEST: std::less
 
 	// for (size_t i = 0; i < deq.size(); ++i)
 	//	std::cout << cvec[i].get() << " ";
@@ -142,7 +149,7 @@ inline void test_cvector_algorithms(size_t count = 5000000, const Alloc& al = Al
 
 	// Test partial sort
 	std::partial_sort(deq.begin(), deq.begin() + deq.size() / 2, deq.end());
-	std::partial_sort(cvec.begin(), cvec.begin() + cvec.size() / 2, cvec.end());
+	std::partial_sort(cvec.begin(), cvec.begin() + cvec.size() / 2, cvec.end(), std::less<type>{});//TEST: std::less
 	STENOS_TEST(equal_cvec(deq, cvec));
 
 	for (size_t i = 0; i < count; ++i)
@@ -151,7 +158,7 @@ inline void test_cvector_algorithms(size_t count = 5000000, const Alloc& al = Al
 	// Strangely, msvc implementation of std::nth_element produce a warning as it tries to modify the value of const iterator
 	// Test nth_element
 	std::nth_element(deq.begin(), deq.begin() + deq.size() / 2, deq.end());
-	std::nth_element(cvec.begin(), cvec.begin() + cvec.size() / 2, cvec.end());
+	std::nth_element(cvec.begin(), cvec.begin() + cvec.size() / 2, cvec.end(), std::less<type>{}); // TEST: std::less
 	STENOS_TEST(equal_cvec(deq, cvec));
 }
 
@@ -527,36 +534,122 @@ static inline void test_copy()
 }
 
 
-
-
 int test_cvector(int, char*[])
 {
-	stenos::cvector<int,0,0> v;
-	for (int i=0; i < 10000; ++i)
-		v.push_back( rand());
-	std::vector<int> v2(v.size());
 
-	v.set_max_contexts(stenos::context_ratio(4));
+	using namespace stenos;
+
+	{
+		cvector<int> w;
+		w.set_max_contexts(context_ratio(2, Ratio)); // half
+		// fill with consecutive values
+		for (size_t i = 0; i < 10000000; ++i)
+			w.push_back((int)i);
+
+		std::vector<int> v(w.size());
+		std::vector<int> v2(w.size());
+
+		timer t;
+
+		t.tick();
+		auto it = v.begin();
+		w.const_for_each(0, w.size(), [&it](auto& val) {
+			*it = val;
+			++it;
+		});
+		auto elapsed_ms = t.tock() * 1e-6;
+		std::cout << "for each: " << w.current_compression_ratio() << " in " << elapsed_ms << " ms" << std::endl;
+
+
+		t.tick();
+		std::copy(w.cbegin(), w.cend(), v.begin());
+		 elapsed_ms = t.tock() * 1e-6;
+		std::cout << "std::copy: " << w.current_compression_ratio() << " in " << elapsed_ms << " ms" << std::endl;
+
+		
+
+		t.tick();
+		for (size_t i = 0; i < v.size(); ++i)
+			v[i] = w[i];
+		elapsed_ms = t.tock() * 1e-6;
+		std::cout << "for loop: " << w.current_compression_ratio() << " in " << elapsed_ms << " ms" << std::endl;
+
+		t.tick();
+		for (size_t i = 0; i < v.size(); ++i)
+			v2[i] = v[i];
+		elapsed_ms = t.tock() * 1e-6;
+		std::cout << "vector for loop: " << w.current_compression_ratio() << " in " << elapsed_ms << " ms" << std::endl;
+
+	}
+
+	// The goal of this example is to keep track of the program memory footprint will performing some operations on a compressed vector
+	{
+		
+		cvector<int> w;
+		//w.set_max_contexts(context_ratio(2, Ratio));//half
+		// fill with consecutive values
+		for (size_t i = 0; i < 10000000; ++i)
+			w.push_back((int)i);
+
+		// very good compression ratio as data are sorted
+		std::cout << "push_back: " << w.current_compression_ratio() << std::endl;
+
+		// shuffle the cvector
+		timer t;
+		t.tick();
+		std::mt19937 rng(0);
+		std::shuffle(w.begin(), w.end(), rng);
+		auto elapsed_ms = t.tock() * 1e-6;
+
+		// Bad compression ratio on random values (but still better than 1)
+		std::cout << "random_shuffle: " << w.current_compression_ratio() << " in " << elapsed_ms << " ms" << std::endl;
+
+		// sort the cvector
+		t.tick();
+		std::sort(w.begin(), w.end(), std::less<int>{});
+		elapsed_ms = t.tock() * 1e-6;
+		// Go back to original ratio
+		std::cout << "sort: " << w.current_compression_ratio() << " in " << elapsed_ms << " ms" << std::endl;
+	}
+	getchar();
+	getchar();
+	{
+		std::vector<int> w;
+
+		// fill with consecutive values
+		for (size_t i = 0; i < 10000000; ++i)
+			w.push_back((int)i);
+
+		// shuffle the cvector
+		timer t;
+		t.tick();
+		std::mt19937 rng(0);
+		std::shuffle(w.begin(), w.end(), rng);
+		auto elapsed_ms = t.tock() * 1e-6;
+
+		// Bad compression ratio on random values (but still better than 1)
+		std::cout << "random_shuffle in " << elapsed_ms << " ms" << std::endl;
+
+		// sort the cvector
+		t.tick();
+		std::sort(w.begin(), w.end(), std::less<int>{});
+		elapsed_ms = t.tock() * 1e-6;
+		// Go back to original ratio
+		std::cout << "sort in " << elapsed_ms << " ms" << std::endl;
+	}
+
+
+	return 0;
 	
-	std::copy(v.begin(), v.end(), v2.begin());
 
-	bool ok1 = std::equal(v.begin(), v.end(), v2.begin());
-
-	std::sort(v.begin(), v.end());
-	std::sort(v2.begin(), v2.end());
 	
-	bool ok2 = std::equal(v.begin(), v.end(), v2.begin());
-	std::vector<int> v3(v.size());
-	std::copy(v.begin(), v.end(), v3.begin());
 
-	bool ok3 = v.validate();
-
-	/* test_copy();
+	 test_copy();
 
 	CountAlloc<size_t> al;
 	// Test cvector and potential memory leak or wrong allocator propagation
 	test_cvector<size_t>(50000, al);
 	STENOS_TEST(get_alloc_bytes(al) == 0);
-	*/
+	
 	return 0;
 }

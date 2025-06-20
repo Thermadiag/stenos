@@ -52,7 +52,7 @@ namespace stenos
 	{
 		// forward declaration
 		template<class Compress>
-		class ValueWrapper;
+		class RefWrapper;
 	}
 }
 namespace std
@@ -63,10 +63,10 @@ namespace std
 	///////////////////////////
 
 	/* template<class Compress>
-	typename Compress::value_type move(stenos::detail::ValueWrapper<Compress>& other) noexcept;
+	typename Compress::value_type move(stenos::detail::RefWrapper<Compress>& other) noexcept;
 
 	template<class Compress>
-	typename Compress::value_type move(stenos::detail::ValueWrapper<Compress>&& other) noexcept;
+	typename Compress::value_type move(stenos::detail::RefWrapper<Compress>&& other) noexcept;
 	*/
 }
 
@@ -633,6 +633,9 @@ namespace stenos
 			// Internal lock for multithreaded contexts
 			SharedSpinner lock;
 
+			STENOS_ALWAYS_INLINE std::atomic<unsigned short>& atomic_ref_cnt() noexcept { return reinterpret_cast<std::atomic<unsigned short>&>(used); }
+			STENOS_ALWAYS_INLINE unsigned short& ref_cnt() noexcept { return (used); }
+
 			PackBuffer(RawBuffer<T, block_size>* dec = nullptr, char* buff = nullptr, unsigned _csize = 0) noexcept
 			  : decompressed(dec)
 			  , buffer(buff)
@@ -662,13 +665,19 @@ namespace stenos
 				return *this;
 			}
 
-			PackBuffer& get() const noexcept { return *const_cast<PackBuffer*>(this); }
+			STENOS_ALWAYS_INLINE PackBuffer& get() const noexcept { return *const_cast<PackBuffer*>(this); }
 
-			STENOS_ALWAYS_INLINE void ref() noexcept{ ++used;}
-			STENOS_ALWAYS_INLINE void unref() noexcept 
+			STENOS_ALWAYS_INLINE void ref() noexcept 
+			{
+				atomic_ref_cnt().fetch_add(1, std::memory_order_relaxed);
+				//++ref_cnt(); 
+			}
+			STENOS_ALWAYS_INLINE void unref() noexcept
 			{
 				STENOS_ASSERT_DEBUG(used != 0, "");
-				--used; 
+				//--ref_cnt();
+				//TEST
+				atomic_ref_cnt().fetch_sub(1, std::memory_order_relaxed);
 			}
 		};
 
@@ -702,15 +711,76 @@ namespace stenos
 		struct CompressedIter;
 
 		template<class Compressed>
-		class ValueWrapper;
+		class RefWrapper;
+
+		template<class Compressed>
+		class ConstRefWrapper;
+
+		template<class T>
+		class ValueWrapper
+		{
+			T value;
+
+		public:
+			ValueWrapper() = default;
+			~ValueWrapper() = default;
+			ValueWrapper(const T& v)
+			  : value(v)
+			{
+			}
+			ValueWrapper(T&& v)
+			  : value(std::move(v))
+			{
+			}
+			ValueWrapper(const ValueWrapper& other)
+			  : value(other.value)
+			{
+			}
+			ValueWrapper(ValueWrapper&& other)
+			  : value(std::move(other.value))
+			{
+			}
+			template<class C>
+			ValueWrapper(const ConstRefWrapper<C>& v);
+			template<class C>
+			ValueWrapper(RefWrapper<C>&& v);
+
+			ValueWrapper& operator=(const T& v)
+			{
+				value = v;
+				return *this;
+			}
+			ValueWrapper& operator=(T&& v)
+			{
+				value = std::move(v);
+				return *this;
+			}
+			ValueWrapper& operator=(const ValueWrapper& v)
+			{
+				value = v.value;
+				return *this;
+			}
+			ValueWrapper& operator=(ValueWrapper&& v)
+			{
+				value = std::move(v.value);
+				return *this;
+			}
+			template<class C>
+			ValueWrapper& operator=(const ConstRefWrapper<C>& v);
+			template<class C>
+			ValueWrapper& operator=(RefWrapper<C>&& v);
+
+			operator T&() { return value; }
+			operator const T&() { return value; }
+		};
 
 		/// @brief Const value wrapper class for cvector and cvector::iterator
 		template<class Compressed>
-		class ConstValueWrapper
+		class ConstRefWrapper
 		{
 			friend struct CompressedConstIter<Compressed>;
 			friend struct CompressedIter<Compressed>;
-			friend class ValueWrapper<Compressed>;
+			friend class RefWrapper<Compressed>;
 
 		protected:
 			using BucketType = typename Compressed::BucketType;
@@ -724,8 +794,19 @@ namespace stenos
 			STENOS_ALWAYS_INLINE auto _c() const noexcept -> Compressed* { return const_cast<Compressed*>(c); }
 			STENOS_ALWAYS_INLINE void decompress_if_needed(size_t exclude = static_cast<size_t>(-1)) const
 			{
-				if (!this->_bucket()->decompressed)
+				if (!this->_bucket()->decompressed) {
 					_c()->decompress_bucket(bucket, exclude);
+					_c()->incr_disp();
+				}
+				else
+					_c()->decr_disp_slow();
+			}
+
+			STENOS_ALWAYS_INLINE bool move_inside_block(std::ptrdiff_t val)
+			{ 
+				// Increment position within a block, returns true if we stay on the block
+				bpos += val;
+				return (bpos < Compressed::elems_per_block);
 			}
 
 		public:
@@ -734,14 +815,14 @@ namespace stenos
 			using reference = const T&;
 			using const_reference = const T&;
 
-			STENOS_ALWAYS_INLINE ConstValueWrapper(const Compressed* _c, size_t b, size_t pos) noexcept
+			STENOS_ALWAYS_INLINE ConstRefWrapper(const Compressed* _c, size_t b, size_t pos) noexcept
 			  : c(const_cast<Compressed*>(_c))
 			  , bucket(b)
 			  , bpos(pos)
 			{
 				_bucket()->ref();
 			}
-			STENOS_ALWAYS_INLINE ConstValueWrapper(const Compressed* _c, size_t b, size_t pos, bool) noexcept
+			STENOS_ALWAYS_INLINE ConstRefWrapper(const Compressed* _c, size_t b, size_t pos, bool) noexcept
 			  : c(const_cast<Compressed*>(_c))
 			  , bucket(b)
 			  , bpos(pos)
@@ -749,17 +830,14 @@ namespace stenos
 				// Version that do NOT increment the bucket ref count
 			}
 
-			STENOS_ALWAYS_INLINE ConstValueWrapper(const ConstValueWrapper& other) noexcept
+			STENOS_ALWAYS_INLINE ConstRefWrapper(const ConstRefWrapper& other) noexcept
 			  : c(other.c)
 			  , bucket(other.bucket)
 			  , bpos(other.bpos)
 			{
 				_bucket()->ref();
 			}
-			STENOS_ALWAYS_INLINE ~ConstValueWrapper() noexcept 
-			{ 
-				_bucket()->unref(); 
-			}
+			STENOS_ALWAYS_INLINE ~ConstRefWrapper() noexcept { _bucket()->unref(); }
 
 			STENOS_ALWAYS_INLINE auto bucket_index() const noexcept -> size_t { return bucket; }
 			STENOS_ALWAYS_INLINE auto bucket_pos() const noexcept -> size_t { return bpos; }
@@ -794,32 +872,32 @@ namespace stenos
 		};
 
 		template<class Compressed>
-		class ValueWrapper : public ConstValueWrapper<Compressed>
+		class RefWrapper : public ConstRefWrapper<Compressed>
 		{
-			using conv = ConversionWrapper<ValueWrapper<Compressed>, typename Compressed::value_type>;
+			using conv = ConversionWrapper<RefWrapper<Compressed>, typename Compressed::value_type>;
 			using conv_type = typename conv::type;
 
 		public:
-			using T = typename ConstValueWrapper<Compressed>::T;
-			using base_type = ConstValueWrapper<Compressed>;
+			using T = typename ConstRefWrapper<Compressed>::T;
+			using base_type = ConstRefWrapper<Compressed>;
 			using BucketType = typename base_type::BucketType;
 			using value_type = T;
 			using reference = T&;
 			using const_reference = const T&;
 			using base_type::get;
 
-			STENOS_ALWAYS_INLINE ValueWrapper(const Compressed* _c, size_t b, size_t pos) noexcept
+			STENOS_ALWAYS_INLINE RefWrapper(const Compressed* _c, size_t b, size_t pos) noexcept
 			  : base_type(_c, b, pos)
 			{
 			}
-			STENOS_ALWAYS_INLINE ValueWrapper(const Compressed* _c, size_t b, size_t pos, bool) noexcept
+			STENOS_ALWAYS_INLINE RefWrapper(const Compressed* _c, size_t b, size_t pos, bool) noexcept
 			  : base_type(_c, b, pos, false)
 			{
 			}
-			STENOS_ALWAYS_INLINE ValueWrapper(const ValueWrapper& other) noexcept = default;
+			STENOS_ALWAYS_INLINE RefWrapper(const RefWrapper& other) noexcept = default;
 			// TEST
-			STENOS_ALWAYS_INLINE ValueWrapper(ValueWrapper&& other) noexcept = default;
-			STENOS_ALWAYS_INLINE ValueWrapper(const base_type& other) noexcept
+			STENOS_ALWAYS_INLINE RefWrapper(RefWrapper&& other) noexcept = default;
+			STENOS_ALWAYS_INLINE RefWrapper(const base_type& other) noexcept
 			  : base_type(other)
 			{
 			}
@@ -838,28 +916,31 @@ namespace stenos
 				this->decompress_if_needed();
 				this->_bucket()->decompressed->at(this->bpos) = obj;
 				this->_bucket()->decompressed->mark_dirty(this->_c());
+				//this->_c()->decr_disp();
 			}
 			STENOS_ALWAYS_INLINE void set(T&& obj)
 			{
 				this->decompress_if_needed();
 				this->_bucket()->decompressed->at(this->bpos) = std::move(obj);
 				this->_bucket()->decompressed->mark_dirty(this->_c());
+				//this->_c()->decr_disp();
 			}
 
 			STENOS_ALWAYS_INLINE operator const T&() const { return this->get(); }
 			STENOS_ALWAYS_INLINE operator conv_type() { return conv::move(*this); }
 
-			STENOS_ALWAYS_INLINE auto operator=(const base_type& other) -> ValueWrapper&
+			STENOS_ALWAYS_INLINE auto operator=(const base_type& other) -> RefWrapper&
 			{
 				if STENOS_LIKELY (std::addressof(other) != this) {
 					this->decompress_if_needed(other.bucket);
 					other.decompress_if_needed(this->bucket);
 					this->_bucket()->decompressed->mark_dirty(this->_c());
 					this->_bucket()->decompressed->at(this->bpos) = other._bucket()->decompressed->at(other.bpos);
+					//this->_c()->decr_disp();
 				}
 				return *this;
 			}
-			STENOS_ALWAYS_INLINE auto operator=(ValueWrapper&& other) -> ValueWrapper&
+			STENOS_ALWAYS_INLINE auto operator=(RefWrapper&& other) -> RefWrapper&
 			{
 				if STENOS_LIKELY (std::addressof(other) != this) {
 					this->decompress_if_needed(other.bucket);
@@ -868,20 +949,31 @@ namespace stenos
 						other._bucket()->decompressed->mark_dirty(other._c());
 					this->_bucket()->decompressed->mark_dirty(this->_c());
 					this->_bucket()->decompressed->at(this->bpos) = std::move(other._bucket()->decompressed->at(other.bpos));
+					//this->_c()->decr_disp();
 				}
 				return *this;
 			}
-			STENOS_ALWAYS_INLINE auto operator=(const T& other) -> ValueWrapper&
+			STENOS_ALWAYS_INLINE auto operator=(const T& other) -> RefWrapper&
 			{
 				set(other);
 				return *this;
 			}
-			STENOS_ALWAYS_INLINE auto operator=(T&& other) -> ValueWrapper&
+			STENOS_ALWAYS_INLINE auto operator=(T&& other) -> RefWrapper&
 			{
 				set(std::move(other));
 				return *this;
 			}
-			STENOS_ALWAYS_INLINE void swap(ValueWrapper& other)
+			STENOS_ALWAYS_INLINE auto operator=(const ValueWrapper<T>& other) -> RefWrapper&
+			{
+				set(other.value);
+				return *this;
+			}
+			STENOS_ALWAYS_INLINE auto operator=(ValueWrapper<T>&& other) -> RefWrapper&
+			{
+				set(std::move(static_cast<T&>(other)));
+				return *this;
+			}
+			STENOS_ALWAYS_INLINE void swap(RefWrapper& other)
 			{
 				if STENOS_LIKELY (std::addressof(other) != this) {
 					this->decompress_if_needed(other.bucket);
@@ -893,22 +985,50 @@ namespace stenos
 			}
 		};
 
-		// Overload swap function for ValueWrapper
+		template<class T>
+		template<class C>
+		ValueWrapper<T>::ValueWrapper(const ConstRefWrapper<C>& v)
+		  : value(v.get())
+		{
+		}
+		template<class T>
+		template<class C>
+		ValueWrapper<T>::ValueWrapper(RefWrapper<C>&& v)
+		  : value(std::move(v.move()))
+		{
+		}
+
+		template<class T>
+		template<class C>
+		ValueWrapper<T>& ValueWrapper<T>::operator=(const ConstRefWrapper<C>& v)
+		{
+			value = v.get();
+			return *this;
+		}
+		template<class T>
+		template<class C>
+		ValueWrapper<T>& ValueWrapper<T>::operator=(RefWrapper<C>&& v)
+		{
+			value = std::move(v.move());
+			return *this;
+		}
+
+		// Overload swap function for RefWrapper
 
 		template<class Compressed>
-		void swap(ValueWrapper<Compressed>&& a, ValueWrapper<Compressed>&& b) noexcept
+		void swap(RefWrapper<Compressed>&& a, RefWrapper<Compressed>&& b) noexcept
 		{
-			using wrapper = ValueWrapper<Compressed>;
+			using wrapper = RefWrapper<Compressed>;
 			const_cast<wrapper&>(a).swap(const_cast<wrapper&>(b));
 		}
 		template<class Compressed>
-		void swap(ValueWrapper<Compressed>& a, ValueWrapper<Compressed>& b) noexcept
+		void swap(RefWrapper<Compressed>& a, RefWrapper<Compressed>& b) noexcept
 		{
 			(a).swap((b));
 		}
 
 		/// @brief const iterator type for cvector
-		/* template<class Compressed>
+		template<class Compressed>
 		struct CompressedConstIter
 		{
 		private:
@@ -930,9 +1050,9 @@ namespace stenos
 
 		public:
 			using T = typename Compressed::value_type;
-			using value_type = T;
-			using reference = T&;
-			using const_reference = const T&;
+			using value_type = ValueWrapper<T>;
+			using reference = ref_type;
+			using const_reference = const_ref_type;
 			using pointer = const T*;
 			using const_pointer = const T*;
 			using difference_type = typename Compressed::difference_type;
@@ -957,8 +1077,8 @@ namespace stenos
 			{
 				new (as_ref()) ref_type(const_cast<Compressed*>(c), invalid_status, invalid_status, false);
 
-			} 
-			
+			}
+
 			STENOS_ALWAYS_INLINE CompressedConstIter(const CompressedConstIter& other)
 				: abspos(other.abspos)
 			{
@@ -966,12 +1086,12 @@ namespace stenos
 			}
 
 			STENOS_ALWAYS_INLINE  ~CompressedConstIter() noexcept
-			{ 
-				invalidate(); 
+			{
+				invalidate();
 			}
 
-			STENOS_ALWAYS_INLINE CompressedConstIter& operator=(const CompressedConstIter& other) noexcept 
-			{ 
+			STENOS_ALWAYS_INLINE CompressedConstIter& operator=(const CompressedConstIter& other) noexcept
+			{
 				abspos = (other.abspos);
 				invalidate();
 				new (as_ref()) ref_type(other.c(), invalid_status, invalid_status, false);
@@ -981,6 +1101,8 @@ namespace stenos
 			STENOS_ALWAYS_INLINE auto operator++() noexcept -> CompressedConstIter&
 			{
 				++abspos;
+				if (is_valid() && as_ref()->move_inside_block(1))
+					return *this;
 				invalidate();
 				return *this;
 			}
@@ -993,6 +1115,8 @@ namespace stenos
 			STENOS_ALWAYS_INLINE auto operator--() noexcept -> CompressedConstIter&
 			{
 				--abspos;
+				if (is_valid() && as_ref()->move_inside_block(-1))
+					return *this;
 				invalidate();
 				return *this;
 			}
@@ -1003,19 +1127,21 @@ namespace stenos
 				return it;
 			}
 
-			STENOS_ALWAYS_INLINE auto operator*() const noexcept -> const T&
+			STENOS_ALWAYS_INLINE auto operator*() const noexcept -> const_ref_type&
 			{
 				STENOS_ASSERT_DEBUG(this->abspos >= 0 && this->abspos < static_cast<difference_type>(this->c()->size()), "attempt to dereference an invalid iterator");
-				
+
 				if (!is_valid())
 					new (as_ref()) ref_type(c()->at(static_cast<size_t>(abspos)));
-				auto bucket = as_ref()->_bucket();
-				return as_ref()->get_dirty();
+				//auto bucket = as_ref()->_bucket();
+				return *as_ref();
 			}
-			STENOS_ALWAYS_INLINE auto operator->() const noexcept -> const T* { return &operator*(); }
+			STENOS_ALWAYS_INLINE auto operator->() const noexcept -> const T* { return &(operator*()).get(); }
 			STENOS_ALWAYS_INLINE auto operator+=(difference_type diff) noexcept -> CompressedConstIter&
 			{
 				this->abspos += diff;
+				if (is_valid() && as_ref()->move_inside_block(diff))
+					return *this;
 				invalidate();
 				return *this;
 			}
@@ -1036,6 +1162,10 @@ namespace stenos
 				tmp -= diff;
 				return tmp;
 			}
+			STENOS_ALWAYS_INLINE const_ref_type operator[](difference_type diff) const noexcept
+			{ 
+				return c()->at(abspos + diff);
+			}
 		};
 
 		/// @brief iterator type for cvector
@@ -1044,9 +1174,9 @@ namespace stenos
 		{
 			using this_type = CompressedIter<Compressed>;
 			using base_type = CompressedConstIter<Compressed>;
-			using value_type = typename Compressed::value_type;
-			using reference = value_type&;
-			using const_reference = const value_type&;
+			using value_type = typename base_type::value_type;
+			using reference = typename base_type::reference;
+			using const_reference = typename base_type::const_reference;
 			using pointer = value_type*;
 			using const_pointer = const value_type*;
 			using difference_type = typename Compressed::difference_type;
@@ -1068,24 +1198,19 @@ namespace stenos
 			STENOS_ALWAYS_INLINE CompressedIter(const Compressed* c, difference_type p) noexcept
 			  : base_type(c, p)
 			{
-			} 
-			STENOS_ALWAYS_INLINE CompressedIter& operator=(const CompressedIter& other) noexcept 
-			{ 
+			}
+			STENOS_ALWAYS_INLINE CompressedIter& operator=(const CompressedIter& other) noexcept
+			{
 				base_type::operator=(static_cast<const base_type>(other));
 				return *this;
 			}
-
-			STENOS_ALWAYS_INLINE auto operator*() noexcept -> reference
-			{ 
-				return const_cast<value_type&>(const_cast<this_type*>(this)->base_type::operator*());
+			STENOS_ALWAYS_INLINE auto operator*() const noexcept -> reference&
+			{
+				return reinterpret_cast<reference&>(const_cast<this_type*>(this)->base_type::operator*());
 			}
-			STENOS_ALWAYS_INLINE auto operator*() const noexcept -> reference
+			STENOS_ALWAYS_INLINE auto operator->() const noexcept -> const_pointer
 			{ 
-				return const_cast<value_type&>(const_cast<this_type*>(this)->base_type::operator*());
-			}
-			STENOS_ALWAYS_INLINE auto operator->() const noexcept -> const_pointer 
-			{ 
-				return &base_type::operator*();
+				return base_type::operator->();
 			}
 			STENOS_ALWAYS_INLINE auto operator++() noexcept -> CompressedIter&
 			{
@@ -1131,6 +1256,7 @@ namespace stenos
 				tmp -= diff;
 				return tmp;
 			}
+			STENOS_ALWAYS_INLINE reference operator[](difference_type diff) const noexcept { return const_cast<Compressed*>(c())->at(this->abspos + diff); }
 		};
 
 		template<class C>
@@ -1175,17 +1301,17 @@ namespace stenos
 		{
 			STENOS_ASSERT_DEBUG(a.c() == b.c() || a.c() == nullptr || b.c() == nullptr, "comparing iterators from different containers");
 			return a.abspos >= b.abspos;
-		}*/
+		}
 
-/// @brief const iterator type for cvector
-		template<class Compressed>
+		/// @brief const iterator type for cvector
+		/* template<class Compressed>
 		struct CompressedConstIter
 		{
 			using ref_type = typename Compressed::ref_type;
 			using const_ref_type = typename Compressed::const_ref_type;
 
 			using T = typename Compressed::value_type;
-			using value_type = T;
+			using value_type = ValueWrapper<T>;
 			using reference = ref_type;
 			using const_reference = const_ref_type;
 			using pointer = const T*;
@@ -1238,12 +1364,12 @@ namespace stenos
 				return it;
 			}
 
-			STENOS_ALWAYS_INLINE auto operator*() noexcept -> ConstValueWrapper<Compressed>
+			STENOS_ALWAYS_INLINE auto operator*() noexcept -> ConstRefWrapper<Compressed>
 			{
 				STENOS_ASSERT_DEBUG(this->abspos >= 0 && this->abspos < static_cast<difference_type>(this->data->size()), "attempt to dereference an invalid iterator");
 				return data->at(static_cast<size_t>(abspos));
 			}
-			STENOS_ALWAYS_INLINE auto operator*() const noexcept -> ConstValueWrapper<Compressed>
+			STENOS_ALWAYS_INLINE auto operator*() const noexcept -> ConstRefWrapper<Compressed>
 			{
 				STENOS_ASSERT_DEBUG(this->abspos >= 0 && this->abspos < static_cast<difference_type>(this->data->size()), "attempt to dereference an invalid iterator");
 				return data->at(static_cast<size_t>(abspos));
@@ -1282,7 +1408,7 @@ namespace stenos
 		struct CompressedIter : public CompressedConstIter<Compressed>
 		{
 			using base_type = CompressedConstIter<Compressed>;
-			using value_type = typename Compressed::value_type;
+			using value_type = typename CompressedConstIter<Compressed>::value_type;
 			using reference = typename CompressedConstIter<Compressed>::reference;
 			using const_reference = typename CompressedConstIter<Compressed>::const_reference;
 			using pointer = typename CompressedConstIter<Compressed>::pointer;
@@ -1309,12 +1435,12 @@ namespace stenos
 			{
 			} // end
 
-			STENOS_ALWAYS_INLINE auto operator*() noexcept -> ValueWrapper<Compressed>
+			STENOS_ALWAYS_INLINE auto operator*() noexcept -> RefWrapper<Compressed>
 			{
 				STENOS_ASSERT_DEBUG(this->abspos >= 0 && this->abspos < static_cast<difference_type>(this->data->size()), "attempt to dereference an invalid iterator");
 				return this->data->at(static_cast<size_t>(this->abspos));
 			}
-			STENOS_ALWAYS_INLINE auto operator*() const noexcept -> ValueWrapper<Compressed>
+			STENOS_ALWAYS_INLINE auto operator*() const noexcept -> RefWrapper<Compressed>
 			{
 				STENOS_ASSERT_DEBUG(this->abspos >= 0 && this->abspos < static_cast<difference_type>(this->data->size()), "attempt to dereference an invalid iterator");
 				return this->data->at(static_cast<size_t>(this->abspos));
@@ -1413,7 +1539,7 @@ namespace stenos
 			STENOS_ASSERT_DEBUG(a.data == b.data || a.data == nullptr || b.data == nullptr, "comparing iterators from different containers");
 			return a.abspos >= b.abspos;
 		}
-
+		*/
 		template<unsigned block_bytes>
 		static STENOS_ALWAYS_INLINE void* get_compression_buffer() noexcept
 		{
@@ -1439,8 +1565,8 @@ namespace stenos
 			using const_pointer = const T*;
 			using iterator = CompressedIter<ThisType>;
 			using const_iterator = CompressedConstIter<ThisType>;
-			using ref_type = ValueWrapper<ThisType>;
-			using const_ref_type = ConstValueWrapper<ThisType>;
+			using ref_type = RefWrapper<ThisType>;
+			using const_ref_type = ConstRefWrapper<ThisType>;
 			using BucketType = PackBuffer<T, block_size>;
 			using RawType = RawBuffer<T, block_size>;
 
@@ -1470,6 +1596,7 @@ namespace stenos
 			SharedSpinner d_lock;					    // global Spinlock
 			SharedSpinner d_ctx_lock;
 			stenos_context* d_ctx = stenos_make_context();
+			std::atomic<short> d_disp{ 0 }; // dispersion value, try to catch the current access pattern to release decompression contexts
 
 			STENOS_ALWAYS_INLINE void* compression_buffer() noexcept { return get_compression_buffer<block_bytes>(); }
 
@@ -1540,6 +1667,27 @@ namespace stenos
 
 			~CompressedVectorInternal() noexcept { clear(); }
 
+			/// @brief Increase dispersion value
+			void incr_disp() noexcept
+			{
+				static constexpr short max = std::numeric_limits<short>::max() - 255;
+				short disp = d_disp.load(std::memory_order_relaxed);
+				if ((disp < max))
+					d_disp.store(disp + 254, std::memory_order_relaxed);
+					//d_disp.fetch_add(254, std::memory_order_relaxed);
+			}
+			STENOS_ALWAYS_INLINE void decr_disp_slow() noexcept
+			{
+				static constexpr short min = std::numeric_limits<short>::min() + 1;
+				short disp = d_disp.load(std::memory_order_relaxed);
+				if ((disp > min))
+					d_disp.store(disp - 1, std::memory_order_relaxed);
+					//d_disp.fetch_sub(1, std::memory_order_relaxed);
+				
+			}
+			/// @brief Reset dispersion value
+			void reset_disp() noexcept { d_disp = 0; }
+
 			/// @brief Deallocate compressed memory for given bucket
 			void dealloc_bucket(size_t index) noexcept
 			{
@@ -1554,6 +1702,7 @@ namespace stenos
 			/// @brief Clear content
 			void clear() noexcept
 			{
+				reset_disp();
 				RawType* tmp = nullptr;
 				// First, try to find a valid context that we can reuse to destroy all compressed buffer
 				if (d_buckets.size()) {
@@ -1628,9 +1777,9 @@ namespace stenos
 				return 0;
 			}
 
-			//TEST
+			// TEST
 			bool validate()
-			{ 
+			{
 				for (size_t i = 0; i < d_buckets.size(); ++i)
 					if (d_buckets[i].used != 0)
 						return false;
@@ -1665,6 +1814,7 @@ namespace stenos
 			/// @brief Compress dirty blocks and release all unnecessary decompssion contexts
 			void shrink_to_fit()
 			{
+				reset_disp();
 				ContextType new_contexts;
 
 				const size_t max_buffers = 1;
@@ -1793,7 +1943,8 @@ namespace stenos
 			auto make_or_find_free_context(RawType* exclude = nullptr) -> RawType*
 			{
 				if STENOS_LIKELY (d_contexts.size() >= 2) {
-					if (d_contexts.size() >= get_max_buffers())
+					//TEST: comment
+					//if (d_contexts.size() >= get_max_buffers() || d_disp.load(std::memory_order_relaxed) < 0)
 						return find_free_context(exclude, nullptr);
 				}
 
@@ -1872,12 +2023,11 @@ namespace stenos
 
 					memcpy(found_bucket->buffer, compression_buffer(), r);
 
-					// Keep looking for an additional decompression context to close
-					if (d_contexts.size() > get_max_buffers()) {
-						auto it = get_locked_context(exclude, &found);
-						if (it != d_contexts.end()) {
-							erase_context(*it);
-						}
+					// Use this opportunity to free another context if possible
+					if (!start && d_contexts.size() > d_buckets.size()/16) {
+						RawType* raw = find_free_context(exclude, &found);
+						if (raw)
+							erase_context(raw);
 					}
 				}
 
@@ -1885,6 +2035,17 @@ namespace stenos
 					// Move the context to index 0.
 					// This way, we maximize the chances to find at the tail the (possibly) oldest context that should be the first to be reused
 					d_contexts.erase(found_raw);
+
+					// Now that the found context is removed from the context list,
+					// use this occasion to keep looking for an additional decompression context to close
+					/* if (!start) {
+						auto it = d_contexts.end();
+						auto * to_free = find_free_context(exclude, &it);
+						if (to_free) {
+							erase_context(to_free);
+						}
+					}*/
+
 					d_contexts.push_front(found_raw);
 				}
 
@@ -2080,6 +2241,7 @@ namespace stenos
 
 			void resize(size_t new_size)
 			{
+				reset_disp();
 				if (new_size == 0)
 					clear();
 				else if (new_size == size())
@@ -2138,6 +2300,7 @@ namespace stenos
 
 			void resize(size_t new_size, const T& val)
 			{
+				reset_disp();
 				if (new_size == 0)
 					clear();
 				else if (new_size == size())
@@ -2194,15 +2357,15 @@ namespace stenos
 			/// @brief Erase range
 			auto erase(const_iterator first, const_iterator last) -> const_iterator
 			{
-				STENOS_ASSERT_DEBUG(last >= first && first >= const_iterator(this, 0) && last <= const_iterator(this,size()), "cvector erase iterator outside range");
-
+				STENOS_ASSERT_DEBUG(last >= first && first >= const_iterator(this, 0) && last <= const_iterator(this, size()), "cvector erase iterator outside range");
+				reset_disp();
 				if (first == last)
 					return last;
 
 				difference_type off = first - const_iterator(this, 0);
 				size_t count = static_cast<size_t>(last - first);
 
-				std::move(iterator(last), iterator(this,size()), iterator(first));
+				std::move(iterator(last), iterator(this, size()), iterator(first));
 				if (count == 1)
 					pop_back();
 				else
@@ -2223,7 +2386,7 @@ namespace stenos
 
 				// insert on the right side
 				this->emplace_back(std::forward<Args>(args)...);
-				std::rotate(iterator(this, 0) + dist, iterator(this,size()) - 1, iterator(this,size()));
+				std::rotate(iterator(this, 0) + dist, iterator(this, size()) - 1, iterator(this, size()));
 
 				return iterator(this, 0) + dist;
 			}
@@ -2232,6 +2395,7 @@ namespace stenos
 			template<class InputIt>
 			auto insert(const_iterator pos, InputIt first, InputIt last) -> iterator
 			{
+				reset_disp();
 				// Check back insertion
 				if ((size_t)pos.abspos == size()) {
 					for (; first != last; ++first)
@@ -2250,7 +2414,7 @@ namespace stenos
 					try {
 						resize(size() + len);
 
-						std::move_backward(iterator(this, 0) + off, iterator(this, 0) + static_cast<difference_type>(size() - len), iterator(this,size()));
+						std::move_backward(iterator(this, 0) + off, iterator(this, 0) + static_cast<difference_type>(size() - len), iterator(this, size()));
 
 						// std::copy(first, last, iterator(this, 0) + off);
 						// use for_each instead of std::copy
@@ -2282,7 +2446,7 @@ namespace stenos
 						throw;
 					}
 
-					std::rotate(iterator(this, 0) + off, iterator(this, 0) + static_cast<difference_type>(oldsize), iterator(this,size()));
+					std::rotate(iterator(this, 0) + off, iterator(this, 0) + static_cast<difference_type>(oldsize), iterator(this, size()));
 				}
 				return (iterator(this, 0) + off);
 			}
@@ -3315,13 +3479,13 @@ namespace std
 	///////////////////////////
 
 	/* template<class Compress>
-	STENOS_ALWAYS_INLINE typename Compress::value_type move(stenos::detail::ValueWrapper<Compress>& other) noexcept
+	STENOS_ALWAYS_INLINE typename Compress::value_type move(stenos::detail::RefWrapper<Compress>& other) noexcept
 	{
 		return stenos_detail::MoveObject<typename Compress::value_type>::apply(other.move());
 	}
 
 	template<class Compress>
-	STENOS_ALWAYS_INLINE typename Compress::value_type move(stenos::detail::ValueWrapper<Compress>&& other) noexcept
+	STENOS_ALWAYS_INLINE typename Compress::value_type move(stenos::detail::RefWrapper<Compress>&& other) noexcept
 	{
 		return stenos_detail::MoveObject<typename Compress::value_type>::apply(other.move());
 	}*/
