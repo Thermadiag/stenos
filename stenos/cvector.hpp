@@ -1256,7 +1256,7 @@ namespace stenos
 				tmp -= diff;
 				return tmp;
 			}
-			STENOS_ALWAYS_INLINE reference operator[](difference_type diff) const noexcept { return const_cast<Compressed*>(c())->at(this->abspos + diff); }
+			STENOS_ALWAYS_INLINE reference operator[](difference_type diff) const noexcept { return const_cast<Compressed*>(this->c())->at(this->abspos + diff); }
 		};
 
 		template<class C>
