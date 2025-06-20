@@ -532,12 +532,40 @@ static inline void test_copy()
 		copy_to_vector(vec, out2);
 	}
 }
-
+namespace stenos
+{
+	template<class T>
+	struct is_relocatable<std::atomic<T>> : std::true_type
+	{
+	};
+}
 
 int test_cvector(int, char*[])
 {
 
 	using namespace stenos;
+
+	{
+		cvector<std::atomic<int>> v;
+		v.resize(500000);
+		for (auto& i : v)
+			i.move().store(0);
+
+		int count = 1000;
+
+		#pragma omp parallel for
+		for (int i = 0; i < count; ++i) {
+		
+			for (auto& i : v)
+				i.move().fetch_add(1);
+		}
+
+		std::cout << "fetch_add " << v.current_compression_ratio() << std::endl;
+		for (auto& i : v) {
+			if (i.get().load() != count)
+				bool stop = true;
+		}
+	}
 
 	{
 		cvector<int> w;
@@ -546,7 +574,7 @@ int test_cvector(int, char*[])
 		for (size_t i = 0; i < 10000000; ++i)
 			w.push_back((int)i);
 
-		std::vector<int> v(w.size());
+		std::vector<int> v(w.size());  
 		std::vector<int> v2(w.size());
 
 		timer t;
@@ -588,9 +616,10 @@ int test_cvector(int, char*[])
 		cvector<int> w;
 		//w.set_max_contexts(context_ratio(2, Ratio));//half
 		// fill with consecutive values
-		for (size_t i = 0; i < 10000000; ++i)
+		
+		for (size_t i = 0; i < 1000000; ++i)
 			w.push_back((int)i);
-
+		
 		// very good compression ratio as data are sorted
 		std::cout << "push_back: " << w.current_compression_ratio() << std::endl;
 
@@ -610,6 +639,8 @@ int test_cvector(int, char*[])
 		elapsed_ms = t.tock() * 1e-6;
 		// Go back to original ratio
 		std::cout << "sort: " << w.current_compression_ratio() << " in " << elapsed_ms << " ms" << std::endl;
+
+		bool stop = true;
 	}
 	getchar();
 	getchar();
@@ -639,7 +670,7 @@ int test_cvector(int, char*[])
 	}
 
 
-	return 0;
+	//return 0;
 	
 
 	

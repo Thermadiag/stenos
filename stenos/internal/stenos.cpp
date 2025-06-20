@@ -285,6 +285,28 @@ size_t stenos_set_block_size(stenos_context* ctx, size_t blocksize_shift)
 	return 0;
 }
 
+size_t stenos_memory_footprint(stenos_context* ctx)
+{
+	size_t res = sizeof(stenos_context);
+	res += ctx->thread_buffers.capacity() * sizeof(void*);
+	res += ctx->tmp_buffers1.capacity() * sizeof(void*);
+	res += ctx->tmp_buffers2.capacity() * sizeof(void*);
+	for (size_t i = 0; i < ctx->thread_buffers.size(); ++i) {
+		if (ctx->thread_buffers[i]) {
+			res += ctx->superblock_size + 4 + sizeof(stenos::CBuffer);
+		}
+	}
+	for (size_t i = 0; i < ctx->tmp_buffers1.size(); ++i) {
+		if (ctx->tmp_buffers1[i]) {
+			res += ctx->superblock_size + 4 + sizeof(stenos::CBuffer);
+		}
+		if (ctx->tmp_buffers2[i]) {
+			res += ctx->superblock_size + 4 + sizeof(stenos::CBuffer);
+		}
+	}
+	return res;
+}
+
 int stenos_has_error(size_t r)
 {
 	// Check for error code

@@ -38,6 +38,15 @@ endif()
 	# endif()
 # endif()
 
+#TEST
+find_package(OpenMP)
+		if(OPENMP_FOUND)
+			target_compile_options(stenos_tests PRIVATE "${OpenMP_C_FLAGS} ${OpenMP_CXX_FLAGS}")
+			target_link_libraries(stenos_tests PRIVATE OpenMP::OpenMP_CXX)
+		else()
+			message(WARNING "OpenMP not found!")
+		endif()
+
 target_include_directories(stenos_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 target_include_directories(stenos_tests PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/../..)
 target_include_directories(stenos_tests PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/..)

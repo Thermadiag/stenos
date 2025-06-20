@@ -82,6 +82,7 @@ namespace std
 #include "stenos.h"
 #include "bits.hpp"
 
+
 namespace stenos
 {
 	namespace detail
@@ -349,7 +350,7 @@ namespace stenos
 	{
 		class SharedSpinner
 		{
-			using lock_type = std::uint8_t;
+			using lock_type = unsigned;//std::uint8_t;
 			static constexpr lock_type write = 1;
 			static constexpr lock_type need_lock = 2;
 			static constexpr lock_type read = 4;
@@ -379,6 +380,13 @@ namespace stenos
 			}
 			SharedSpinner(SharedSpinner const&) = delete;
 			SharedSpinner& operator=(SharedSpinner const&) = delete;
+
+			void swap(SharedSpinner& other) noexcept 
+			{ 
+				auto val = d_lock.load(std::memory_order_relaxed);
+				d_lock.store(other.d_lock.load(std::memory_order_relaxed));
+				other.d_lock.store(val);
+			}
 
 			STENOS_ALWAYS_INLINE void lock() noexcept
 			{
@@ -416,6 +424,8 @@ namespace stenos
 				lock_type content = d_lock.load(std::memory_order_relaxed);
 				return (!(content & (need_lock | write | max_read_mask)) && d_lock.compare_exchange_strong(content, content + read));
 			}
+
+			lock_type value() const noexcept { return d_lock.load(); }
 		};
 
 		template<class Ret>
@@ -473,24 +483,30 @@ namespace stenos
 			static constexpr size_t storage_size = block_size * sizeof(T);
 			static constexpr size_t invalid_index = std::numeric_limits<size_t>::max();
 
-			unsigned size;					// size is used for front and back buffer
-			unsigned dirty;					// dirty (modified) buffer
-			size_t block_index;				// block index in list of blocks
+			unsigned size;									// size is used for front and back buffer
+			std::atomic< unsigned> dirty;					// dirty (modified) buffer
+			size_t block_index;								// block index in list of blocks
 			alignas(alignof(T)) char storage[storage_size]; // data storage, aligned on 16 bytes at least
 
 			STENOS_ALWAYS_INLINE void mark_dirty() noexcept
 			{
-				// mark as dirty
-				dirty = 1;
+				// Mark as dirty with relaxed ordering.
+				// The goal is to mark as dirty, we don't care
+				// which value does it first.
+				//
+				// Note that a buffer can only be marked as dirty
+				// while NOY being reused for another bucket since
+				// mark_dirty() is only called when the bucket is locked.
+				dirty.store( 1, std::memory_order_relaxed);
 			}
 
 			template<class CompressVec>
 			STENOS_ALWAYS_INLINE void mark_dirty(CompressVec* vec) noexcept
 			{
 				// mark as dirty and release related compressed memory (if any)
-				dirty = 1;
+				mark_dirty();
 				// release memory
-				if STENOS_LIKELY (block_index != invalid_index)
+				if (block_index != invalid_index)
 					vec->dealloc_bucket(block_index);
 			}
 
@@ -622,19 +638,25 @@ namespace stenos
 		struct PackBuffer
 		{
 			// Pointer to decompressed buffer, if any
-			RawBuffer<T, block_size>* decompressed;
+			std::atomic<RawBuffer<T, block_size>*> decompressed;
+			//RawBuffer<T, block_size>* decompressed;
 			// Compressed data
 			char* buffer;
 
 			// Compressed size
 			unsigned csize;
-			// Use count to avoid decompression context stealing
-			unsigned short used{ 0 };
-			// Internal lock for multithreaded contexts
-			SharedSpinner lock;
 
-			STENOS_ALWAYS_INLINE std::atomic<unsigned short>& atomic_ref_cnt() noexcept { return reinterpret_cast<std::atomic<unsigned short>&>(used); }
-			STENOS_ALWAYS_INLINE unsigned short& ref_cnt() noexcept { return (used); }
+			// Bucket reference count.
+			// Should be held in shared mode for buffer access,
+			// in unique mode to be reused for another bucket.
+			SharedSpinner ref_count;
+
+			// Use count to avoid decompression context stealing
+			//unsigned short used{ 0 };
+			// Internal lock for multithreaded contexts
+			//SharedSpinner lock;
+
+			STENOS_ALWAYS_INLINE auto load_decompressed() const noexcept { return decompressed.load(std::memory_order_relaxed); }
 
 			PackBuffer(RawBuffer<T, block_size>* dec = nullptr, char* buff = nullptr, unsigned _csize = 0) noexcept
 			  : decompressed(dec)
@@ -645,23 +667,31 @@ namespace stenos
 
 			// Move semantic for usage inside std::vector
 			PackBuffer(PackBuffer&& other) noexcept
-			  : decompressed(other.decompressed)
+			  : decompressed(other.load_decompressed())
 			  , buffer(other.buffer)
 			  , csize(other.csize)
-			  , used(other.used)
 
 			{
 				other.decompressed = nullptr;
 				other.buffer = nullptr;
 				other.csize = 0;
-				other.used = 0;
+				ref_count.swap(other.ref_count);
 			}
 			PackBuffer& operator=(PackBuffer&& other) noexcept
 			{
-				std::swap(decompressed, other.decompressed);
+				// Swap decompression buffer
+				auto tmp = load_decompressed();
+				decompressed = other.load_decompressed();
+				other.decompressed = tmp;
+
+				// Swap reference count.
+				// This is mandatory if the buckt array grows
+				// while we still have RefWrapper objects
+				// pointing to the vector.
+				ref_count.swap(other.ref_count);
+				
 				std::swap(buffer, other.buffer);
 				std::swap(csize, other.csize);
-				std::swap(used, other.used);
 				return *this;
 			}
 
@@ -669,15 +699,17 @@ namespace stenos
 
 			STENOS_ALWAYS_INLINE void ref() noexcept 
 			{
-				atomic_ref_cnt().fetch_add(1, std::memory_order_relaxed);
+				ref_count.lock_shared();
+				//atomic_ref_cnt().fetch_add(1, std::memory_order_relaxed);
 				//++ref_cnt(); 
 			}
 			STENOS_ALWAYS_INLINE void unref() noexcept
 			{
-				STENOS_ASSERT_DEBUG(used != 0, "");
+				//STENOS_ASSERT_DEBUG(used != 0, "");
 				//--ref_cnt();
 				//TEST
-				atomic_ref_cnt().fetch_sub(1, std::memory_order_relaxed);
+				//atomic_ref_cnt().fetch_sub(1, std::memory_order_relaxed);
+				ref_count.unlock_shared();
 			}
 		};
 
@@ -724,19 +756,19 @@ namespace stenos
 		public:
 			ValueWrapper() = default;
 			~ValueWrapper() = default;
-			ValueWrapper(const T& v)
+			STENOS_ALWAYS_INLINE ValueWrapper(const T& v)
 			  : value(v)
 			{
 			}
-			ValueWrapper(T&& v) noexcept
+			STENOS_ALWAYS_INLINE ValueWrapper(T&& v) noexcept
 			  : value(std::move(v))
 			{
 			}
-			ValueWrapper(const ValueWrapper& other)
+			STENOS_ALWAYS_INLINE ValueWrapper(const ValueWrapper& other)
 			  : value(other.value)
 			{
 			}
-			ValueWrapper(ValueWrapper&& other) noexcept
+			STENOS_ALWAYS_INLINE ValueWrapper(ValueWrapper&& other) noexcept
 			  : value(std::move(other.value))
 			{
 			}
@@ -745,22 +777,22 @@ namespace stenos
 			template<class C>
 			ValueWrapper(RefWrapper<C>&& v) noexcept;
 
-			ValueWrapper& operator=(const T& v)
+			STENOS_ALWAYS_INLINE ValueWrapper& operator=(const T& v)
 			{
 				value = v;
 				return *this;
 			}
-			ValueWrapper& operator=(T&& v) noexcept
+			STENOS_ALWAYS_INLINE ValueWrapper& operator=(T&& v) noexcept
 			{
 				value = std::move(v);
 				return *this;
 			}
-			ValueWrapper& operator=(const ValueWrapper& v)
+			STENOS_ALWAYS_INLINE ValueWrapper& operator=(const ValueWrapper& v)
 			{
 				value = v.value;
 				return *this;
 			}
-			ValueWrapper& operator=(ValueWrapper&& v) noexcept
+			STENOS_ALWAYS_INLINE ValueWrapper& operator=(ValueWrapper&& v) noexcept
 			{
 				value = std::move(v.value);
 				return *this;
@@ -770,8 +802,8 @@ namespace stenos
 			template<class C>
 			ValueWrapper& operator=(RefWrapper<C>&& v) noexcept;
 
-			operator T&() noexcept { return value; }
-			operator const T&() const noexcept { return value; }
+			STENOS_ALWAYS_INLINE operator T&() noexcept { return value; }
+			STENOS_ALWAYS_INLINE operator const T&() const noexcept { return value; }
 		};
 
 		/// @brief Const value wrapper class for cvector and cvector::iterator
@@ -792,14 +824,12 @@ namespace stenos
 			STENOS_ALWAYS_INLINE auto _bucket() const noexcept -> const BucketType* { return &_c()->d_buckets[bucket]; }
 			STENOS_ALWAYS_INLINE auto _bucket() noexcept -> BucketType* { return &_c()->d_buckets[bucket]; }
 			STENOS_ALWAYS_INLINE auto _c() const noexcept -> Compressed* { return const_cast<Compressed*>(c); }
-			STENOS_ALWAYS_INLINE void decompress_if_needed(size_t exclude = static_cast<size_t>(-1)) const
+			STENOS_ALWAYS_INLINE auto decompress_if_needed(size_t exclude = static_cast<size_t>(-1)) const
 			{
-				if (!this->_bucket()->decompressed) {
-					_c()->decompress_bucket(bucket, exclude);
-					_c()->incr_disp();
-				}
-				else
-					_c()->decr_disp_slow();
+				auto decompressed = this->_bucket()->load_decompressed();
+				if (!decompressed) 
+					decompressed = _c()->decompress_bucket(bucket, exclude);
+				return decompressed;
 			}
 
 			STENOS_ALWAYS_INLINE bool move_inside_block(std::ptrdiff_t val)
@@ -837,7 +867,10 @@ namespace stenos
 			{
 				_bucket()->ref();
 			}
-			STENOS_ALWAYS_INLINE ~ConstRefWrapper() noexcept { _bucket()->unref(); }
+			STENOS_ALWAYS_INLINE ~ConstRefWrapper() noexcept 
+			{ 
+				_bucket()->unref(); 
+			}
 
 			STENOS_ALWAYS_INLINE auto bucket_index() const noexcept -> size_t { return bucket; }
 			STENOS_ALWAYS_INLINE auto bucket_pos() const noexcept -> size_t { return bpos; }
@@ -845,15 +878,14 @@ namespace stenos
 
 			STENOS_ALWAYS_INLINE auto get() const -> const T&
 			{
-				this->decompress_if_needed();
-				return _bucket()->decompressed->at(bpos);
+				return this->decompress_if_needed()->at(bpos);
 			}
-			STENOS_ALWAYS_INLINE auto get_dirty() const -> const T&
+			/*STENOS_ALWAYS_INLINE auto get_dirty() const -> const T&
 			{
 				this->decompress_if_needed();
 				_bucket()->decompressed->dirty = 1;
 				return _bucket()->decompressed->at(bpos);
-			}
+			}*/
 
 			STENOS_ALWAYS_INLINE operator const T&() const { return get(); }
 		};
@@ -896,7 +928,7 @@ namespace stenos
 			}
 			STENOS_ALWAYS_INLINE RefWrapper(const RefWrapper& other) noexcept = default;
 			// TEST
-			STENOS_ALWAYS_INLINE RefWrapper(RefWrapper&& other) noexcept = default;
+			//STENOS_ALWAYS_INLINE RefWrapper(RefWrapper&& other) noexcept = default;
 			STENOS_ALWAYS_INLINE RefWrapper(const base_type& other) noexcept
 			  : base_type(other)
 			{
@@ -904,26 +936,24 @@ namespace stenos
 
 			STENOS_ALWAYS_INLINE auto move() noexcept -> T&&
 			{
-				this->decompress_if_needed();
+				auto raw = this->decompress_if_needed();
 				if (!std::is_trivially_move_assignable<T>::value)
-					this->_bucket()->decompressed->mark_dirty(this->_c());
-				return std::move(this->_bucket()->decompressed->at(this->bpos));
+					raw->mark_dirty(/* this->_c()*/); //TEST
+				return std::move(raw->at(this->bpos));
 			}
 
 			template<class = typename std::enable_if<std::is_move_assignable<T>::value, void>::type>
 			STENOS_ALWAYS_INLINE void set(const T& obj)
 			{
-				this->decompress_if_needed();
-				this->_bucket()->decompressed->at(this->bpos) = obj;
-				this->_bucket()->decompressed->mark_dirty(this->_c());
-				//this->_c()->decr_disp();
+				auto raw = this->decompress_if_needed();
+				raw->at(this->bpos) = obj;
+				raw->mark_dirty(/* this->_c()*/);//TEST
 			}
 			STENOS_ALWAYS_INLINE void set(T&& obj)
 			{
-				this->decompress_if_needed();
-				this->_bucket()->decompressed->at(this->bpos) = std::move(obj);
-				this->_bucket()->decompressed->mark_dirty(this->_c());
-				//this->_c()->decr_disp();
+				auto raw = this->decompress_if_needed();
+				raw->at(this->bpos) = std::move(obj);
+				raw->mark_dirty(/* this->_c()*/);//TEST
 			}
 
 			STENOS_ALWAYS_INLINE operator const T&() const { return this->get(); }
@@ -932,24 +962,22 @@ namespace stenos
 			STENOS_ALWAYS_INLINE auto operator=(const base_type& other) -> RefWrapper&
 			{
 				if STENOS_LIKELY (std::addressof(other) != this) {
-					this->decompress_if_needed(other.bucket);
-					other.decompress_if_needed(this->bucket);
-					this->_bucket()->decompressed->mark_dirty(this->_c());
-					this->_bucket()->decompressed->at(this->bpos) = other._bucket()->decompressed->at(other.bpos);
-					//this->_c()->decr_disp();
+					auto raw_this = this->decompress_if_needed(other.bucket);
+					auto raw_other = other.decompress_if_needed(this->bucket);
+					raw_this->mark_dirty(/*this->_c()*/);//TEST
+					raw_this->at(this->bpos) = raw_other->at(other.bpos);
 				}
 				return *this;
 			}
 			STENOS_ALWAYS_INLINE auto operator=(RefWrapper&& other) -> RefWrapper&
 			{
 				if STENOS_LIKELY (std::addressof(other) != this) {
-					this->decompress_if_needed(other.bucket);
-					other.decompress_if_needed(this->bucket);
+					auto raw_this = this->decompress_if_needed(other.bucket);
+					auto raw_other = other.decompress_if_needed(this->bucket);
 					if (!std::is_trivially_move_assignable<T>::value)
-						other._bucket()->decompressed->mark_dirty(other._c());
-					this->_bucket()->decompressed->mark_dirty(this->_c());
-					this->_bucket()->decompressed->at(this->bpos) = std::move(other._bucket()->decompressed->at(other.bpos));
-					//this->_c()->decr_disp();
+						raw_other->mark_dirty(/* other._c()*/);//TEST
+					raw_this->mark_dirty(/* this->_c() */);
+					raw_this->at(this->bpos) = std::move(raw_other->at(other.bpos));
 				}
 				return *this;
 			}
@@ -976,38 +1004,41 @@ namespace stenos
 			STENOS_ALWAYS_INLINE void swap(RefWrapper& other)
 			{
 				if STENOS_LIKELY (std::addressof(other) != this) {
-					this->decompress_if_needed(other.bucket);
-					other.decompress_if_needed(this->bucket);
-					this->_bucket()->decompressed->mark_dirty(this->_c());
-					other._bucket()->decompressed->mark_dirty(other._c());
-					std::swap(this->_bucket()->decompressed->at(this->bpos), other._bucket()->decompressed->at(other.bpos));
+					auto raw_this = this->decompress_if_needed(other.bucket);
+					auto raw_other = other.decompress_if_needed(this->bucket);
+					//raw_this->mark_dirty(this->_c());
+					//raw_other->mark_dirty(other._c());
+					//TEST
+					raw_this->mark_dirty();
+					raw_other->mark_dirty();
+					std::swap(raw_this->at(this->bpos), raw_other->at(other.bpos));
 				}
 			}
 		};
 
 		template<class T>
 		template<class C>
-		ValueWrapper<T>::ValueWrapper(const ConstRefWrapper<C>& v)
+		STENOS_ALWAYS_INLINE ValueWrapper<T>::ValueWrapper(const ConstRefWrapper<C>& v)
 		  : value(v.get())
 		{
 		}
 		template<class T>
 		template<class C>
-		ValueWrapper<T>::ValueWrapper(RefWrapper<C>&& v) noexcept
+		STENOS_ALWAYS_INLINE ValueWrapper<T>::ValueWrapper(RefWrapper<C>&& v) noexcept
 		  : value(std::move(v.move()))
 		{
 		}
 
 		template<class T>
 		template<class C>
-		ValueWrapper<T>& ValueWrapper<T>::operator=(const ConstRefWrapper<C>& v)
+		STENOS_ALWAYS_INLINE ValueWrapper<T>& ValueWrapper<T>::operator=(const ConstRefWrapper<C>& v)
 		{
 			value = v.get();
 			return *this;
 		}
 		template<class T>
 		template<class C>
-		ValueWrapper<T>& ValueWrapper<T>::operator=(RefWrapper<C>&& v) noexcept
+		STENOS_ALWAYS_INLINE ValueWrapper<T>& ValueWrapper<T>::operator=(RefWrapper<C>&& v) noexcept
 		{
 			value = std::move(v.move());
 			return *this;
@@ -1016,13 +1047,13 @@ namespace stenos
 		// Overload swap function for RefWrapper
 
 		template<class Compressed>
-		void swap(RefWrapper<Compressed>&& a, RefWrapper<Compressed>&& b) noexcept
+		STENOS_ALWAYS_INLINE void swap(RefWrapper<Compressed>&& a, RefWrapper<Compressed>&& b) noexcept
 		{
 			using wrapper = RefWrapper<Compressed>;
 			const_cast<wrapper&>(a).swap(const_cast<wrapper&>(b));
 		}
 		template<class Compressed>
-		void swap(RefWrapper<Compressed>& a, RefWrapper<Compressed>& b) noexcept
+		STENOS_ALWAYS_INLINE void swap(RefWrapper<Compressed>& a, RefWrapper<Compressed>& b) noexcept
 		{
 			(a).swap((b));
 		}
@@ -1042,7 +1073,7 @@ namespace stenos
 			STENOS_ALWAYS_INLINE void invalidate() noexcept
 			{
 				if (is_valid()) {
-					STENOS_ASSERT_DEBUG(as_ref()->_bucket()->used != 0, "");
+					//STENOS_ASSERT_DEBUG(as_ref()->_bucket()->used != 0, "");
 					as_ref()->~ref_type();
 					as_ref()->bucket = invalid_status;
 				}
@@ -1127,13 +1158,11 @@ namespace stenos
 				return it;
 			}
 
-			STENOS_ALWAYS_INLINE auto operator*() const noexcept -> const_ref_type&
+			STENOS_ALWAYS_INLINE auto operator*() const noexcept -> const_reference
 			{
 				STENOS_ASSERT_DEBUG(this->abspos >= 0 && this->abspos < static_cast<difference_type>(this->c()->size()), "attempt to dereference an invalid iterator");
-
 				if (!is_valid())
 					new (as_ref()) ref_type(c()->at(static_cast<size_t>(abspos)));
-				//auto bucket = as_ref()->_bucket();
 				return *as_ref();
 			}
 			STENOS_ALWAYS_INLINE auto operator->() const noexcept -> const T* { return &((operator*()).get()); }
@@ -1592,13 +1621,11 @@ namespace stenos
 
 			std::vector<BucketType, RebindAlloc<BucketType>> d_buckets; // compressed buckets
 			ContextType d_contexts;					    // decompression contexts
-			size_t d_compress_size;					    // compressed size in bytes
 			size_t d_size;						    // number of values
 			context_ratio d_max_contexts;				    // maximum number of contexts (fixed value or ratio of bucket count)
 			SharedSpinner d_lock;					    // global Spinlock
 			SharedSpinner d_ctx_lock;
 			stenos_context* d_ctx = stenos_make_context();
-			std::atomic<short> d_disp{ 0 }; // dispersion value, try to catch the current access pattern to release decompression contexts
 
 			STENOS_ALWAYS_INLINE void* compression_buffer() noexcept { return get_compression_buffer<block_bytes>(); }
 
@@ -1638,9 +1665,9 @@ namespace stenos
 				// Here, tmp is just used to decompress and destroy values
 				if (pack && pack->buffer) {
 					if (!std::is_trivially_destructible<T>::value) {
-						if (pack->decompressed) {
+						if (auto raw = pack->load_decompressed()) {
 							// destroy all values in  decompressed
-							pack->decompressed->clear_values();
+							raw->clear_values();
 						}
 						else {
 							// we must decompress first
@@ -1658,7 +1685,6 @@ namespace stenos
 			CompressedVectorInternal(const Allocator& al)
 			  : Allocator(al)
 			  , d_buckets(RebindAlloc<BucketType>(al))
-			  , d_compress_size(0)
 			  , d_size(0)
 			  , d_max_contexts(64, Ratio)
 			{
@@ -1669,42 +1695,29 @@ namespace stenos
 
 			~CompressedVectorInternal() noexcept { clear(); }
 
-			/// @brief Increase dispersion value
-			void incr_disp() noexcept
-			{
-				static constexpr short max = std::numeric_limits<short>::max() - 255;
-				short disp = d_disp.load(std::memory_order_relaxed);
-				if ((disp < max))
-					d_disp.store(disp + 254, std::memory_order_relaxed);
-					//d_disp.fetch_add(254, std::memory_order_relaxed);
-			}
-			STENOS_ALWAYS_INLINE void decr_disp_slow() noexcept
-			{
-				static constexpr short min = std::numeric_limits<short>::min() + 1;
-				short disp = d_disp.load(std::memory_order_relaxed);
-				if ((disp > min))
-					d_disp.store(disp - 1, std::memory_order_relaxed);
-					//d_disp.fetch_sub(1, std::memory_order_relaxed);
-				
-			}
-			/// @brief Reset dispersion value
-			void reset_disp() noexcept { d_disp = 0; }
-
 			/// @brief Deallocate compressed memory for given bucket
 			void dealloc_bucket(size_t index) noexcept
 			{
-				if (d_buckets[index].buffer) {
-					RebindAlloc<char>(*this).deallocate(d_buckets[index].buffer, d_buckets[index].csize);
-					d_compress_size -= d_buckets[index].csize;
-					d_buckets[index].csize = 0;
-					d_buckets[index].buffer = nullptr;
+				char* data = nullptr;
+				unsigned csize = 0;
+				{
+					std::lock_guard<SharedSpinner> lock(d_lock);
+					if (auto raw = d_buckets[index].load_decompressed()) {
+						if (raw->block_index != RawType::invalid_index && raw->dirty && d_buckets[index].buffer) {
+							data = d_buckets[index].buffer;
+							csize = d_buckets[index].csize;
+							d_buckets[index].csize = 0;
+							d_buckets[index].buffer = nullptr;
+						}
+					}
 				}
+				if (data)
+					RebindAlloc<char>(*this).deallocate(data, csize);
 			}
 
 			/// @brief Clear content
 			void clear() noexcept
 			{
-				reset_disp();
 				RawType* tmp = nullptr;
 				// First, try to find a valid context that we can reuse to destroy all compressed buffer
 				if (d_buckets.size()) {
@@ -1723,14 +1736,17 @@ namespace stenos
 
 				// Destroy and free all compressed buckets
 				for (size_t i = 0; i < d_buckets.size(); ++i) {
+					auto raw = d_buckets[i].load_decompressed();
 					if (d_buckets[i].buffer) {
-						if (d_buckets[i].decompressed != tmp)
+						if (raw != tmp)
 							this->destroy_pack_buffer(&d_buckets[i], tmp, RebindAlloc<char>(*this));
 						else
 							RebindAlloc<char>(*this).deallocate(d_buckets[i].buffer, d_buckets[i].csize);
 					}
-					else if (d_buckets[i].decompressed && d_buckets[i].decompressed != tmp)
-						d_buckets[i].decompressed->clear_values();
+					else {
+						if (raw && raw != tmp)
+							raw->clear_values();
+					}
 				}
 
 				RebindAlloc<char> al(*this);
@@ -1746,7 +1762,6 @@ namespace stenos
 				// Reset all
 				d_contexts.clear();
 				d_buckets.clear();
-				d_compress_size = 0;
 				d_size = 0;
 			}
 
@@ -1763,7 +1778,7 @@ namespace stenos
 				if (d_buckets.size()) {
 					if (d_buckets.back().buffer)
 						return static_cast<size_t>(elems_per_block);
-					return static_cast<size_t>(d_buckets.back().decompressed->size);
+					return static_cast<size_t>(d_buckets.back().load_decompressed()->size);
 				}
 				return 0;
 			}
@@ -1774,18 +1789,9 @@ namespace stenos
 				if (d_buckets.size()) {
 					if (d_buckets.front().buffer)
 						return static_cast<size_t>(elems_per_block);
-					return static_cast<size_t>(d_buckets.size() > 1 ? block_size : d_buckets.front().decompressed->size);
+					return static_cast<size_t>(d_buckets.size() > 1 ? block_size : d_buckets.front().load_decompressed()->size);
 				}
 				return 0;
-			}
-
-			// TEST
-			bool validate()
-			{
-				for (size_t i = 0; i < d_buckets.size(); ++i)
-					if (d_buckets[i].used != 0)
-						return false;
-				return true;
 			}
 
 			/// @brief Returns the container size
@@ -1798,7 +1804,11 @@ namespace stenos
 				if (d_buckets.size() && d_buckets.back().csize == 0)
 					--decompressed_size;
 				decompressed_size *= block_size * sizeof(T);
-				return (d_compress_size && decompressed_size) ? decompressed_size / static_cast<float>(d_compress_size) : 0.f;
+				size_t compress_size = 0;
+				for (size_t i = 0; i < d_buckets.size(); ++i)
+					if (d_buckets[i].buffer)
+						compress_size += d_buckets[i].csize;
+				return (compress_size && decompressed_size) ? decompressed_size / static_cast<float>(compress_size) : 0.f;
 			}
 
 			/// @brief Returns the current compression ratio, that is the total memory footprint of this container divided by its thoric size (size()*sizeof(T))
@@ -1816,7 +1826,6 @@ namespace stenos
 			/// @brief Compress dirty blocks and release all unnecessary decompssion contexts
 			void shrink_to_fit()
 			{
-				reset_disp();
 				ContextType new_contexts;
 
 				const size_t max_buffers = 1;
@@ -1852,8 +1861,7 @@ namespace stenos
 
 							if (d_buckets[index].buffer)
 								RebindAlloc<char>(*this).deallocate(d_buckets[index].buffer, d_buckets[index].csize);
-							d_compress_size -= d_buckets[index].csize;
-							d_compress_size += d_buckets[index].csize = (unsigned)r;
+							d_buckets[index].csize = (unsigned)r;
 							d_buckets[index].buffer = buff;
 						}
 						memcpy(d_buckets[index].buffer, compression_buffer(), r);
@@ -1892,14 +1900,14 @@ namespace stenos
 			STENOS_ALWAYS_INLINE bool try_lock(RawType* raw) noexcept
 			{
 				if (raw->block_index != RawType::invalid_index)
-					return d_buckets[raw->block_index].lock.try_lock();
+					return d_buckets[raw->block_index].ref_count.try_lock();
 				return true;
 			}
 			/// @brief Unlock a decompression context
 			STENOS_ALWAYS_INLINE void unlock(RawType* raw) noexcept
 			{
 				if (raw->block_index != RawType::invalid_index)
-					return d_buckets[raw->block_index].lock.unlock();
+					return d_buckets[raw->block_index].ref_count.unlock();
 			}
 
 			/// @brief Allocate and return buffer of given size.
@@ -1922,7 +1930,6 @@ namespace stenos
 							context->clear_values();
 						}
 						RebindAlloc<char>(*this).deallocate(bucket->buffer, bucket->csize);
-						d_compress_size -= bucket->csize;
 					}
 					// remove context
 					erase_context(context);
@@ -1931,8 +1938,8 @@ namespace stenos
 
 					// update indexes
 					for (size_t i = bucket_index; i < d_buckets.size(); ++i)
-						if (d_buckets[i].decompressed)
-							d_buckets[i].decompressed->block_index = i;
+						if (auto raw = d_buckets[i].load_decompressed())
+							raw->block_index = i;
 
 					throw;
 				}
@@ -1956,13 +1963,6 @@ namespace stenos
 				return raw;
 			}
 
-			STENOS_ALWAYS_INLINE bool is_used(RawType* block) const noexcept
-			{
-				if (block->block_index == RawType::invalid_index)
-					return false;
-				return d_buckets[block->block_index].used;
-			}
-
 			auto get_locked_context(RawType* exclude = nullptr, typename ContextType::iterator* start = nullptr) noexcept -> typename ContextType::iterator
 			{
 				// Start by the tail
@@ -1970,7 +1970,7 @@ namespace stenos
 				if (d_contexts.size()) {
 					--found;
 					if (found != d_contexts.end()) {
-						while ((((*found)->size && (*found)->size != elems_per_block) || *found == exclude || is_used(*found) || !try_lock((*found)))) {
+						while ((((*found)->size && (*found)->size != elems_per_block) || *found == exclude || !try_lock((*found)))) {
 							if (found == d_contexts.begin()) {
 								found = d_contexts.end();
 								break;
@@ -2018,8 +2018,7 @@ namespace stenos
 						char* buff = allocate_buffer_for_compression((unsigned)r, found_bucket, saved_index, found_raw);
 						if (found_bucket->buffer)
 							RebindAlloc<char>(*this).deallocate(found_bucket->buffer, found_bucket->csize);
-						d_compress_size -= found_bucket->csize;
-						d_compress_size += found_bucket->csize = (unsigned)r;
+						found_bucket->csize = (unsigned)r;
 						found_bucket->buffer = buff;
 					}
 
@@ -2028,7 +2027,7 @@ namespace stenos
 					// Use this opportunity to free another context if possible
 					if (!start && d_contexts.size() > d_buckets.size()/16) {
 						RawType* raw = find_free_context(exclude, &found);
-						if (raw)
+						if (raw) 
 							erase_context(raw);
 					}
 				}
@@ -2065,7 +2064,7 @@ namespace stenos
 			auto compress_bucket(size_t index) -> RawType*
 			{
 				BucketType* bucket = &d_buckets[index];
-				RawType* decompressed = bucket->decompressed;
+				RawType* decompressed = bucket->load_decompressed();
 
 				// Compress
 				size_t r = compress(decompressed->storage);
@@ -2079,8 +2078,7 @@ namespace stenos
 
 				bucket->decompressed = nullptr;
 				// free buckets
-				d_compress_size -= bucket->csize;
-				d_compress_size += bucket->csize = (unsigned)r;
+				bucket->csize = (unsigned)r;
 				decompressed->reset();
 				return decompressed;
 			}
@@ -2095,7 +2093,7 @@ namespace stenos
 					d_buckets.push_back(BucketType(raw));
 					raw->block_index = d_buckets.size() - 1;
 				}
-				else if (d_buckets.back().decompressed->size == elems_per_block) {
+				else if (d_buckets.back().load_decompressed()->size == elems_per_block) {
 					RawType* raw = compress_bucket(d_buckets.size() - 1);
 					// might throw, fine as we did not specify yet the block index
 					d_buckets.push_back(BucketType(raw));
@@ -2105,28 +2103,34 @@ namespace stenos
 
 			/// @brief Decompress given bucket.
 			/// If necessary, use an existing context or create a new one (which cannot be the exclude one)
-			void decompress_bucket(size_t index, size_t exclude = static_cast<size_t>(-1))
+			auto decompress_bucket(size_t index, size_t exclude = static_cast<size_t>(-1)) -> RawType*
 			{
-				if (!d_buckets[index].decompressed) {
+				auto decompressed = d_buckets[index].load_decompressed();
+				if (!decompressed) {
 					std::lock_guard<SharedSpinner> lock(d_lock);
-					if (d_buckets[index].decompressed)
-						return;
+					if (decompressed = d_buckets[index].load_decompressed())
+						return decompressed;
 
 					BucketType* pack = &d_buckets[index];
-					RawType* raw = make_or_find_free_context(exclude == static_cast<size_t>(-1) ? nullptr : d_buckets[exclude].decompressed);
+					RawType* raw = make_or_find_free_context(exclude == static_cast<size_t>(-1) ? nullptr : d_buckets[exclude].load_decompressed());
 					raw->block_index = index;
 
 					this->decompress(pack, raw->storage);
 					pack->decompressed = raw;
 					raw->dirty = 0;
 					raw->size = block_size;
+					decompressed = raw;
 				}
+				return decompressed;
 			}
 
 			/// @brief Returns the class total memory footprint, including sizeof(*this)
 			auto memory_footprint() const noexcept -> size_t
 			{
-				size_t res = d_compress_size;
+				size_t res = stenos_memory_footprint(d_ctx);
+				for (size_t i = 0; i < d_buckets.size(); ++i)
+					if (d_buckets[i].buffer)
+						res += d_buckets[i].csize;
 				res += d_buckets.capacity() * sizeof(BucketType);
 				res += d_contexts.size() * sizeof(RawType);
 				res += sizeof(*this);
@@ -2138,20 +2142,25 @@ namespace stenos
 			STENOS_ALWAYS_INLINE void emplace_back(Args&&... args)
 			{
 				// All functions might throw, fine (strong guarantee)
-				if (!(d_buckets.size() && !d_buckets.back().buffer && d_buckets.back().decompressed->size < elems_per_block))
+				if (!(d_buckets.size() && !d_buckets.back().buffer && d_buckets.back().load_decompressed()->size < elems_per_block))
 					ensure_has_back_bucket();
 				BucketType& bucket = d_buckets.back();
 				try {
 					// might throw, see below
-					new (&bucket.decompressed->at(bucket.decompressed->size)) T(std::forward<Args>(args)...);
-					++bucket.decompressed->size;
-					bucket.decompressed->mark_dirty();
+					auto raw = bucket.load_decompressed();
+					new (&raw->at(raw->size)) T(std::forward<Args>(args)...);
+					// Here we can mark the buffer as dirty
+					// without holding the lock on the bucket
+					// as emplace_back() is not supposed to
+					// work in multi-threaded context.
+					raw->mark_dirty();
+					++raw->size;
 					d_size++;
 				}
 				catch (...) {
 					// Exception: if we just created the back bucket, we must remove it
-					if (d_buckets.back().decompressed->size == 0) {
-						d_buckets.back().decompressed->block_index = RawType::invalid_index;
+					if (d_buckets.back().load_decompressed()->size == 0) {
+						d_buckets.back().load_decompressed()->block_index = RawType::invalid_index;
 						d_buckets.pop_back();
 					}
 					throw;
@@ -2170,33 +2179,47 @@ namespace stenos
 				RebindAlloc<char> al(*this);
 				al.deallocate(reinterpret_cast<char*>(r), sizeof(RawType));
 			}
+			void deallocate_buffer(size_t index) noexcept
+			{ 
+				if (d_buckets[index].buffer) {
+					RebindAlloc<char>(*this).deallocate(d_buckets[index].buffer, d_buckets[index].csize);
+					d_buckets[index].buffer = nullptr;
+					d_buckets[index].csize = 0;
+				}
+			}
 
 			/// @brief Remove back value
 			void pop_back()
 			{
 				STENOS_ASSERT_DEBUG(size() > 0, "calling pop_back on empty container");
-
+				auto raw = d_buckets.back().load_decompressed();
 				// remove empty back bucket
-				if (d_buckets.back().decompressed && d_buckets.back().decompressed->size == 0) {
-					if (d_buckets.back().buffer)
-						RebindAlloc<char>(*this).deallocate(d_buckets.back().buffer, d_buckets.back().csize);
-					erase_context(d_buckets.back().decompressed);
+				if (raw && raw->size == 0) {
+					deallocate_buffer(d_buckets.size() - 1);
+					erase_context(raw);
 					d_buckets.pop_back();
+					raw = d_buckets.back().load_decompressed();
 				}
 				// decompress back bucket if necessary
-				if (!d_buckets.back().decompressed)
-					decompress_bucket(d_buckets.size() - 1);
+				if (!raw)
+					raw = decompress_bucket(d_buckets.size() - 1);
 
 				// destroy element
 				if (!std::is_trivially_destructible<T>::value)
-					destroy_ptr(&d_buckets.back().decompressed->at(d_buckets.back().decompressed->size - 1));
-				d_buckets.back().decompressed->mark_dirty(this); // destroy compressed buffer if necessary
-				--d_buckets.back().decompressed->size;
+					destroy_ptr(&raw->at(raw->size - 1));
+
+				// Here we can mark the buffer as dirty
+				// without holding the lock on the bucket
+				// as emplace_back() is not supposed to
+				// work in multi-threaded context.
+				raw->mark_dirty(this); // destroy compressed buffer if necessary
+				--raw->size;
 				--d_size;
 
 				// destroy back bucket if necessary, as well as decompression context
-				if (d_buckets.back().decompressed->size == 0) {
-					erase_context(d_buckets.back().decompressed);
+				if (raw->size == 0) {
+					deallocate_buffer(d_buckets.size() - 1);
+					erase_context(raw);
 					d_buckets.pop_back();
 				}
 			}
@@ -2220,17 +2243,14 @@ namespace stenos
 					while (size() > new_size + block_size) {
 						// destroy values in last bucket
 						if (!std::is_trivially_destructible<T>::value) {
-							if (!d_buckets.back().decompressed)
+							if (!d_buckets.back().load_decompressed())
 								decompress_bucket(d_buckets.size() - 1);
-							d_buckets.back().decompressed->clear_values();
+							d_buckets.back().load_decompressed()->clear_values();
 						}
 
-						if (d_buckets.back().buffer) {
-							RebindAlloc<char>(*this).deallocate(d_buckets.back().buffer, d_buckets.back().csize);
-							d_compress_size -= d_buckets.back().csize;
-						}
-						if (d_buckets.back().decompressed)
-							erase_context(d_buckets.back().decompressed);
+						deallocate_buffer(d_buckets.size() - 1);
+						if (d_buckets.back().load_decompressed())
+							erase_context(d_buckets.back().load_decompressed());
 						d_buckets.pop_back();
 
 						d_size -= block_size;
@@ -2243,7 +2263,6 @@ namespace stenos
 
 			void resize(size_t new_size)
 			{
-				reset_disp();
 				if (new_size == 0)
 					clear();
 				else if (new_size == size())
@@ -2285,8 +2304,6 @@ namespace stenos
 								raw.clear_values();
 								throw;
 							}
-							d_compress_size += r;
-							// raw.clear();
 							d_size += block_size;
 						}
 					}
@@ -2302,7 +2319,6 @@ namespace stenos
 
 			void resize(size_t new_size, const T& val)
 			{
-				reset_disp();
 				if (new_size == 0)
 					clear();
 				else if (new_size == size())
@@ -2341,8 +2357,6 @@ namespace stenos
 								raw.clear_values();
 								throw;
 							}
-							d_compress_size += r;
-							// raw.clear();
 							d_size += block_size;
 						}
 					}
@@ -2360,7 +2374,6 @@ namespace stenos
 			auto erase(const_iterator first, const_iterator last) -> const_iterator
 			{
 				STENOS_ASSERT_DEBUG(last >= first && first >= const_iterator(this, 0) && last <= const_iterator(this, size()), "cvector erase iterator outside range");
-				reset_disp();
 				if (first == last)
 					return last;
 
@@ -2397,7 +2410,6 @@ namespace stenos
 			template<class InputIt>
 			auto insert(const_iterator pos, InputIt first, InputIt last) -> iterator
 			{
-				reset_disp();
 				// Check back insertion
 				if ((size_t)pos.abspos == size()) {
 					for (; first != last; ++first)
@@ -2453,8 +2465,9 @@ namespace stenos
 				return (iterator(this, 0) + off);
 			}
 
+			//TEST: remove
 			/// @brief Lock bucket for given flat position
-			STENOS_ALWAYS_INLINE void lock(size_t pos) noexcept
+			/* STENOS_ALWAYS_INLINE void lock(size_t pos) noexcept
 			{
 				size_t bucket = pos >> shift;
 				d_buckets[bucket].lock.lock();
@@ -2464,7 +2477,7 @@ namespace stenos
 			{
 				size_t bucket = pos >> shift;
 				d_buckets[bucket].lock.unlock();
-			}
+			}*/
 
 			STENOS_ALWAYS_INLINE auto at(size_t pos) noexcept -> ref_type { return ref_type(this, pos >> shift, pos & mask); }
 			STENOS_ALWAYS_INLINE auto at(size_t pos) const noexcept -> const_ref_type { return const_ref_type(this, pos >> shift, pos & mask); }
@@ -2491,11 +2504,10 @@ namespace stenos
 
 				while (remaining) {
 					size_t to_process = std::min(remaining, static_cast<size_t>(block_size - pos));
-					std::shared_lock<SharedSpinner> lock(d_buckets[bindex].get().lock);
-					const RawType* cur = d_buckets[bindex].decompressed;
+					std::shared_lock<SharedSpinner> lock(d_buckets[bindex].get().ref_count);
+					const RawType* cur = d_buckets[bindex].load_decompressed();
 					if (!cur) {
-						const_cast<ThisType*>(this)->decompress_bucket(bindex);
-						cur = d_buckets[bindex].decompressed;
+						cur = const_cast<ThisType*>(this)->decompress_bucket(bindex);
 					}
 					remaining -= to_process;
 					size_t en = pos + to_process;
@@ -2523,11 +2535,10 @@ namespace stenos
 
 				while (remaining) {
 					size_t to_process = std::min(remaining, static_cast<size_t>(block_size - pos));
-					std::lock_guard<SharedSpinner> lock(d_buckets[bindex].lock);
-					RawType* cur = d_buckets[bindex].decompressed;
+					std::lock_guard<SharedSpinner> lock(d_buckets[bindex].ref_count);
+					RawType* cur = d_buckets[bindex].load_decompressed();
 					if (!cur) {
-						this->decompress_bucket(bindex);
-						cur = d_buckets[bindex].decompressed;
+						cur = this->decompress_bucket(bindex);
 					}
 					remaining -= to_process;
 					size_t en = pos + to_process;
@@ -2557,11 +2568,10 @@ namespace stenos
 				size_t res = 0;
 
 				for (difference_type bindex = last_bucket; bindex >= first_bucket; --bindex) {
-					std::shared_lock<SharedSpinner> lock(d_buckets[bindex].get().lock);
-					const RawType* cur = d_buckets[bindex].decompressed;
+					std::shared_lock<SharedSpinner> lock(d_buckets[bindex].ref_count);
+					const RawType* cur = d_buckets[bindex].load_decompressed();
 					if (!cur) {
-						const_cast<ThisType*>(this)->decompress_bucket(bindex);
-						cur = d_buckets[bindex].decompressed;
+						cur = const_cast<ThisType*>(this)->decompress_bucket(bindex);
 					}
 					difference_type low = bindex == first_bucket ? first_index : 0;
 					difference_type high = bindex == last_bucket ? last_index : static_cast<difference_type>(block_size - 1);
@@ -2589,11 +2599,10 @@ namespace stenos
 				size_t res = 0;
 
 				for (difference_type bindex = last_bucket; bindex >= first_bucket; --bindex) {
-					std::lock_guard<SharedSpinner> lock(d_buckets[bindex].lock);
-					RawType* cur = d_buckets[bindex].decompressed;
+					std::lock_guard<SharedSpinner> lock(d_buckets[bindex].ref_count);
+					RawType* cur = d_buckets[bindex].load_decompressed();
 					if (!cur) {
-						this->decompress_bucket(bindex);
-						cur = d_buckets[bindex].decompressed;
+						cur = this->decompress_bucket(bindex);
 					}
 					difference_type low = bindex == first_bucket ? first_index : 0;
 					difference_type high = bindex == last_bucket ? last_index : static_cast<difference_type>(block_size - 1);
@@ -2605,6 +2614,7 @@ namespace stenos
 
 				return res;
 			}
+
 		};
 
 		// Check for input iterator
@@ -2677,7 +2687,7 @@ namespace stenos
 
 			auto* bucket = &d_data->d_buckets[pos];
 
-			if (!bucket->buffer || (bucket->decompressed && bucket->decompressed->dirty)) {
+			if (!bucket->buffer || (bucket->load_decompressed() && bucket->load_decompressed()->dirty)) {
 				// compress bucket
 				auto* raw = d_data->compress_bucket(pos);
 
@@ -3101,11 +3111,12 @@ namespace stenos
 		/// Basic exception guarantee.
 		void assign(std::initializer_list<T> ilist) { assign(ilist.begin(), ilist.end()); }
 
-		STENOS_ALWAYS_INLINE lock_type& lock_for_pos(size_t pos)
+		//TEST: remove
+		/* STENOS_ALWAYS_INLINE lock_type& lock_for_pos(size_t pos)
 		{
 			make_data_if_null();
-			return d_data->d_buckets[pos >> shift].lock;
-		}
+			return d_data->d_buckets[pos >> shift].ref_count;
+		}*/
 
 		/// @brief Returns a reference wrapper to the element at specified location pos, with bounds checking.
 		STENOS_ALWAYS_INLINE auto at(size_type pos) const -> const_ref_type
@@ -3298,7 +3309,7 @@ namespace stenos
 				if (i == d_data->d_buckets.size() - 1) {
 					// check if last bucket is empty
 					auto* buffer = &d_data->d_buckets.back();
-					auto* raw = buffer->decompressed;
+					auto* raw = buffer->load_decompressed();
 					if (!raw || raw->size == 0)
 						goto end;
 
@@ -3400,7 +3411,6 @@ namespace stenos
 				d_data->d_buckets.back().csize = bsize;
 				d_data->d_buckets.back().decompressed = nullptr;
 				d_data->d_size += block_size;
-				d_data->d_compress_size += bsize;
 
 				src += bsize;
 			}
@@ -3448,7 +3458,13 @@ namespace stenos
 		bool validate()
 		{
 			if (d_data)
-				return d_data->validate();
+			{
+				for (size_t i = 0; i < d_data->d_buckets.size(); ++i) {
+					auto val = d_data->d_buckets[i].ref_count.value();
+					if (val != 0)
+						return false;
+				}
+			}
 			return true;
 		}
 	};
@@ -3623,7 +3639,6 @@ namespace stenos
 			d_data->d_buckets.back().csize = bsize;
 			d_data->d_buckets.back().decompressed = nullptr;
 			d_data->d_size += block_size;
-			d_data->d_compress_size += bsize;
 		}
 
 		if (size_t rem = s % block_size) {

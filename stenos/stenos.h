@@ -168,6 +168,11 @@ template parameter of stenos::cvector must be equal to blocksize_shift.
 STENOS_EXPORT size_t stenos_set_block_size(stenos_context* ctx, size_t blocksize_shift);
 
 /**
+Returns the memory footprint of a compressoin context.
+*/
+STENOS_EXPORT size_t stenos_memory_footprint(stenos_context* ctx);
+
+/**
 @brief Check for error the result value of stenos_compress_generic(), stenos_compress(),
 stenos_decompress_generic(), stenos_decompress(), stenos_info_s(), stenos_set_level(),
 stenos_set_threads(), stenos_set_max_nanoseconds() and stenos_set_block_size().
