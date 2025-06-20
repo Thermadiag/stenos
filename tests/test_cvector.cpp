@@ -531,17 +531,25 @@ static inline void test_copy()
 
 int test_cvector(int, char*[])
 {
-	//TEST
-	using std::swap;
-	stenos::cvector<int> v1(1), v2(1);
-	auto i1 = v1.begin();
-	auto i2 = v2.begin();
-	auto t1 = *i1;
-	auto t2 = *i2;
-	swap(t1, t2);
-	swap(*i1, *i2);
-	std::iter_swap(i1, i2);
+	stenos::cvector<int,0,0> v;
+	for (int i=0; i < 10000; ++i)
+		v.push_back( rand());
+	std::vector<int> v2(v.size());
 
+	v.set_max_contexts(stenos::context_ratio(4));
+	
+	std::copy(v.begin(), v.end(), v2.begin());
+
+	bool ok1 = std::equal(v.begin(), v.end(), v2.begin());
+
+	std::sort(v.begin(), v.end());
+	std::sort(v2.begin(), v2.end());
+	
+	bool ok2 = std::equal(v.begin(), v.end(), v2.begin());
+	std::vector<int> v3(v.size());
+	std::copy(v.begin(), v.end(), v3.begin());
+
+	bool ok3 = v.validate();
 
 	test_copy();
 

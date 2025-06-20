@@ -663,6 +663,13 @@ namespace stenos
 			}
 
 			PackBuffer& get() const noexcept { return *const_cast<PackBuffer*>(this); }
+
+			STENOS_ALWAYS_INLINE void ref() noexcept{ ++used;}
+			STENOS_ALWAYS_INLINE void unref() noexcept 
+			{
+				STENOS_ASSERT_DEBUG(used != 0, "");
+				--used; 
+			}
 		};
 
 		///@brief Create a raw buffer aligned on 16 bytes
@@ -732,7 +739,14 @@ namespace stenos
 			  , bucket(b)
 			  , bpos(pos)
 			{
-				++_bucket()->used;
+				_bucket()->ref();
+			}
+			STENOS_ALWAYS_INLINE ConstValueWrapper(const Compressed* _c, size_t b, size_t pos, bool) noexcept
+			  : c(const_cast<Compressed*>(_c))
+			  , bucket(b)
+			  , bpos(pos)
+			{
+				// Version that do NOT increment the bucket ref count
 			}
 
 			STENOS_ALWAYS_INLINE ConstValueWrapper(const ConstValueWrapper& other) noexcept
@@ -740,9 +754,12 @@ namespace stenos
 			  , bucket(other.bucket)
 			  , bpos(other.bpos)
 			{
-				++_bucket()->used;
+				_bucket()->ref();
 			}
-			STENOS_ALWAYS_INLINE ~ConstValueWrapper() noexcept { --_bucket()->used; }
+			STENOS_ALWAYS_INLINE ~ConstValueWrapper() noexcept 
+			{ 
+				_bucket()->unref(); 
+			}
 
 			STENOS_ALWAYS_INLINE auto bucket_index() const noexcept -> size_t { return bucket; }
 			STENOS_ALWAYS_INLINE auto bucket_pos() const noexcept -> size_t { return bpos; }
@@ -751,6 +768,12 @@ namespace stenos
 			STENOS_ALWAYS_INLINE auto get() const -> const T&
 			{
 				this->decompress_if_needed();
+				return _bucket()->decompressed->at(bpos);
+			}
+			STENOS_ALWAYS_INLINE auto get_dirty() const -> const T&
+			{
+				this->decompress_if_needed();
+				_bucket()->decompressed->dirty = 1;
 				return _bucket()->decompressed->at(bpos);
 			}
 
@@ -789,9 +812,13 @@ namespace stenos
 			  : base_type(_c, b, pos)
 			{
 			}
+			STENOS_ALWAYS_INLINE ValueWrapper(const Compressed* _c, size_t b, size_t pos, bool) noexcept
+			  : base_type(_c, b, pos, false)
+			{
+			}
 			STENOS_ALWAYS_INLINE ValueWrapper(const ValueWrapper& other) noexcept = default;
-			//TEST
-			STENOS_ALWAYS_INLINE ValueWrapper( ValueWrapper&& other) noexcept = default;
+			// TEST
+			STENOS_ALWAYS_INLINE ValueWrapper(ValueWrapper&& other) noexcept = default;
 			STENOS_ALWAYS_INLINE ValueWrapper(const base_type& other) noexcept
 			  : base_type(other)
 			{
@@ -881,6 +908,276 @@ namespace stenos
 		}
 
 		/// @brief const iterator type for cvector
+		/* template<class Compressed>
+		struct CompressedConstIter
+		{
+		private:
+
+			using ref_type = typename Compressed::ref_type;
+			using const_ref_type = typename Compressed::const_ref_type;
+			static constexpr size_t invalid_status = (size_t)-1;
+
+			STENOS_ALWAYS_INLINE auto* as_ref() const { return reinterpret_cast<ref_type*>(data); }
+			STENOS_ALWAYS_INLINE bool is_valid() const { return as_ref()->bucket != invalid_status; }
+			STENOS_ALWAYS_INLINE void invalidate() noexcept
+			{
+				if (is_valid()) {
+					STENOS_ASSERT_DEBUG(as_ref()->_bucket()->used != 0, "");
+					as_ref()->~ref_type();
+					as_ref()->bucket = invalid_status;
+				}
+			}
+
+		public:
+			using T = typename Compressed::value_type;
+			using value_type = T;
+			using reference = T&;
+			using const_reference = const T&;
+			using pointer = const T*;
+			using const_pointer = const T*;
+			using difference_type = typename Compressed::difference_type;
+			using iterator_category = std::random_access_iterator_tag;
+			using size_type = size_t;
+			static constexpr size_t elems_per_block = Compressed::elems_per_block;
+			static constexpr size_t mask = Compressed::mask;
+			static constexpr size_t shift = Compressed::shift;
+
+			difference_type abspos;
+			mutable char data[sizeof(ref_type)];
+
+			STENOS_ALWAYS_INLINE Compressed* c() const { return as_ref()->_c(); }
+
+			STENOS_ALWAYS_INLINE CompressedConstIter() noexcept
+			  : abspos(0)
+			{
+				new (as_ref()) ref_type(nullptr, invalid_status, invalid_status, false);
+			}
+			STENOS_ALWAYS_INLINE CompressedConstIter(const Compressed* c, size_t pos) noexcept
+			  : abspos((difference_type)pos)
+			{
+				new (as_ref()) ref_type(const_cast<Compressed*>(c), invalid_status, invalid_status, false);
+
+			} 
+			
+			STENOS_ALWAYS_INLINE CompressedConstIter(const CompressedConstIter& other)
+				: abspos(other.abspos)
+			{
+				new (as_ref()) ref_type(other.c(), invalid_status, invalid_status, false);
+			}
+
+			STENOS_ALWAYS_INLINE  ~CompressedConstIter() noexcept
+			{ 
+				invalidate(); 
+			}
+
+			STENOS_ALWAYS_INLINE CompressedConstIter& operator=(const CompressedConstIter& other) noexcept 
+			{ 
+				abspos = (other.abspos);
+				invalidate();
+				new (as_ref()) ref_type(other.c(), invalid_status, invalid_status, false);
+				return *this;
+			}
+
+			STENOS_ALWAYS_INLINE auto operator++() noexcept -> CompressedConstIter&
+			{
+				++abspos;
+				invalidate();
+				return *this;
+			}
+			STENOS_ALWAYS_INLINE auto operator++(int) noexcept -> CompressedConstIter
+			{
+				CompressedConstIter it = *this;
+				++(*this);
+				return it;
+			}
+			STENOS_ALWAYS_INLINE auto operator--() noexcept -> CompressedConstIter&
+			{
+				--abspos;
+				invalidate();
+				return *this;
+			}
+			STENOS_ALWAYS_INLINE auto operator--(int) noexcept -> CompressedConstIter
+			{
+				CompressedConstIter it = *this;
+				--(*this);
+				return it;
+			}
+
+			STENOS_ALWAYS_INLINE auto operator*() const noexcept -> const T&
+			{
+				STENOS_ASSERT_DEBUG(this->abspos >= 0 && this->abspos < static_cast<difference_type>(this->c()->size()), "attempt to dereference an invalid iterator");
+				
+				if (!is_valid())
+					new (as_ref()) ref_type(c()->at(static_cast<size_t>(abspos)));
+				auto bucket = as_ref()->_bucket();
+				return as_ref()->get_dirty();
+			}
+			STENOS_ALWAYS_INLINE auto operator->() const noexcept -> const T* { return &operator*(); }
+			STENOS_ALWAYS_INLINE auto operator+=(difference_type diff) noexcept -> CompressedConstIter&
+			{
+				this->abspos += diff;
+				invalidate();
+				return *this;
+			}
+			STENOS_ALWAYS_INLINE auto operator-=(difference_type diff) noexcept -> CompressedConstIter&
+			{
+				(*this) += -diff;
+				return *this;
+			}
+			STENOS_ALWAYS_INLINE auto operator+(difference_type diff) const noexcept -> CompressedConstIter
+			{
+				CompressedConstIter tmp = *this;
+				tmp += diff;
+				return tmp;
+			}
+			STENOS_ALWAYS_INLINE auto operator-(difference_type diff) const noexcept -> CompressedConstIter
+			{
+				CompressedConstIter tmp = *this;
+				tmp -= diff;
+				return tmp;
+			}
+		};
+
+		/// @brief iterator type for cvector
+		template<class Compressed>
+		struct CompressedIter : public CompressedConstIter<Compressed>
+		{
+			using this_type = CompressedIter<Compressed>;
+			using base_type = CompressedConstIter<Compressed>;
+			using value_type = typename Compressed::value_type;
+			using reference = value_type&;
+			using const_reference = const value_type&;
+			using pointer = value_type*;
+			using const_pointer = const value_type*;
+			using difference_type = typename Compressed::difference_type;
+			using iterator_category = std::random_access_iterator_tag;
+			using size_type = size_t;
+
+			STENOS_ALWAYS_INLINE CompressedIter() noexcept
+			  : base_type()
+			{
+			}
+			STENOS_ALWAYS_INLINE CompressedIter(const base_type& other) noexcept
+			  : base_type(other)
+			{
+			}
+			STENOS_ALWAYS_INLINE CompressedIter(const CompressedIter& other) noexcept
+			  : base_type(other)
+			{
+			}
+			STENOS_ALWAYS_INLINE CompressedIter(const Compressed* c, difference_type p) noexcept
+			  : base_type(c, p)
+			{
+			} 
+			STENOS_ALWAYS_INLINE CompressedIter& operator=(const CompressedIter& other) noexcept 
+			{ 
+				base_type::operator=(static_cast<const base_type>(other));
+				return *this;
+			}
+
+			STENOS_ALWAYS_INLINE auto operator*() noexcept -> reference
+			{ 
+				return const_cast<value_type&>(const_cast<this_type*>(this)->base_type::operator*());
+			}
+			STENOS_ALWAYS_INLINE auto operator*() const noexcept -> reference
+			{ 
+				return const_cast<value_type&>(const_cast<this_type*>(this)->base_type::operator*());
+			}
+			STENOS_ALWAYS_INLINE auto operator->() const noexcept -> const_pointer 
+			{ 
+				return &base_type::operator*();
+			}
+			STENOS_ALWAYS_INLINE auto operator++() noexcept -> CompressedIter&
+			{
+				base_type::operator++();
+				return *this;
+			}
+			STENOS_ALWAYS_INLINE auto operator++(int) noexcept -> CompressedIter
+			{
+				CompressedIter _Tmp = *this;
+				base_type::operator++();
+				return _Tmp;
+			}
+			STENOS_ALWAYS_INLINE auto operator--() noexcept -> CompressedIter&
+			{
+				base_type::operator--();
+				return *this;
+			}
+			STENOS_ALWAYS_INLINE auto operator--(int) noexcept -> CompressedIter
+			{
+				CompressedIter _Tmp = *this;
+				base_type::operator--();
+				return _Tmp;
+			}
+			STENOS_ALWAYS_INLINE auto operator+=(difference_type diff) noexcept -> CompressedIter&
+			{
+				base_type::operator+=(diff);
+				return *this;
+			}
+			STENOS_ALWAYS_INLINE auto operator-=(difference_type diff) noexcept -> CompressedIter&
+			{
+				base_type::operator-=(diff);
+				return *this;
+			}
+			STENOS_ALWAYS_INLINE auto operator+(difference_type diff) const noexcept -> CompressedIter
+			{
+				CompressedIter tmp = *this;
+				tmp += diff;
+				return tmp;
+			}
+			STENOS_ALWAYS_INLINE auto operator-(difference_type diff) const noexcept -> CompressedIter
+			{
+				CompressedIter tmp = *this;
+				tmp -= diff;
+				return tmp;
+			}
+		};
+
+		template<class C>
+		STENOS_ALWAYS_INLINE auto operator-(const CompressedConstIter<C>& a, const CompressedConstIter<C>& b) noexcept -> typename CompressedConstIter<C>::difference_type
+		{
+			STENOS_ASSERT_DEBUG(a.c() == b.c() || a.c() == nullptr || b.c() == nullptr, "comparing iterators from different containers");
+			return a.abspos - b.abspos;
+		}
+
+		template<class C>
+		STENOS_ALWAYS_INLINE bool operator==(const CompressedConstIter<C>& a, const CompressedConstIter<C>& b) noexcept
+		{
+			STENOS_ASSERT_DEBUG(a.c() == b.c() || a.c() == nullptr || b.c() == nullptr, "comparing iterators from different containers");
+			return a.abspos == b.abspos;
+		}
+		template<class C>
+		STENOS_ALWAYS_INLINE bool operator!=(const CompressedConstIter<C>& a, const CompressedConstIter<C>& b) noexcept
+		{
+			STENOS_ASSERT_DEBUG(a.c() == b.c() || a.c() == nullptr || b.c() == nullptr, "comparing iterators from different containers");
+			return a.abspos != b.abspos;
+		}
+		template<class C>
+		STENOS_ALWAYS_INLINE bool operator<(const CompressedConstIter<C>& a, const CompressedConstIter<C>& b) noexcept
+		{
+			STENOS_ASSERT_DEBUG(a.c() == b.c() || a.c() == nullptr || b.c() == nullptr, "comparing iterators from different containers");
+			return a.abspos < b.abspos;
+		}
+		template<class C>
+		STENOS_ALWAYS_INLINE bool operator>(const CompressedConstIter<C>& a, const CompressedConstIter<C>& b) noexcept
+		{
+			STENOS_ASSERT_DEBUG(a.c() == b.c() || a.c() == nullptr || b.c() == nullptr, "comparing iterators from different containers");
+			return a.abspos > b.abspos;
+		}
+		template<class C>
+		STENOS_ALWAYS_INLINE bool operator<=(const CompressedConstIter<C>& a, const CompressedConstIter<C>& b) noexcept
+		{
+			STENOS_ASSERT_DEBUG(a.c() == b.c() || a.c() == nullptr || b.c() == nullptr, "comparing iterators from different containers");
+			return a.abspos <= b.abspos;
+		}
+		template<class C>
+		STENOS_ALWAYS_INLINE bool operator>=(const CompressedConstIter<C>& a, const CompressedConstIter<C>& b) noexcept
+		{
+			STENOS_ASSERT_DEBUG(a.c() == b.c() || a.c() == nullptr || b.c() == nullptr, "comparing iterators from different containers");
+			return a.abspos >= b.abspos;
+		}*/
+
+/// @brief const iterator type for cvector
 		template<class Compressed>
 		struct CompressedConstIter
 		{
@@ -1182,6 +1479,12 @@ namespace stenos
 				size_t r = stenos_private_compress_block(d_ctx, in, sizeof(T), block_bytes, bytes ? bytes : block_bytes, compression_buffer(), dst_block_bytes);
 				if (stenos_has_error(r))
 					STENOS_ABORT("cvector: abort on compression error") // no way to recover from this
+#ifndef NDEBUG
+				char out[block_bytes];
+				size_t r2 = stenos_private_decompress_block(d_ctx, compression_buffer(), sizeof(T), block_bytes, r, out, sizeof(out));
+				STENOS_ASSERT_DEBUG(r2 == bytes ? bytes : block_bytes, "");
+				STENOS_ASSERT_DEBUG(memcmp(in, out, bytes ? bytes : block_bytes) == 0, "");
+#endif
 				return r;
 			}
 
@@ -1325,6 +1628,15 @@ namespace stenos
 				return 0;
 			}
 
+			//TEST
+			bool validate()
+			{ 
+				for (size_t i = 0; i < d_buckets.size(); ++i)
+					if (d_buckets[i].used != 0)
+						return false;
+				return true;
+			}
+
 			/// @brief Returns the container size
 			STENOS_ALWAYS_INLINE auto size() const noexcept -> size_t { return d_size; }
 
@@ -1384,12 +1696,12 @@ namespace stenos
 						size_t r = compress(raw->storage);
 						if (r != d_buckets[index].csize) {
 							// Free old buffer, alloc new one, update compressed size, might throw (fine)
-							char* buff = this->allocate_buffer_for_compression(r, &d_buckets[index], index, raw);
+							char* buff = this->allocate_buffer_for_compression((unsigned)r, &d_buckets[index], index, raw);
 
 							if (d_buckets[index].buffer)
 								RebindAlloc<char>(*this).deallocate(d_buckets[index].buffer, d_buckets[index].csize);
 							d_compress_size -= d_buckets[index].csize;
-							d_compress_size += d_buckets[index].csize = r;
+							d_compress_size += d_buckets[index].csize = (unsigned)r;
 							d_buckets[index].buffer = buff;
 						}
 						memcpy(d_buckets[index].buffer, compression_buffer(), r);
@@ -1882,7 +2194,7 @@ namespace stenos
 			/// @brief Erase range
 			auto erase(const_iterator first, const_iterator last) -> const_iterator
 			{
-				STENOS_ASSERT_DEBUG(last >= first && first >= const_iterator(this, 0) && last <= const_iterator(this), "cvector erase iterator outside range");
+				STENOS_ASSERT_DEBUG(last >= first && first >= const_iterator(this, 0) && last <= const_iterator(this,size()), "cvector erase iterator outside range");
 
 				if (first == last)
 					return last;
@@ -1890,7 +2202,7 @@ namespace stenos
 				difference_type off = first - const_iterator(this, 0);
 				size_t count = static_cast<size_t>(last - first);
 
-				std::move(iterator(last), iterator(this), iterator(first));
+				std::move(iterator(last), iterator(this,size()), iterator(first));
 				if (count == 1)
 					pop_back();
 				else
@@ -1911,7 +2223,7 @@ namespace stenos
 
 				// insert on the right side
 				this->emplace_back(std::forward<Args>(args)...);
-				std::rotate(iterator(this, 0) + dist, iterator(this) - 1, iterator(this));
+				std::rotate(iterator(this, 0) + dist, iterator(this,size()) - 1, iterator(this,size()));
 
 				return iterator(this, 0) + dist;
 			}
@@ -1938,7 +2250,7 @@ namespace stenos
 					try {
 						resize(size() + len);
 
-						std::move_backward(iterator(this, 0) + off, iterator(this, 0) + static_cast<difference_type>(size() - len), iterator(this));
+						std::move_backward(iterator(this, 0) + off, iterator(this, 0) + static_cast<difference_type>(size() - len), iterator(this,size()));
 
 						// std::copy(first, last, iterator(this, 0) + off);
 						// use for_each instead of std::copy
@@ -1970,7 +2282,7 @@ namespace stenos
 						throw;
 					}
 
-					std::rotate(iterator(this, 0) + off, iterator(this, 0) + static_cast<difference_type>(oldsize), iterator(this));
+					std::rotate(iterator(this, 0) + off, iterator(this, 0) + static_cast<difference_type>(oldsize), iterator(this,size()));
 				}
 				return (iterator(this, 0) + off);
 			}
@@ -2965,6 +3277,14 @@ namespace stenos
 
 		template<class Istream>
 		size_t deserialize(Istream& iss);
+
+		// TEST
+		bool validate()
+		{
+			if (d_data)
+				return d_data->validate();
+			return true;
+		}
 	};
 
 } // end namespace stenos
@@ -2989,7 +3309,6 @@ namespace std
 		};
 	}
 
-	
 	///////////////////////////
 	// Completely illegal overload of std::move.
 	// That's currently the only way I found to use generic algorithms (like std::move(It, It, Dst) ) with cvector. Works with msvc, gcc and clang.
@@ -3010,11 +3329,9 @@ namespace std
 
 #include <iostream>
 
-
-
 namespace stenos
 {
-	
+
 	template<class T, unsigned BlockSize, int Level, class Alloc>
 	template<class Ostream>
 	size_t cvector<T, BlockSize, Level, Alloc>::serialize(Ostream& oss)
