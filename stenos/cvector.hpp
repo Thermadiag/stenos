@@ -728,7 +728,7 @@ namespace stenos
 			  : value(v)
 			{
 			}
-			ValueWrapper(T&& v)
+			ValueWrapper(T&& v) noexcept
 			  : value(std::move(v))
 			{
 			}
@@ -736,21 +736,21 @@ namespace stenos
 			  : value(other.value)
 			{
 			}
-			ValueWrapper(ValueWrapper&& other)
+			ValueWrapper(ValueWrapper&& other) noexcept
 			  : value(std::move(other.value))
 			{
 			}
 			template<class C>
 			ValueWrapper(const ConstRefWrapper<C>& v);
 			template<class C>
-			ValueWrapper(RefWrapper<C>&& v);
+			ValueWrapper(RefWrapper<C>&& v) noexcept;
 
 			ValueWrapper& operator=(const T& v)
 			{
 				value = v;
 				return *this;
 			}
-			ValueWrapper& operator=(T&& v)
+			ValueWrapper& operator=(T&& v) noexcept
 			{
 				value = std::move(v);
 				return *this;
@@ -760,7 +760,7 @@ namespace stenos
 				value = v.value;
 				return *this;
 			}
-			ValueWrapper& operator=(ValueWrapper&& v)
+			ValueWrapper& operator=(ValueWrapper&& v) noexcept
 			{
 				value = std::move(v.value);
 				return *this;
@@ -768,10 +768,10 @@ namespace stenos
 			template<class C>
 			ValueWrapper& operator=(const ConstRefWrapper<C>& v);
 			template<class C>
-			ValueWrapper& operator=(RefWrapper<C>&& v);
+			ValueWrapper& operator=(RefWrapper<C>&& v) noexcept;
 
-			operator T&() { return value; }
-			operator const T&() { return value; }
+			operator T&() noexcept { return value; }
+			operator const T&() const noexcept { return value; }
 		};
 
 		/// @brief Const value wrapper class for cvector and cvector::iterator
@@ -993,7 +993,7 @@ namespace stenos
 		}
 		template<class T>
 		template<class C>
-		ValueWrapper<T>::ValueWrapper(RefWrapper<C>&& v)
+		ValueWrapper<T>::ValueWrapper(RefWrapper<C>&& v) noexcept
 		  : value(std::move(v.move()))
 		{
 		}
@@ -1007,7 +1007,7 @@ namespace stenos
 		}
 		template<class T>
 		template<class C>
-		ValueWrapper<T>& ValueWrapper<T>::operator=(RefWrapper<C>&& v)
+		ValueWrapper<T>& ValueWrapper<T>::operator=(RefWrapper<C>&& v) noexcept
 		{
 			value = std::move(v.move());
 			return *this;
