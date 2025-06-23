@@ -41,7 +41,6 @@
 #undef max
 #endif
 
-
 #define STENOS_TEST(...)                                                                                                                                                                               \
 	if (!(__VA_ARGS__))                                                                                                                                                                            \
 	STENOS_ABORT("Test error in %s line %i\n", __FILE__, __LINE__)
@@ -97,8 +96,7 @@ inline void test_cvector_algorithms(size_t count = 5000000, const Alloc& al = Al
 
 	// Test sort
 	std::sort(deq.begin(), deq.end());
-	std::sort(cvec.begin(), cvec.end() ); 
-
+	std::sort(cvec.begin(), cvec.end());
 
 	STENOS_TEST(equal_cvec(deq, cvec));
 
@@ -144,7 +142,7 @@ inline void test_cvector_algorithms(size_t count = 5000000, const Alloc& al = Al
 	// Strangely, msvc implementation of std::nth_element produce a warning as it tries to modify the value of const iterator
 	// Test nth_element
 	std::nth_element(deq.begin(), deq.begin() + deq.size() / 2, deq.end());
-	std::nth_element(cvec.begin(), cvec.begin() + cvec.size() / 2, cvec.end()); 
+	std::nth_element(cvec.begin(), cvec.begin() + cvec.size() / 2, cvec.end());
 	STENOS_TEST(equal_cvec(deq, cvec));
 }
 
@@ -546,12 +544,12 @@ static void test_serialize()
 		std::mt19937 rng(0);
 		std::shuffle(v.begin(), v.end(), rng);
 
-		std::string str(stenos_bound(v.size() * sizeof(size_t)),(char)0);
+		std::string str(stenos_bound(v.size() * sizeof(size_t)), (char)0);
 		size_t c = v.serialize((char*)str.data(), str.size());
 		str.resize(c);
 
 		vector_type v2(al);
-		v2.deserialize(str.data(),str.size());
+		v2.deserialize(str.data(), str.size());
 
 		STENOS_TEST(equal_cvec(v, v2));
 
@@ -603,8 +601,7 @@ static void test_for_each()
 		for (int i = 0; i < 999999; ++i)
 			v.push_back(i);
 
-		
-		size_t walk = v.for_each(0,v.size(),[](int i) { return i < 5000; });
+		size_t walk = v.for_each(0, v.size(), [](int i) { return i < 5000; });
 		STENOS_TEST(walk == 5000);
 		walk = v.const_for_each(0, v.size(), [](int i) { return i < 5000; });
 		STENOS_TEST(walk == 5000);
@@ -624,6 +621,7 @@ static void test_for_each()
 	STENOS_TEST(get_alloc_bytes(al) == 0);
 }
 
+
 static inline void test_copy()
 {
 	{
@@ -638,16 +636,59 @@ static inline void test_copy()
 	}
 }
 
+static size_t Test_count = 0;
+struct Test
+{
+	size_t value;
+
+	Test(size_t v = 0)
+	  : value(v)
+	{
+		++Test_count;
+	}
+	Test(const Test& o)
+	  : value(o.value)
+	{
+		++Test_count;
+	}
+	~Test() { --Test_count; }
+	Test& operator=(const Test& o)
+	{
+		value = o.value;
+		return *this;
+	}
+
+	operator size_t() const { return value; }
+
+};
+
+
+inline bool operator==(const Test& l, const Test& r) 
+{
+	return l.value == r.value;
+}
+inline bool operator!=(const Test& l, const Test& r)
+{
+	return l.value != r.value;
+}
+inline bool operator<(const Test& l, const Test& r)
+{
+	return l.value < r.value;
+}
+
+template<>
+struct stenos::is_relocatable<Test> : std::true_type
+{
+};
 
 int test_cvector(int, char*[])
 {
 
 	using namespace stenos;
-	
+
 	test_copy();
 	test_for_each();
 	test_serialize();
-
 
 	{
 		CountAlloc<std::atomic<int>> al;
@@ -688,13 +729,15 @@ int test_cvector(int, char*[])
 		STENOS_TEST(get_alloc_bytes(al) == 0);
 	}
 
-	
-
-	
 	CountAlloc<size_t> al;
 	// Test cvector and potential memory leak or wrong allocator propagation
 	test_cvector<size_t>(50000, al);
 	STENOS_TEST(get_alloc_bytes(al) == 0);
-	
+
+	CountAlloc<Test> al2;
+	test_cvector<Test>(50000, al2);
+	STENOS_TEST(get_alloc_bytes(al2) == 0);
+	STENOS_TEST(Test_count == 0);
+
 	return 0;
 }

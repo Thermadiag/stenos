@@ -86,7 +86,6 @@ namespace std
 
 #include <algorithm>
 #include <vector>
-#include <atomic>
 #include <limits>
 #include <thread>
 #include <mutex>
