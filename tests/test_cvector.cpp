@@ -33,6 +33,7 @@
 #include <memory>
 #include <type_traits>
 #include <random>
+#include <thread>
 
 #ifdef max
 #undef min
@@ -532,129 +533,37 @@ int test_cvector(int, char*[])
 	using namespace stenos;
 	
 	{
+		// Test concurrent access in read mode
 		cvector<std::atomic<int>> v;
 		v.resize(500000);
 		for (auto& i : v)
 			i.move().store(0);
 
-		int count = 1000;
+		int count = 100;
 
-		#pragma omp parallel for
-		for (int i = 0; i < count; ++i) {
-		
-			for (auto& i : v)
-				i.move().fetch_add(1);
+		std::thread ths[16];
+		std::atomic<bool> start{ false };
+		for (int t = 0; t < 16; ++t) {
+			ths[t] = std::thread([&]() {
+				while (!start.load())
+					std::this_thread::yield();
+				for (int i = 0; i < count; ++i) {
+
+					for (auto& i : v)
+						i.move().fetch_add(1);
+				}
+			});
 		}
+
+		start.store(true);
+		for (int t = 0; t < 16; ++t)
+			ths[t].join();
 
 		std::cout << "fetch_add " << v.current_compression_ratio() << std::endl;
 		for (auto& i : v) {
-			STENOS_TEST(i.get().load() == count);
+			STENOS_TEST(i.get().load() == count * 16);
 		}
 	}
-
-	{
-		cvector<int> w;
-		// fill with consecutive values
-		for (size_t i = 0; i < 10000000; ++i)
-			w.push_back((int)i);
-
-		std::vector<int> v(w.size());  
-		std::vector<int> v2(w.size());
-
-		timer t;
-
-		t.tick();
-		auto it = v.begin();
-		w.const_for_each(0, w.size(), [&it](auto& val) {
-			*it = val;
-			++it;
-		});
-		auto elapsed_ms = t.tock() * 1e-6;
-		std::cout << "for each: " << w.current_compression_ratio() << " in " << elapsed_ms << " ms" << std::endl;
-
-
-		t.tick();
-		std::copy(w.cbegin(), w.cend(), v.begin());
-		 elapsed_ms = t.tock() * 1e-6;
-		std::cout << "std::copy: " << w.current_compression_ratio() << " in " << elapsed_ms << " ms" << std::endl;
-
-		
-
-		t.tick();
-		for (size_t i = 0; i < v.size(); ++i)
-			v[i] = w[i];
-		elapsed_ms = t.tock() * 1e-6;
-		std::cout << "for loop: " << w.current_compression_ratio() << " in " << elapsed_ms << " ms" << std::endl;
-
-		t.tick();
-		for (size_t i = 0; i < v.size(); ++i)
-			v2[i] = v[i];
-		elapsed_ms = t.tock() * 1e-6;
-		std::cout << "vector for loop: " << w.current_compression_ratio() << " in " << elapsed_ms << " ms" << std::endl;
-
-	}  
-
-	// The goal of this example is to keep track of the program memory footprint will performing some operations on a compressed vector
-	{
-		
-		cvector<int> w;
-		// fill with consecutive values
-		
-		for (size_t i = 0; i < 10000000; ++i)
-			w.push_back((int)i);
-		
-		// very good compression ratio as data are sorted
-		std::cout << "push_back: " << w.current_compression_ratio() << std::endl;
-
-		// shuffle the cvector
-		timer t;
-		t.tick();
-		std::mt19937 rng(0);
-		std::shuffle(w.begin(), w.end(), rng);
-		auto elapsed_ms = t.tock() * 1e-6;
-
-		// Bad compression ratio on random values (but still better than 1)
-		std::cout << "random_shuffle: " << w.current_compression_ratio() << " in " << elapsed_ms << " ms" << std::endl;
-
-		// sort the cvector
-		t.tick();
-		std::sort(w.begin(), w.end());
-		elapsed_ms = t.tock() * 1e-6;
-		// Go back to original ratio
-		std::cout << "sort: " << w.current_compression_ratio() << " in " << elapsed_ms << " ms" << std::endl;
-
-		bool stop = true;
-	}
-	getchar();
-	getchar();
-	{
-		std::vector<int> w;
-
-		// fill with consecutive values
-		for (size_t i = 0; i < 10000000; ++i)
-			w.push_back((int)i);
-
-		// shuffle the cvector
-		timer t;
-		t.tick();
-		std::mt19937 rng(0);
-		std::shuffle(w.begin(), w.end(), rng);
-		auto elapsed_ms = t.tock() * 1e-6;
-
-		// Bad compression ratio on random values (but still better than 1)
-		std::cout << "random_shuffle in " << elapsed_ms << " ms" << std::endl;
-
-		// sort the cvector
-		t.tick();
-		std::sort(w.begin(), w.end(), std::less<int>{});
-		elapsed_ms = t.tock() * 1e-6;
-		// Go back to original ratio
-		std::cout << "sort in " << elapsed_ms << " ms" << std::endl;
-	}
-
-
-	//return 0;
-	
 
 	
 

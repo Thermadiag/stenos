@@ -1526,8 +1526,6 @@ namespace stenos
 					auto next = it;
 					++next;
 					RawType* r = (RawType*)*it;
-					if (r->buffer)
-						bool stop = true; // TEST
 					al.deallocate(reinterpret_cast<char*>(r), sizeof(RawType));
 					it = next;
 				}
@@ -1964,7 +1962,7 @@ namespace stenos
 				if (raw && raw->size == 0) {
 					deallocate_buffer(d_buckets.size() - 1);
 					// erase_context(raw);
-					raw->reset(); // TEST
+					raw->reset(); // Reset context instead of erasing it
 
 					// Ensure we can lock the bucket to avoid dangling references
 					check_destroy_bucket(d_buckets.size() - 1);
@@ -1992,7 +1990,7 @@ namespace stenos
 				if (raw->size == 0) {
 					deallocate_buffer(d_buckets.size() - 1);
 					// erase_context(raw);
-					raw->reset(); // TEST
+					raw->reset(); // Reset context instead of erasing it
 
 					// Ensure we can lock the bucket to avoid dangling references
 					check_destroy_bucket(d_buckets.size() - 1);
@@ -3203,18 +3201,6 @@ namespace stenos
 		template<class Istream>
 		size_t deserialize(Istream& iss);
 
-		// TEST
-		bool validate()
-		{
-			if (d_data) {
-				for (size_t i = 0; i < d_data->d_buckets.size(); ++i) {
-					auto val = d_data->d_buckets[i].ref_count.value();
-					if (val != 0)
-						return false;
-				}
-			}
-			return true;
-		}
 	};
 
 } // end namespace stenos

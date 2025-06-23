@@ -29,6 +29,7 @@
 #include <sstream>
 #include <cstdio>
 #include <list>
+#include <random>
 #include <stenos/cvector.hpp>
 #include <stenos/timer.hpp>
 
@@ -580,6 +581,103 @@ void bench(size_t count = 10000000)
 
 int bench_cvector(int, char** const)
 {
+	using namespace stenos;
+	{
+		cvector<int> w;
+		// fill with consecutive values
+		for (size_t i = 0; i < 10000000; ++i)
+			w.push_back((int)i);
+
+		std::vector<int> v(w.size());
+		std::vector<int> v2(w.size());
+
+		timer t;
+
+		t.tick();
+		auto it = v.begin();
+		w.const_for_each(0, w.size(), [&it](auto& val) {
+			*it = val;
+			++it;
+		});
+		auto elapsed_ms = t.tock() * 1e-6;
+		std::cout << "for each: " << w.current_compression_ratio() << " in " << elapsed_ms << " ms" << std::endl;
+
+		t.tick();
+		std::copy(w.cbegin(), w.cend(), v.begin());
+		elapsed_ms = t.tock() * 1e-6;
+		std::cout << "std::copy: " << w.current_compression_ratio() << " in " << elapsed_ms << " ms" << std::endl;
+
+		t.tick();
+		for (size_t i = 0; i < v.size(); ++i)
+			v[i] = w[i];
+		elapsed_ms = t.tock() * 1e-6;
+		std::cout << "for loop: " << w.current_compression_ratio() << " in " << elapsed_ms << " ms" << std::endl;
+
+		t.tick();
+		for (size_t i = 0; i < v.size(); ++i)
+			v2[i] = v[i];
+		elapsed_ms = t.tock() * 1e-6;
+		std::cout << "vector for loop: " << w.current_compression_ratio() << " in " << elapsed_ms << " ms" << std::endl;
+	}
+
+	// The goal of this example is to keep track of the program memory footprint will performing some operations on a compressed vector
+	{
+
+		cvector<int> w;
+		// fill with consecutive values
+
+		for (size_t i = 0; i < 10000000; ++i)
+			w.push_back((int)i);
+
+		// very good compression ratio as data are sorted
+		std::cout << "push_back: " << w.current_compression_ratio() << std::endl;
+
+		// shuffle the cvector
+		timer t;
+		t.tick();
+		std::mt19937 rng(0);
+		std::shuffle(w.begin(), w.end(), rng);
+		auto elapsed_ms = t.tock() * 1e-6;
+
+		// Bad compression ratio on random values (but still better than 1)
+		std::cout << "random_shuffle: " << w.current_compression_ratio() << " in " << elapsed_ms << " ms" << std::endl;
+
+		// sort the cvector
+		t.tick();
+		std::sort(w.begin(), w.end());
+		elapsed_ms = t.tock() * 1e-6;
+		// Go back to original ratio
+		std::cout << "sort: " << w.current_compression_ratio() << " in " << elapsed_ms << " ms" << std::endl;
+
+		bool stop = true;
+	}
+	
+	{
+		std::vector<int> w;
+
+		// fill with consecutive values
+		for (size_t i = 0; i < 10000000; ++i)
+			w.push_back((int)i);
+
+		// shuffle the cvector
+		timer t;
+		t.tick();
+		std::mt19937 rng(0);
+		std::shuffle(w.begin(), w.end(), rng);
+		auto elapsed_ms = t.tock() * 1e-6;
+
+		// Bad compression ratio on random values (but still better than 1)
+		std::cout << "random_shuffle in " << elapsed_ms << " ms" << std::endl;
+
+		// sort the cvector
+		t.tick();
+		std::sort(w.begin(), w.end(), std::less<int>{});
+		elapsed_ms = t.tock() * 1e-6;
+		// Go back to original ratio
+		std::cout << "sort in " << elapsed_ms << " ms" << std::endl;
+	}
+
+
 
 	bench<size_t>(10000000);
 	return 0;
