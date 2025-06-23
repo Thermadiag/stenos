@@ -85,7 +85,8 @@ template<class T1, class T2, class T3>
 void write_line_generic(std::ostream & oss, const char * operation, const char *format, const T1 & t1, const T2 & t2, const T3 & t3)
 {
 	static constexpr size_t width = 20;
-	oss << "|" << as_aligned_string(width*2, operation) << "|" << as_aligned_string(width, format, t1) << "|" << as_aligned_string(width, format, t2) << "|" << as_aligned_string(width, format, t3)
+	oss << "|" << as_aligned_string(width * 2, "%s", operation) << "|" << as_aligned_string(width, format, t1) << "|" << as_aligned_string(width, format, t2) << "|"
+	    << as_aligned_string(width, format, t3)
 		  << "|" ;
 }
 

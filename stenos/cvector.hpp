@@ -741,8 +741,10 @@ namespace stenos
 			STENOS_ALWAYS_INLINE const auto& get() const { return (static_cast<const Derived&>(*this)).get(); }
 		};
 
-		// Value wrapper, used as 
-		/* template<class T>
+		// Value wrapper, used as cvector::iterator value_type.
+		// This class is only required to make STL algorithms
+		// work properly with cvector.
+		template<class T>
 		class ValueWrapper : public BaseValue<ValueWrapper<T>>
 		{
 			T value;
@@ -800,7 +802,7 @@ namespace stenos
 			STENOS_ALWAYS_INLINE const T& get() const { return value; }
 			STENOS_ALWAYS_INLINE operator T&() noexcept { return value; }
 			STENOS_ALWAYS_INLINE operator const T&() const noexcept { return value; }
-		};*/
+		};
 
 		/// @brief Const value wrapper class for cvector and cvector::iterator
 		template<class Compressed>
@@ -968,7 +970,7 @@ namespace stenos
 				set(std::move(other));
 				return *this;
 			}
-			/* STENOS_ALWAYS_INLINE auto operator=(const ValueWrapper<T>& other) -> RefWrapper&
+			STENOS_ALWAYS_INLINE auto operator=(const ValueWrapper<T>& other) -> RefWrapper&
 			{
 				set(other.value);
 				return *this;
@@ -977,7 +979,7 @@ namespace stenos
 			{
 				set(std::move(static_cast<T&>(other)));
 				return *this;
-			}*/
+			}
 			STENOS_ALWAYS_INLINE void swap(RefWrapper& other)
 			{
 				if STENOS_LIKELY (std::addressof(other) != this) {
@@ -990,7 +992,7 @@ namespace stenos
 			}
 		};
 
-		/* template<class T>
+		template<class T>
 		template<class C>
 		STENOS_ALWAYS_INLINE ValueWrapper<T>::ValueWrapper(const ConstRefWrapper<C>& v)
 		  : value(v.get())
@@ -1016,7 +1018,7 @@ namespace stenos
 		{
 			value = std::move(v.move());
 			return *this;
-		}*/
+		}
 
 		// Overload swap function for RefWrapper
 
@@ -1086,7 +1088,7 @@ namespace stenos
 
 		public:
 			using T = typename Compressed::value_type;
-			using value_type = T;//ValueWrapper<T>;
+			using value_type = ValueWrapper<T>;
 			using reference = ref_type;
 			using const_reference = const_ref_type&;
 			using pointer = const T*;
