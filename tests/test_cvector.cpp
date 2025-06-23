@@ -39,13 +39,6 @@
 #undef max
 #endif
 
-namespace stenos
-{
-	template<class T, class D>
-	struct is_relocatable<std::unique_ptr<T, D>> : std::true_type
-	{
-	};
-}
 
 #define STENOS_TEST(...)                                                                                                                                                                               \
 	if (!(__VA_ARGS__))                                                                                                                                                                            \
@@ -102,17 +95,8 @@ inline void test_cvector_algorithms(size_t count = 5000000, const Alloc& al = Al
 
 	// Test sort
 	std::sort(deq.begin(), deq.end());
-	std::sort(cvec.begin(), cvec.end() , std::less<type>{}); //TEST: std::less
+	std::sort(cvec.begin(), cvec.end() ); 
 
-	// for (size_t i = 0; i < deq.size(); ++i)
-	//	std::cout << cvec[i].get() << " ";
-	// std::cout << std::endl;
-
-	/*for (size_t i = 0; i < deq.size(); ++i)
-		if (deq[i] != cvec[i]) {
-			std::cout << "error at " << i << ": " << deq[i] << " and " << cvec[i].get() << std::endl;
-			throw std::runtime_error("");
-		}*/
 
 	STENOS_TEST(equal_cvec(deq, cvec));
 
@@ -149,7 +133,7 @@ inline void test_cvector_algorithms(size_t count = 5000000, const Alloc& al = Al
 
 	// Test partial sort
 	std::partial_sort(deq.begin(), deq.begin() + deq.size() / 2, deq.end());
-	std::partial_sort(cvec.begin(), cvec.begin() + cvec.size() / 2, cvec.end(), std::less<type>{});//TEST: std::less
+	std::partial_sort(cvec.begin(), cvec.begin() + cvec.size() / 2, cvec.end());
 	STENOS_TEST(equal_cvec(deq, cvec));
 
 	for (size_t i = 0; i < count; ++i)
@@ -158,7 +142,7 @@ inline void test_cvector_algorithms(size_t count = 5000000, const Alloc& al = Al
 	// Strangely, msvc implementation of std::nth_element produce a warning as it tries to modify the value of const iterator
 	// Test nth_element
 	std::nth_element(deq.begin(), deq.begin() + deq.size() / 2, deq.end());
-	std::nth_element(cvec.begin(), cvec.begin() + cvec.size() / 2, cvec.end(), std::less<type>{}); // TEST: std::less
+	std::nth_element(cvec.begin(), cvec.begin() + cvec.size() / 2, cvec.end()); 
 	STENOS_TEST(equal_cvec(deq, cvec));
 }
 
@@ -261,7 +245,7 @@ void test_cvector(size_t count = 5000000, const Alloc al = Alloc())
 
 	STENOS_TEST(equal_cvec(deq, cvec));
 
-	// Test resiz lower
+	// Test resize lower
 	deq.resize(deq.size() / 10);
 	cvec.resize(cvec.size() / 10);
 	STENOS_TEST(equal_cvec(deq, cvec));
@@ -546,13 +530,7 @@ int test_cvector(int, char*[])
 {
 
 	using namespace stenos;
-	{
-		cvector<std::unique_ptr<int>> v;
-		v.emplace_back(std::make_unique<int>(2));
-
-		std::unique_ptr<int> t = std::move(*v.begin());
-	}
-
+	
 	{
 		cvector<std::atomic<int>> v;
 		v.resize(500000);
@@ -570,14 +548,12 @@ int test_cvector(int, char*[])
 
 		std::cout << "fetch_add " << v.current_compression_ratio() << std::endl;
 		for (auto& i : v) {
-			if (i.get().load() != count)
-				bool stop = true;
+			STENOS_TEST(i.get().load() == count);
 		}
 	}
 
 	{
 		cvector<int> w;
-		w.set_max_contexts(context_ratio(2, Ratio)); // half
 		// fill with consecutive values
 		for (size_t i = 0; i < 10000000; ++i)
 			w.push_back((int)i);
@@ -616,16 +592,15 @@ int test_cvector(int, char*[])
 		elapsed_ms = t.tock() * 1e-6;
 		std::cout << "vector for loop: " << w.current_compression_ratio() << " in " << elapsed_ms << " ms" << std::endl;
 
-	}
+	}  
 
 	// The goal of this example is to keep track of the program memory footprint will performing some operations on a compressed vector
 	{
 		
 		cvector<int> w;
-		//w.set_max_contexts(context_ratio(2, Ratio));//half
 		// fill with consecutive values
 		
-		for (size_t i = 0; i < 1000000; ++i)
+		for (size_t i = 0; i < 10000000; ++i)
 			w.push_back((int)i);
 		
 		// very good compression ratio as data are sorted
@@ -643,7 +618,7 @@ int test_cvector(int, char*[])
 
 		// sort the cvector
 		t.tick();
-		std::sort(w.begin(), w.end(), std::less<int>{});
+		std::sort(w.begin(), w.end());
 		elapsed_ms = t.tock() * 1e-6;
 		// Go back to original ratio
 		std::cout << "sort: " << w.current_compression_ratio() << " in " << elapsed_ms << " ms" << std::endl;
@@ -683,7 +658,7 @@ int test_cvector(int, char*[])
 
 	
 
-	 test_copy();
+	test_copy();
 
 	CountAlloc<size_t> al;
 	// Test cvector and potential memory leak or wrong allocator propagation

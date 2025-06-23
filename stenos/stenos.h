@@ -296,6 +296,7 @@ STENOS_EXPORT size_t stenos_private_compress_block(stenos_context* ctx, const vo
 STENOS_EXPORT size_t stenos_private_decompress_block(stenos_context* ctx, const void* _src, size_t bytesoftype, size_t super_block_size, size_t bytes, void* _dst, size_t dst_size);
 
 STENOS_EXPORT size_t stenos_private_block_size(const void* _src, size_t src_size);
+STENOS_EXPORT size_t stenos_private_block_csize(const void* _src);
 
 STENOS_EXPORT size_t stenos_private_create_compression_header(size_t decompressed_size, size_t super_block_size, void* _dst, size_t dst_size);
 

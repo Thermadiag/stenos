@@ -798,6 +798,17 @@ size_t stenos_private_block_size(const void* _src, size_t src_size)
 	unsigned csize = stenos::read_uint32_3(src);
 	return csize + 4;
 }
+size_t stenos_private_block_csize(const void* _src)
+{
+	// Private API used by cvector, returns the superblock compressed size
+	if (!_src)
+		return 0;
+	const uint8_t* src = (const uint8_t*)_src;
+	// uint8_t code = *src++;
+	++src; // skip code
+	unsigned csize = stenos::read_uint32_3(src);
+	return csize + 4;
+}
 
 size_t stenos_private_create_compression_header(size_t decompressed_size, size_t super_block_size, void* _dst, size_t dst_size)
 {
