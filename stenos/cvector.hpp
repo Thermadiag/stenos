@@ -1204,7 +1204,7 @@ namespace stenos
 			using base_type = CompressedConstIter<Compressed>;
 			using ref_type = typename Compressed::ref_type;
 			using const_ref_type = typename Compressed::const_ref_type;
-			using value_type = T;//typename base_type::value_type;
+			using value_type = typename base_type::value_type;
 			using reference = ref_type&;
 			using const_reference = const_ref_type&;
 			using pointer = value_type*;
