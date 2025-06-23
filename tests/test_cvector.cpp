@@ -575,13 +575,13 @@ static void test_for_each()
 
 		int count = 0;
 		v.const_for_each(0, v.size(), [&](int i) { count += i; });
-		STENOS_TEST(count == v.size());
+		STENOS_TEST((size_t)count == v.size());
 
 		v.for_each_backward(0, v.size(), [](int& i) { ++i; });
 
 		count = 0;
 		v.const_for_each_backward(0, v.size(), [&](int i) { count += i; });
-		STENOS_TEST(count == v.size() * 2);
+		STENOS_TEST((size_t)count == v.size() * 2);
 
 		std::fill_n(v.begin(), v.size(), 0);
 
@@ -590,13 +590,13 @@ static void test_for_each()
 
 		count = 0;
 		v.const_for_each(0, v.size() / 2, [&](int i) { count += i; });
-		STENOS_TEST(count == v.size() / 2);
+		STENOS_TEST((size_t)count == v.size() / 2);
 
 		v.for_each_backward(v.size() / 2, v.size(), [](int& i) { i = 1; });
 
 		count = 0;
 		v.const_for_each_backward(v.size() / 2, v.size(), [&](int i) { count += i; });
-		STENOS_TEST(count == v.size() - v.size() / 2);
+		STENOS_TEST((size_t)count == v.size() - v.size() / 2);
 
 		// Test early stop
 		v.clear();
