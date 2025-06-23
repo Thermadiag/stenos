@@ -1402,7 +1402,7 @@ namespace stenos
 #ifndef NDEBUG
 				char out[block_bytes];
 				size_t r2 = stenos_private_decompress_block(d_ctx, compression_buffer(), sizeof(T), block_bytes, r, out, sizeof(out));
-				STENOS_ASSERT_DEBUG(r2 == bytes ? bytes : block_bytes, "");
+				STENOS_ASSERT_DEBUG(r2 == (bytes != 0 ? bytes : block_bytes), "");
 				STENOS_ASSERT_DEBUG(memcmp(in, out, bytes ? bytes : block_bytes) == 0, "");
 #endif
 				return r;
