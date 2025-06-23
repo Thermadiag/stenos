@@ -942,7 +942,7 @@ namespace stenos
 				return std::move(raw->at(this->bpos));
 			}
 
-			template<class = typename std::enable_if<std::is_move_assignable<T>::value, void>::type>
+			//template<class = typename std::enable_if<std::is_move_assignable<T>::value, void>::type>
 			STENOS_ALWAYS_INLINE void set(const T& obj)
 			{
 				auto raw = this->decompress_if_needed();
@@ -2108,7 +2108,7 @@ namespace stenos
 				auto decompressed = d_buckets[index].load_decompressed();
 				if (!decompressed) {
 					std::lock_guard<SharedSpinner> lock(d_lock);
-					if (decompressed = d_buckets[index].load_decompressed())
+					if ((decompressed = d_buckets[index].load_decompressed()))
 						return decompressed;
 
 					BucketType* pack = &d_buckets[index];
