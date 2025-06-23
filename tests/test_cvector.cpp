@@ -34,6 +34,7 @@
 #include <type_traits>
 #include <random>
 #include <thread>
+#include <sstream>
 
 #ifdef max
 #undef min
@@ -450,6 +451,7 @@ void test_cvector(size_t count = 5000000, const Alloc al = Alloc())
 
 	// Test shrink_to_fit
 	deq.shrink_to_fit();
+	cvec.shrink_to_fit();
 	STENOS_TEST(equal_cvec(deq, cvec));
 
 	// fill again, backward
@@ -504,6 +506,124 @@ void copy_to_vector(const stenos::cvector<T>& in, std::vector<T>& out)
 	std::copy(in.begin(), in.end(), out.begin());
 }
 
+static void test_serialize()
+{
+	// Test serialize/deserialize
+	CountAlloc<size_t> al;
+
+	{
+		using vector_type = stenos::cvector<size_t, 0, 1, CountAlloc<size_t>>;
+		vector_type v(al);
+		for (size_t i = 0; i < 1000000; ++i)
+			v.emplace_back(i);
+		std::mt19937 rng(0);
+		std::shuffle(v.begin(), v.end(), rng);
+
+		std::ostringstream oss;
+		v.serialize(oss);
+
+		std::string str = oss.str();
+		std::istringstream iss(str);
+
+		vector_type v2(al);
+		v2.deserialize(iss);
+
+		STENOS_TEST(equal_cvec(v, v2));
+
+		std::vector<size_t> v3(v.size());
+		size_t r = stenos_decompress(str.data(), sizeof(size_t), str.size(), v3.data(), v3.size() * sizeof(size_t));
+		STENOS_TEST(r == v3.size() * sizeof(size_t));
+		STENOS_TEST(equal_cvec(v3, v2));
+	}
+	STENOS_TEST(get_alloc_bytes(al) == 0);
+
+	// Same with the buffer interface
+	{
+		using vector_type = stenos::cvector<size_t, 0, 1, CountAlloc<size_t>>;
+		vector_type v(al);
+		for (size_t i = 0; i < 1000000; ++i)
+			v.emplace_back(i);
+		std::mt19937 rng(0);
+		std::shuffle(v.begin(), v.end(), rng);
+
+		std::string str(stenos_bound(v.size() * sizeof(size_t)),(char)0);
+		size_t c = v.serialize((char*)str.data(), str.size());
+		str.resize(c);
+
+		vector_type v2(al);
+		v2.deserialize(str.data(),str.size());
+
+		STENOS_TEST(equal_cvec(v, v2));
+
+		std::vector<size_t> v3(v.size());
+		size_t r = stenos_decompress(str.data(), sizeof(size_t), str.size(), v3.data(), v3.size() * sizeof(size_t));
+		STENOS_TEST(r == v3.size() * sizeof(size_t));
+		STENOS_TEST(equal_cvec(v3, v2));
+	}
+	STENOS_TEST(get_alloc_bytes(al) == 0);
+}
+
+static void test_for_each()
+{
+	CountAlloc<size_t> al;
+	{
+		stenos::cvector<int, 0, 1, CountAlloc<size_t>> v(al);
+		v.resize(999999, 0);
+
+		// Basic testing through the whole vector
+		v.for_each(0, v.size(), [](int& i) { ++i; });
+
+		int count = 0;
+		v.const_for_each(0, v.size(), [&](int i) { count += i; });
+		STENOS_TEST(count == v.size());
+
+		v.for_each_backward(0, v.size(), [](int& i) { ++i; });
+
+		count = 0;
+		v.const_for_each_backward(0, v.size(), [&](int i) { count += i; });
+		STENOS_TEST(count == v.size() * 2);
+
+		std::fill_n(v.begin(), v.size(), 0);
+
+		// Half the vector
+		v.for_each(0, v.size() / 2, [](int& i) { ++i; });
+
+		count = 0;
+		v.const_for_each(0, v.size() / 2, [&](int i) { count += i; });
+		STENOS_TEST(count == v.size() / 2);
+
+		v.for_each_backward(v.size() / 2, v.size(), [](int& i) { i = 1; });
+
+		count = 0;
+		v.const_for_each_backward(v.size() / 2, v.size(), [&](int i) { count += i; });
+		STENOS_TEST(count == v.size() - v.size() / 2);
+
+		// Test early stop
+		v.clear();
+		for (int i = 0; i < 999999; ++i)
+			v.push_back(i);
+
+		
+		size_t walk = v.for_each(0,v.size(),[](int i) { return i < 5000; });
+		STENOS_TEST(walk == 5000);
+		walk = v.const_for_each(0, v.size(), [](int i) { return i < 5000; });
+		STENOS_TEST(walk == 5000);
+
+		walk = v.for_each_backward(0, v.size(), [](int i) { return i > 5000; });
+		STENOS_TEST(walk == v.size() - 5001);
+
+		walk = v.const_for_each_backward(0, v.size(), [](int i) { return i > 5000; });
+		STENOS_TEST(walk == v.size() - 5001);
+
+		// Test no walk at all
+		STENOS_TEST(v.for_each(0, 0, [](int i) { return true; }) == 0);
+		STENOS_TEST(v.for_each(0, v.size(), [](int i) { return false; }) == 0);
+		STENOS_TEST(v.for_each_backward(0, 0, [](int i) { return true; }) == 0);
+		STENOS_TEST(v.for_each_backward(0, v.size(), [](int i) { return false; }) == 0);
+	}
+	STENOS_TEST(get_alloc_bytes(al) == 0);
+}
+
 static inline void test_copy()
 {
 	{
@@ -517,14 +637,6 @@ static inline void test_copy()
 		copy_to_vector(vec, out2);
 	}
 }
-namespace stenos
-{
-	template<class T>
-	struct is_relocatable<std::atomic<T>> : std::true_type
-	{
-	};
-}
-
 
 
 int test_cvector(int, char*[])
@@ -532,43 +644,53 @@ int test_cvector(int, char*[])
 
 	using namespace stenos;
 	
+	test_copy();
+	test_for_each();
+	test_serialize();
+
+
 	{
-		// Test concurrent access in read mode
-		cvector<std::atomic<int>> v;
-		v.resize(500000);
-		for (auto& i : v)
-			i.move().store(0);
+		CountAlloc<std::atomic<int>> al;
+		{
+			// Test concurrent access in read mode
+			cvector<std::atomic<int>, 0, 1, CountAlloc<std::atomic<int>>> v(al);
+			v.resize(500000);
+			for (auto& i : v)
+				i.move().store(0);
 
-		int count = 100;
+			int count = 100;
 
-		std::thread ths[16];
-		std::atomic<bool> start{ false };
-		for (int t = 0; t < 16; ++t) {
-			ths[t] = std::thread([&]() {
-				while (!start.load())
-					std::this_thread::yield();
-				for (int i = 0; i < count; ++i) {
+			std::thread ths[16];
+			std::atomic<bool> start{ false };
+			for (int t = 0; t < 16; ++t) {
+				ths[t] = std::thread([&]() {
+					while (!start.load())
+						std::this_thread::yield();
+					for (int i = 0; i < count; ++i) {
 
-					for (auto& i : v)
-						i.move().fetch_add(1);
-				}
-			});
+						for (auto& i : v)
+							i.move().fetch_add(1);
+					}
+				});
+			}
+
+			start.store(true);
+			for (int t = 0; t < 16; ++t)
+				ths[t].join();
+
+			v.shrink_to_fit();
+
+			std::cout << "fetch_add " << v.current_compression_ratio() << std::endl;
+			for (auto& i : v) {
+				STENOS_TEST(i.get().load() == count * 16);
+			}
 		}
-
-		start.store(true);
-		for (int t = 0; t < 16; ++t)
-			ths[t].join();
-
-		std::cout << "fetch_add " << v.current_compression_ratio() << std::endl;
-		for (auto& i : v) {
-			STENOS_TEST(i.get().load() == count * 16);
-		}
+		STENOS_TEST(get_alloc_bytes(al) == 0);
 	}
 
 	
 
-	test_copy();
-
+	
 	CountAlloc<size_t> al;
 	// Test cvector and potential memory leak or wrong allocator propagation
 	test_cvector<size_t>(50000, al);
