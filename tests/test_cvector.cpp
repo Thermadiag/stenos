@@ -540,10 +540,18 @@ namespace stenos
 	};
 }
 
+
+
 int test_cvector(int, char*[])
 {
 
 	using namespace stenos;
+	{
+		cvector<std::unique_ptr<int>> v;
+		v.emplace_back(std::make_unique<int>(2));
+
+		std::unique_ptr<int> t = std::move(*v.begin());
+	}
 
 	{
 		cvector<std::atomic<int>> v;

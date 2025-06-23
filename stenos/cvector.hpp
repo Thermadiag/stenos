@@ -64,10 +64,10 @@ namespace std
 
 	/* template<class Compress>
 	typename Compress::value_type move(stenos::detail::RefWrapper<Compress>& other) noexcept;
-
-	template<class Compress>
-	typename Compress::value_type move(stenos::detail::RefWrapper<Compress>&& other) noexcept;
 	*/
+	//template<class Compress>
+	//typename Compress::value_type move(stenos::detail::RefWrapper<Compress>&& other) noexcept;
+	
 }
 
 #include <algorithm>
@@ -3496,13 +3496,13 @@ namespace std
 	// That's currently the only way I found to use generic algorithms (like std::move(It, It, Dst) ) with cvector. Works with msvc, gcc and clang.
 	///////////////////////////
 
-	/* template<class Compress>
+	template<class Compress>
 	STENOS_ALWAYS_INLINE typename Compress::value_type move(stenos::detail::RefWrapper<Compress>& other) noexcept
 	{
 		return stenos_detail::MoveObject<typename Compress::value_type>::apply(other.move());
 	}
-
-	template<class Compress>
+	
+	/* template<class Compress>
 	STENOS_ALWAYS_INLINE typename Compress::value_type move(stenos::detail::RefWrapper<Compress>&& other) noexcept
 	{
 		return stenos_detail::MoveObject<typename Compress::value_type>::apply(other.move());
