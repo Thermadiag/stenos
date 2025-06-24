@@ -6,19 +6,19 @@ Its goal is to reduce the memory footprint of the container while providing perf
 
 ## Internals
 
-By default, `cvector` stores its elements by chunks of 256 values. Whenever a chunk is filled (due for instance to calls to push_back()), it is compressed
-and the chunk itself is either kept internally (for further decompression) or deallocated. This means that `cvector` **NEVER** ensure reference stability,
+By default, `cvector` stores its elements by *decompressed chunks* of 256 values. Whenever a chunk is filled (due for instance to calls to push_back()), it is compressed
+in a *compressed block* and the chunk itself is either kept internally (for further decompression) or deallocated. This means that `cvector` **NEVER** ensure reference stability,
 as a stored object might only exist in its compressed form.
 
-When accessing a value using `cvector::operator[]`, `cvector::at`, `cvector::front`, `cvector::back` or iterators, the corresponding chunk is first located and a reference wrapper to the corresponding element is returned (types `cvector::ref_type` and `cvector::const_ref_type`). If the accessed element is modified, the chunk is mark as dirty, meaning that it will require recompression at some point.
-A reference wrapper basically stores a pointer to `cvector` internal data and the coordinate of the corresponding element. When casting this wrapper to **value_type**, the corresponding chunk is
+When accessing a value using `cvector::operator[]`, `cvector::at`, `cvector::front`, `cvector::back` or iterators, the corresponding block/chunk is first located and a reference wrapper to the corresponding element is returned (types `cvector::ref_type` and `cvector::const_ref_type`). If the accessed element is modified, the chunk is mark as dirty, meaning that it will require recompression at some point.
+A reference wrapper basically stores a pointer to `cvector` internal data and the coordinate of the corresponding element. When casting this wrapper to **value_type**, the corresponding block is
 decompressed (if needed) and the value at given location is returned. A reference wrapper can be casted to **value_type** or **const value_type&**, in which case the 
 reference should not be used after accessing another element.
 
-Reference wrappers are ref counted. While a reference wrapper on a compressed block exists, the corresponding decompressed chunk cannot be stolen by another chunk. 
+Reference wrappers are ref counted. While a reference wrapper on a compressed block exists, the corresponding decompressed chunk cannot be stolen by another block. 
 This behavior is mandatory to avoid UB with some custom/STL algorithms, and to allow parallel access (in read-only mode) to the container.
 
-The (atomic) reference count makes `cvector::operator[]` calls relatively slow. If possible, you should use iterators which are way faster as they try to avoid updating the reference count as much as possible.
+The (atomic) reference count makes `cvector::operator[]` calls relatively slow. If possible, you should use iterators which are way faster as they try to avoid updating the reference counts as much as possible.
 
 Basic usage:
 
@@ -31,7 +31,7 @@ for(int i=0; i < 1000; ++i)
 
 
 {
-// Store a const reference of element 0
+// Store a const reference to element 0
 const int & c = vec[0];
 
 // WARNING: accessing element at position 600 might invalidate reference c!
@@ -42,7 +42,7 @@ const int & d = vec[600];
 // Store a reference wrapper to element 0
 auto ref = vec[0];
 
-// Store a const reference of element 0
+// Store a const reference to element 0
 const int & c = ref;
 
 // This is ok: element 0 is still valid  as 'ref' holds a reference to the corresponding chunk
@@ -131,7 +131,7 @@ cvector supports multi-threaded read-only accesses like a regular `std::vector`.
 These functions apply a functor to a sub-range of the cvector and support concurrent access, even in write mode`.
 The passed functor can return a boolean value, in which case a value of false will stop the function. These functions return the number of successfully inspected elements.
 
-Calling `for_each()` is usually faster that using iterators or `cvector::operator[]` as it avoids many updates of chunk's reference counts. 
+Calling `for_each()` is usually faster that using iterators or `cvector::operator[]` as it avoids many updates of block's reference counts. 
 Be aware that `for_each()` will mark all inspected chunks as dirty (requiring recompression) as opposed to the const versions that should be favored if possible.
 
 Basic usage:
