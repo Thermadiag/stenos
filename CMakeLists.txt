@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.16)
 include(FetchContent)
 
 project(stenos
-    VERSION 0.1
+    VERSION 0.2
     DESCRIPTION "Compression library for binary data"
     HOMEPAGE_URL "https://github.com/Thermadiag/stenos"
     LANGUAGES CXX

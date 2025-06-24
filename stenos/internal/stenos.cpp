@@ -412,6 +412,9 @@ namespace stenos
 
 		STENOS_ASSERT_DEBUG(bytes % bytesoftype == 0, "invalid input byte size");
 
+		// Check SSE4.1 support
+		static const bool no_sse = !stenos::cpu_features().HAS_SSE41;
+
 		size_t result = 0;
 		uint8_t* dst = (uint8_t*)_dst;
 		uint8_t* dst_end = dst + dst_size;
@@ -434,6 +437,8 @@ namespace stenos
 		if (!time_limited) {
 			// Adjust zstd level (1 to 9)
 			if (bytesoftype > 1) {
+				if (no_sse && level == 1)
+					level = 2;
 				// level 1 becomes block level 2
 				if (level < 2)
 					goto BLOCK;
@@ -482,7 +487,7 @@ namespace stenos
 				lz_ratio = lz4_guess_ratio((const char*)src, bytes / 16, 10 - glevel);
 			}
 
-			if (target_speed > 1500000000 && bytesoftype > 1) {
+			if (!no_sse && target_speed > 1500000000 && bytesoftype > 1) {
 				// Very high speed requested: direct block compression
 				goto BLOCK;
 			}
@@ -500,9 +505,10 @@ namespace stenos
 				// Transpose in buffer
 				shuffle(bytesoftype, bytes, (uint8_t*)src, (uint8_t*)buffer1->bytes);
 
-				if (target_speed < 600000000 && bytes >= bytesoftype * 256 && level > 2) {
+				if (no_sse || (target_speed < 600000000 && bytes >= bytesoftype * 256 && level > 2)) {
 
-					// If high speed required (or level <= 2), don't check for lz ratio on transposed input
+					// If high speed required (or level <= 2), don't check for lz ratio on transposed input.
+					// Always do it if SSE4.1 is not available.
 
 					lz_transposed_ratio = guess_transposed_lz_ratio(buffer1->bytes, bytesoftype, bytes, glevel, 0);
 					if (lz_transposed_ratio > lz_ratio)
