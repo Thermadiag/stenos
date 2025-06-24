@@ -582,7 +582,7 @@ void bench(size_t count = 10000000)
 int bench_cvector(int, char** const)
 {
 	using namespace stenos;
-	/* {
+	{
 		cvector<int> w;
 		// fill with consecutive values
 		for (size_t i = 0; i < 10000000; ++i)
@@ -618,7 +618,7 @@ int bench_cvector(int, char** const)
 			v2[i] = v[i];
 		elapsed_ms = t.tock() * 1e-6;
 		std::cout << "vector for loop: " << w.current_compression_ratio() << " in " << elapsed_ms << " ms" << std::endl;
-	}*/
+	}
 
 	// The goal of this example is to keep track of the program memory footprint will performing some operations on a compressed vector
 	{
@@ -652,7 +652,6 @@ int bench_cvector(int, char** const)
 		std::cout << "sort: " << w.current_compression_ratio() << " in " << elapsed_ms << " ms" << std::endl;
 
 	}
-	return 0;
 	
 	{
 		std::vector<int> w;
