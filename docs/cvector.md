@@ -7,38 +7,20 @@ Its goal is to reduce the memory footprint of the container while providing perf
 ## Internals
 
 By default, `cvector` stores its elements by chunks of 256 values. Whenever a chunk is filled (due for instance to calls to push_back()), it is compressed
-and the chunk itself is either kept internally (for further decompression) or deallocated. This means that `cvector` NEVER ensure reference stability,
+and the chunk itself is either kept internally (for further decompression) or deallocated. This means that `cvector` **NEVER** ensure reference stability,
 as a stored object might only exist in its compressed form.
 
-When accessing a value using iterators or operator[], the corresponding chunk is first located. If this chunk was already decompressed, a reference wrapper
-to the corresponding element is returned. Otherwise, the memory chunk is decompressed first. If the accessed element is modified, the chunk is mark as dirty,
-meaning that it will require recompression at some point.
-
-To avoid compressing/decompressing lots of chunks when performing heavy random-access operations, `cvector` allows multiple chunks to store their elements
-in their decompressed form, called **decompression contexts**. The maximum number of decompression contexts is defined using
-`cvector::set_max_contexts()`, and is either a fixed number or a fraction of the total number of chunks. By default, the number of decompression contexts is
-limited to 12.5% of the number of chunks. This means that the `cvector` memory footprint is at most 1.125 times higher than `cvector::size()*sizeof(value_type)`.
-
-Whenever a chunk must be decompressed to access one of its element, it allocates a new decompression context if the maximum number of allowed contexts has not been
-reach yet, and this context is added to an internal list of all available contexts. Otherwise, it try to reuse an existing decompression context 
-from this internal list. Note that the chunk might reuse a context already used by another chunk. In this case, this other chunk is recompressed if marked dirty, 
-the context is detached from this chunk and attached to the new one which decompress its elements inside. This means that accessing an element 
-(even with const members) might invalidate any other reference to elements within the container. 
- 
-
-## Element access
-
-Individual elements can be accessed using `cvector::operator[]`, `cvector::at`, `cvector::front`, `cvector::back` or iterators. As seen in previous section, accessing
-an element might invalidate all other references to the container elements (in fact, it might invalidate all elements that do not belong to the corresponding chunk).
-
-That's why access members return a reference wrapper instead of a plain reference (types `cvector::ref_type` and `cvector::const_ref_type`). A reference wrapper basically
-stores a pointer to `cvector` internal data and the coordinate of the corresponding element. When casting this wrapper to **value_type**, the corresponding chunk is
+When accessing a value using `cvector::operator[]`, `cvector::at`, `cvector::front`, `cvector::back` or iterators, the corresponding chunk is first located and a reference wrapper to the corresponding element is returned (types `cvector::ref_type` and `cvector::const_ref_type`). If the accessed element is modified, the chunk is mark as dirty, meaning that it will require recompression at some point.
+A reference wrapper basically stores a pointer to `cvector` internal data and the coordinate of the corresponding element. When casting this wrapper to **value_type**, the corresponding chunk is
 decompressed (if needed) and the value at given location is returned. A reference wrapper can be casted to **value_type** or **const value_type&**, in which case the 
 reference should not be used after accessing another element.
 
-Reference wrappers are ref counted. While a reference wrapper on a compressed block exists, the corresponding decompression context cannot be stolen by another chunk. This behavior is mandatory to avoid UB with some custom/STL algorithms.
+Reference wrappers are ref counted. While a reference wrapper on a compressed block exists, the corresponding decompressed chunk cannot be stolen by another chunk. 
+This behavior is mandatory to avoid UB with some custom/STL algorithms, and to allow parallel access (in read-only mode) to the container.
 
-Example:
+The (atomic) reference count makes `cvector::operator[]` calls relatively slow. If possible, you should use iterators which are way faster as they try to avoid updating the reference count as much as possible.
+
+Basic usage:
 
 ```cpp
 
@@ -47,29 +29,34 @@ stenos::cvector<int> vec;
 for(int i=0; i < 1000; ++i)
 		vec.push_back(i);
 
+
 {
-// a is of type cvector<int>::ref_type
-auto a = vec[0];
-
-// copy element pointed by a to b
-int b = a;
-}
-
 // Store a const reference of element 0
 const int & c = vec[0];
 
 // WARNING: accessing element at position 600 might invalidate reference c!
 const int & d = vec[600];
+}
+
+{
+// Store a reference wrapper to element 0
+auto ref = vec[0];
+
+// Store a const reference of element 0
+const int & c = ref;
+
+// This is ok: element 0 is still valid  as 'ref' holds a reference to the corresponding chunk
+const int & d = vec[600];
+}
 
 ``` 
 
-In order for cvector to work with all STL algorithms, some latitudes with C++ standard were taken:
--	`std::swap` is overloaded for reference wrapper types. Overloading `std::swap` is forbidden by the standard, but works in practice with latest versions of msvc, gcc and clang.
--	`std::move` is overloaded for reference wrapper types. This was mandatory for algorithms like `std::move(first,last,dst)` to work on move-only types.
+In order for cvector to work with all STL algorithms, some latitudes with C++ standard were taken. 
+Indeed, `std::move` is overloaded for reference wrapper types. This was mandatory for algorithms like `std::move(first,last,dst)` to work on move-only types (like std::unique_ptr).
 
 Thanks to this, it is possible to call `std::sort` or `std::shuffle` on a `cvector`. For instance, the following code snippet successively:
--	Call `cvector::push_back` to fill the cvector with sorted data. In this case the compression ratio (compressed size/raw size) is very low due to high values correlation.
--	Call `std::shuffle` to randomly shuffle the cvector: the compression ratio becomes very high as compressing random data is basically impossible.
+-	Call `cvector::push_back` to fill the cvector with sorted data. In this case the compression ratio (raw size/compressed size) is very high due to high values correlation.
+-	Call `std::shuffle` to randomly shuffle the cvector: the compression ratio becomes very low as compressing random data is basically impossible.
 -	Sort again the cvector with `std::sort` to get back the initial compression ratio.
 
 ```cpp
@@ -118,6 +105,10 @@ int main(int, char** const)
 ``` 
 
 
+Below is a curve representing the program memory footprint during previous operations (extracted with Visual Studio diagnostic tools):
+
+![cvector memory](docs/cvector.png)
+
 ## Restrictions
 
 cvector only works with relocatable value types (relocation in terms of move plus destroy).
@@ -136,11 +127,12 @@ cvector provides the following additional template parameters:
 
 ## Multithreading
 
-By default, cvector does not support multi-threaded access, even on read-only mode. Indeed, retrieving an element might trigger a block decompression, which in
-turn might trigger a recompression of another block in order to steal its decompression context.
+cvector supports multi-threaded read-only accesses like a regular `std::vector`. For read-write multi-threading, cvector provides the members `for_each()`, `const_for_each()`, `for_each_backward()` and `const_for_each_backward()`.
+These functions apply a functor to a sub-range of the cvector and support concurrent access, even in write mode`.
+The passed functor can return a boolean value, in which case a value of false will stop the function. These functions return the number of successfully inspected elements.
 
-That's why cvector provides the members `for_each()`, `const_for_each()`, `for_each_backward()` and `const_for_each_backward()`.
-These functions apply a functor to a sub-range of the cvector and support parallel access: `for_each()` can for instance be called in parallel to `const_for_each_backward()` (but not other cvector members).
+Calling `for_each()` is usually faster that using iterators or `cvector::operator[]` as it avoids many updates of chunk's reference counts. 
+Be aware that `for_each()` will mark all inspected chunks as dirty (requiring recompression) as opposed to the const versions that should be favored if possible.
 
 Basic usage:
 
@@ -152,7 +144,7 @@ Basic usage:
 
 int  main  (int , char** )
 {
-using namespace stenos;
+	using namespace stenos;
 
 	using namespace stenos;
 
@@ -165,7 +157,7 @@ using namespace stenos;
 	// Apply std::cos to all values
 	random_vals.for_each(0, random_vals.size(), [](float& v) { v = std::cos(v); });
 
-return 0;
+	return 0;
 }
 
 ```
@@ -175,9 +167,9 @@ return 0;
 
 cvector provides serialization/deserialization functions working on compressed blocks. Use `cvector::serialize` to save the cvector content in
 a `std::ostream` object or in a buffer, and `cvector::deserialize` to read back the cvector from a `std::istream` object or a buffer. When deserializing a cvector object with
-cvector::deserialize, the cvector template parameters must be the same as the ones used for serialization, except for the **Level** parameter and the allocator type.
+cvector::deserialize, the cvector value type and BlockSize template parameters must be the same as the ones used for serialization.
 
-Note that the serialized content can be decompress with `stenos_decompress()` and `stenos_decompress_generic()`.
+Note that the serialized content can be decompressed with `stenos_decompress()` and `stenos_decompress_generic()` as well.
 
 Example:
 
@@ -229,7 +221,6 @@ int  main  (int , char** )
 }
 
 ```
-
 
 
 ## Text compression

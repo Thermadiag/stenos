@@ -7,7 +7,7 @@ enable_testing()
 # create the testing file and list of tests
 create_test_sourcelist (Tests
 stenos_tests.cpp
-  tests.cpp
+  tests_comp_decomp.cpp
   test_cvector.cpp
  )
 
