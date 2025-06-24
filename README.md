@@ -10,7 +10,11 @@ As opposed to Blosc, Stenos does not need to be specified a filter like byte shu
 -	Zstd compression on the shuffled + byte delta input
 -	Direct Zstd compression without shuffling.
 
-Despite all these possibilities, Stenos usually compress better and faster than Blosc + Zstd or lz4. The following graphs show the compression ratio versus speed for different types of data and testing Stenos, Blosc+Zstd (byte shuffling + bit shuffling), Blosc+lz4.
+Despite all these possibilities, Stenos usually compress better and faster than Blosc + Zstd or lz4. 
+The following graphs show the compression ratio versus speed for different types of data (dataset available <a href="https://github.com/Thermadiag/stenos_dataset">here</a>) and testing Stenos and Blosc+Zstd (byte shuffling + bit shuffling).
+Stenos usually outperforms raw byte/bit-shuffling + Zstd in both space and time.
+
+![Benchmarks](docs/benchmarks.svg "Benchmarks")
 
 Stenos supports multi-threaded compression and decompression, but not (yet) streaming compression.
 

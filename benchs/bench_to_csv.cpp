@@ -174,7 +174,7 @@ int bench_to_csv(int, char** const)
 	std::ofstream csv("results.csv");
 	csv << "sep=;" << std::endl;
 
-	bench_file_csv<12>(STENOS_DATA_DIR "/dataset/12_953134_float3.bin", csv);
+	/* bench_file_csv<12>(STENOS_DATA_DIR "/dataset/12_953134_float3.bin", csv);
 	bench_file_csv<16>(STENOS_DATA_DIR "/dataset/16_232630_float4.bin", csv);
 	bench_file_csv<16>(STENOS_DATA_DIR "/dataset/16_1024_sq_float4.bin", csv);
 	bench_file_csv<16>(STENOS_DATA_DIR "/dataset/16_2048_sq_float4.bin", csv);
@@ -182,7 +182,7 @@ int bench_to_csv(int, char** const)
 	bench_file_csv<2, uint16_t>(STENOS_DATA_DIR "/dataset/2_DIV.txt", csv);
 	bench_file_csv<2, uint16_t>(STENOS_DATA_DIR "/dataset/2_LH1.txt", csv);
 	bench_file_csv<2>(STENOS_DATA_DIR "/dataset/2_PI240_15s.wav", csv);
-	bench_file_csv<8, double>(STENOS_DATA_DIR "/dataset/8_UTOR.txt", csv);
+	bench_file_csv<8, double>(STENOS_DATA_DIR "/dataset/8_UTOR.txt", csv);*/
 	bench_file_csv<8, double>(STENOS_DATA_DIR "/dataset/8_SHYBPTOT.txt", csv);
 	
 	return 0;
