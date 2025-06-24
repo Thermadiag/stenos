@@ -165,6 +165,12 @@ The following cmake options are available:
 
 If you link with the static version without using cmake, you must define STENOS_STATIC yourself.
 
+Supported platforms
+-------------------
+
+Stenos should support all platforms supported by Zstd. If SSE4.1 is not available (like macOS on ARM architecture), the block compression will be skipped and only the 3 remaining compression strategies will be used (shuffle + Zstd, shuffle + byte delta + Zstd or raw Zstd).
+Any attempt to port the SSE/AVX code to ARM is more than welcome.
+
 
 Acknowledgements
 ----------------
