@@ -1,3 +1,7 @@
+![Windows/msvc](https://github.com/Thermadiag/stenos/actions/workflows/build-windows.yml/badge.svg)
+![Linux/gcc](https://github.com/Thermadiag/stenos/actions/workflows/build-linux.yml/badge.svg)
+![macOS/clang](https://github.com/Thermadiag/stenos/actions/workflows/build-macos.yml/badge.svg)
+
 Stenos
 ------
 
