@@ -300,6 +300,8 @@ int bench_all(int, char** const)
 	}
 
 	blosc1_set_compressor("zstd");
+
+
 	bench_file<12>(STENOS_DATA_DIR "/dataset/12_953134_float3.bin");
 	bench_file<16>(STENOS_DATA_DIR "/dataset/16_232630_float4.bin");
 	bench_file<16>(STENOS_DATA_DIR "/dataset/16_1024_sq_float4.bin");

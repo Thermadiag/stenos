@@ -39,7 +39,7 @@ namespace stenos
 		if (bytes == 0)
 			return;
 
-		if (bytes < 1024) {
+		if (bytes <= 2048) {
 
 			*dst++ = *src++;
 			--bytes;
@@ -82,7 +82,7 @@ namespace stenos
 		if (bytes == 0)
 			return;
 
-		if (bytes < 1024) {
+		if (bytes <= 2048) {
 
 			*dst++ = *src++;
 			--bytes;
@@ -151,7 +151,7 @@ namespace stenos
 		if (bytes == 0)
 			return;
 
-		if (bytes < 1024) {
+		if (bytes <= 2048) {
 
 			*dst++ = *src++;
 			--bytes;
@@ -235,7 +235,7 @@ namespace stenos
 		if (bytes == 0)
 			return;
 
-		if (bytes < 1024) {
+		if (bytes <= 2048) {
 			*dst++ = *src++;
 			--bytes;
 			for (size_t i = 0; i < bytes; ++i) {
@@ -287,7 +287,7 @@ namespace stenos
 
 		__m128i mask = _mm_setr_epi8((char)0xFF, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
 
-		if (bytes < 1024) {
+		if (bytes <= 2048) {
 
 			auto end = src + bytes;
 			__m128i first = _mm_setzero_si128();
@@ -394,7 +394,7 @@ namespace stenos
 		const __m256i mask = _mm256_setr_epi8((char)0xFF, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
 		const __m256i shuffle = _mm256_set_m128i(_mm_set1_epi8(15), _mm_set1_epi8((char)0x80));
 
-		if (bytes < 1024) {
+		if (bytes <= 2048) {
 
 			auto end = src + bytes;
 			__m256i first = _mm256_setzero_si256();

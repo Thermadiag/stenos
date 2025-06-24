@@ -378,6 +378,8 @@ namespace stenos
 		// Try to guess lz compression ratio on input
 		size_t elements = bytes / bytesoftype;
 		size_t stepsize = elements / (16 / (level - 1)); // Check more bytes for higher levels
+		if (stepsize < 64)
+			stepsize = elements; // We need at least 64 bytes to assess something
 		size_t csize = 0;
 		size_t processed = 0;
 
@@ -437,16 +439,21 @@ namespace stenos
 		if (!time_limited) {
 			// Adjust zstd level (1 to 9)
 			if (bytesoftype > 1) {
-				if (no_sse && level == 1)
-					level = 2;
-				// level 1 becomes block level 2
-				if (level < 2)
-					goto BLOCK;
+				if (no_sse) {
+					zstd_level = level;
+					if (level == 1)
+						level = 2;
+				}
 				else {
-					// skip level 4 that does not bring much
-					zstd_level = level - 1;
-					if (zstd_level >= 4)
-						++zstd_level;
+					// level 1 becomes block level 2
+					if (level < 2)
+						goto BLOCK;
+					else {
+						// skip level 4 that does not bring much
+						zstd_level = level - 1;
+						if (zstd_level >= 4)
+							++zstd_level;
+					}
 				}
 			}
 			else
@@ -536,7 +543,7 @@ namespace stenos
 			  stenos::block_compress_generic(src, bytesoftype, bytes, buffer2->bytes, bytes, block_level, level, ctx->t, &lz_ratio, bytesoftype > 1 ? buffer1->bytes : nullptr);
 			if (has_error(cblock) || cblock > bytes) {
 				// Failed: compression ratio too low
-				if (lz_ratio > 1.4) {
+				if (lz_ratio > 1.40) {
 					// Under 1.4 ratio, direct entropy compression should be used (direct zstd)
 					if (lz_ratio == lz_transposed_ratio)
 						goto TRANSPOSED_ZSTD;
