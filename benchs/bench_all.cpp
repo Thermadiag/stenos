@@ -299,6 +299,8 @@ int bench_all(int, char** const)
 
 	blosc1_set_compressor("zstd");
 
+	bench_file<1>(STENOS_DATA_DIR "/dataset/1_javascript.js");
+	bench_file<1, uint8_t>(STENOS_DATA_DIR "/dataset/1_tree_r.txt");
 	bench_file<12>(STENOS_DATA_DIR "/dataset/12_953134_float3.bin");
 	bench_file<16>(STENOS_DATA_DIR "/dataset/16_232630_float4.bin");
 	bench_file<16>(STENOS_DATA_DIR "/dataset/16_1024_sq_float4.bin");
@@ -309,6 +311,7 @@ int bench_all(int, char** const)
 	bench_file<2>(STENOS_DATA_DIR "/dataset/2_PI240_15s.wav");
 	bench_file<8, double>(STENOS_DATA_DIR "/dataset/8_UTOR.txt");
 	bench_file<8, double>(STENOS_DATA_DIR "/dataset/8_SHYBPTOT.txt");
+	
 
 	return 0;
 }

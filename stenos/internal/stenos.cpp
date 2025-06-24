@@ -525,16 +525,20 @@ namespace stenos
 					if (lz_transposed_delta_ratio > lz_ratio)
 						lz_ratio = lz_transposed_delta_ratio;
 
-					if (target_speed < 2000000 && level == 9) {
-						// For highest level, try to favor ZSTD compression
+					if (target_speed < 2000000 ) {
+						// Try to favor ZSTD compression
 						// as it usually always outperform block compression
 						// for its highest levels
-						const double factor = 1.6;
+						const double factor = 1. + level / 12.;
 						lz_transposed_ratio *= factor;
 						lz_transposed_delta_ratio *= factor;
 						lz_ratio *= factor;
 					}
 				}
+			}
+			else if (target_speed < 2000000 /* && level == 9*/) {
+				const double factor = 1. + level /12.;
+				lz_ratio *= factor;
 			}
 
 			// Try block compression

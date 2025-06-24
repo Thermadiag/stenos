@@ -181,6 +181,8 @@ int bench_to_csv(int, char** const)
 	bench_file_csv<2>(STENOS_DATA_DIR "/dataset/2_PI240_15s.wav", csv);
 	bench_file_csv<8, double>(STENOS_DATA_DIR "/dataset/8_UTOR.txt", csv);
 	bench_file_csv<8, double>(STENOS_DATA_DIR "/dataset/8_SHYBPTOT.txt", csv);
+	bench_file_csv<1, uint8_t>(STENOS_DATA_DIR "/dataset/1_javascript.js", csv);
+	bench_file_csv<1, uint8_t>(STENOS_DATA_DIR "/dataset/1_tree_r.txt", csv);
 
 	return 0;
 }

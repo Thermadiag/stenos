@@ -52,6 +52,17 @@ static std::vector<T> read_text(const char* filename)
 	std::vector<T> res;
 	std::ifstream iss(filename, std::ios::binary);
 
+	if (sizeof(T) == 1) {
+		using type = uint16_t;
+		while (iss) {
+			type val;
+			iss >> val;
+			if (iss)
+				res.push_back(static_cast<T>(val));
+		}
+		return res;
+	}
+
 	while (iss) {
 		T val;
 		iss >> val;
