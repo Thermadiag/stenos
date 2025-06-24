@@ -107,7 +107,7 @@ int main(int, char** const)
 
 Below is a curve representing the program memory footprint during previous operations (extracted with Visual Studio diagnostic tools):
 
-![cvector memory](docs/cvector.png)
+![cvector memory](cvector.png)
 
 ## Restrictions
 
