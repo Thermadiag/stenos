@@ -15,7 +15,7 @@ include(GNUInstallDirs)
 # project options
 option(STENOS_ENABLE_AVX2 "Enable AVX2 support" ON)
 option(STENOS_WIDE_TABLE "Enable wide table support for RLE encoding/decoding" OFF)
-option(STENOS_BUILD_ZSTD "Fetch and build zstd internally" ON)
+option(STENOS_BUILD_ZSTD "Fetch and build zstd internally" OFF)
 option(STENOS_BUILD_TESTS "Build tests" OFF)
 option(STENOS_BUILD_BENCHS "Build benchmarks" OFF)
 option(STENOS_NO_WARNINGS "Treat warnings as errors" OFF)

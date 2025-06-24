@@ -154,12 +154,25 @@ Build
 -----
 
 The following cmake options are available:
--	*STENOS_ENABLE_AVX2*(ON): force AVX2 support
+-	*STENOS_ENABLE_AVX2*(ON): force AVX2 support (sometimes mandatory for Windows)
 -	*STENOS_BUILD_ZSTD*(OFF) : build Zstd without trying to find it first
--	*STENOS_BUILD_TESTS*(ON): build the tests
--	*STENOS_BUILD_BENCHS*(ON): build the benchmarks
+-	*STENOS_BUILD_TESTS*(OFF): build the tests
+-	*STENOS_BUILD_BENCHS*(OFF): build the benchmarks
 -	*STENOS_NO_WARNINGS*(OFF): treat warnings as errors
 -	*STENOS_BUILD_SHARED*(ON): build shared version of Stenos
 -	*STENOS_BUILD_STATIC*(ON): build static version of Stenos
 
 If you link with the static version without using cmake, you must define STENOS_STATIC yourself.
+
+
+Acknowledgements
+----------------
+
+The only library dependency is <a href="https://github.com/facebook/Zstd">Zstd</a> from Yann Collet. The library is fetched and built if not found on the system (or if STENOS_BUILD_ZSTD is ON).
+Stenos uses a simplified version of <a href="https://github.com/lz4/lz4">LZ4</a> library, still by Yann Collet. A *dry* version of LZ4 (no output writing) is used to assess the compressibility of input blocks using a LZ-like algorithm.
+Stenos also uses the accelerated byte shuffling code from the <a href="https://github.com/Blosc/c-blosc2/tree/main">Blosc</a> library.
+All licenses are included in the the *LICENSES* folder.
+
+
+stenos:: library and this page Copyright (c) 2025, Victor Moncada
+
