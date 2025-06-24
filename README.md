@@ -18,6 +18,7 @@ Benchmarks ran on an Intel(R) Core(TM) i7-10850H CPU @ 2.70GHz (AVX2 available) 
 
 Stenos supports multi-threaded compression and decompression, but not (yet) streaming compression.
 
+C++14 is required to compile Stenos.
 
 Usage
 -----
