@@ -39,9 +39,11 @@ set(STENOS_CMAKEDIR "${CMAKE_INSTALL_LIBDIR}/cmake/stenos")
 
 # Add zstd
 if(NOT STENOS_BUILD_ZSTD)
+	message(STATUS "Try to find package ZSTD")
 	find_package(zstd QUIET)
 endif()
 if(NOT zstd_FOUND)
+	message(STATUS "Building ZSTD from sources")
 	cmake_policy(SET CMP0114 NEW)
 	cmake_policy(SET CMP0135 NEW)
 	if(CMAKE_VERSION VERSION_GREATER_EQUAL "3.30.0")
@@ -73,6 +75,8 @@ if(NOT zstd_FOUND)
 		add_subdirectory(${zstd_SOURCE_DIR}/build/cmake ${zstd_BINARY_DIR} EXCLUDE_FROM_ALL)
 	endif()
 	set(ZSTD_INCLUDE_DIR ${zstd_SOURCE_DIR}/lib CACHE INTERNAL "")
+else()
+message(STATUS "Using system ZSTD")
 endif()
 
 
