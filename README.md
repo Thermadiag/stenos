@@ -12,7 +12,7 @@ As opposed to Blosc, Stenos does not need to be specified a filter like byte shu
 
 Despite all these possibilities, Stenos usually compress better and faster than Blosc + Zstd or lz4. 
 The following graphs show the compression ratio versus speed for different types of data (dataset available <a href="https://github.com/Thermadiag/stenos_dataset">here</a>) and testing Stenos and Blosc+Zstd (byte shuffling + bit shuffling).
-Stenos usually outperforms raw byte/bit-shuffling + Zstd in both space and time.
+Benchmarks ran on an Intel(R) Core(TM) i7-10850H CPU @ 2.70GHz (AVX2 available) without multi-threading.
 
 ![Benchmarks](docs/benchmarks.svg "Benchmarks")
 
@@ -87,7 +87,7 @@ int  main  (int , char** )
 Compression levels
 ------------------
 
-Stenos compression level ranges from 0 (no compression) to 9 (maximum compression).
+Stenos compression level ranges from 0 (no compression) to 9 (maximum compression), like Blosc.
 For multi-bytes elements (like arrays of 2-4-8 byte integers), the level 1 uses SIMD block compression without Zstd. This should only be used for situations where high compression speed is required (> 1GB/s), and higher compression levels should be used otherwise.
 
 
