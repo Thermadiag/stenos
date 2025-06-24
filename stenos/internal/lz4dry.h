@@ -42,11 +42,11 @@ namespace stenos
 {
 	/// @brief Assess lz4 compression ratio on given input
 	/// Cheap heuristic: multiply the ratio by 1.4 to get a
-    /// lower bound estimate of what should be the ZSTD compression ratio.
+	/// lower bound estimate of what should be the ZSTD compression ratio.
 	double lz4_guess_ratio(const char* source, size_t inputSize, int acceleration) noexcept;
-	
+
 	/// @brief Assess lz4 compressed size on given input
-    size_t lz4_guess_size(const char* source, size_t inputSize, int acceleration) noexcept;
+	size_t lz4_guess_size(const char* source, size_t inputSize, int acceleration) noexcept;
 }
 
 #endif

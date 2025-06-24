@@ -24,7 +24,6 @@
 
 #include "simd.h"
 
-
 #ifdef _MSC_VER
 
 #include "Windows.h"
@@ -49,7 +48,6 @@ inline void cpuid(int info[4], int InfoType)
 #endif
 
 #endif
-
 
 // Undef min and max defined in Windows.h
 #ifdef min

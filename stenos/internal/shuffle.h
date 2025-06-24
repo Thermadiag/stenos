@@ -46,5 +46,4 @@ namespace stenos
 
 }
 
-
 #endif /* SHUFFLE_H */

@@ -33,16 +33,14 @@
 #include "../bits.hpp"
 #include "../stenos.h"
 
-
-
 namespace stenos
 {
 	// Small class gathering information on a time constraint
 	struct TimeConstraint
 	{
-		stenos::timer timer;								// Timer
-		uint64_t nanoseconds{ 0 };					// Maximum nanoseconds
-		uint64_t total_bytes{ 0 };					// Total number of bytes to compress
+		stenos::timer timer;			    // Timer
+		uint64_t nanoseconds{ 0 };		    // Maximum nanoseconds
+		uint64_t total_bytes{ 0 };		    // Total number of bytes to compress
 		std::atomic<uint64_t> processed_bytes{ 0 }; // Currently processed bytes
 		std::atomic<bool> finish_memcpy{ false };   // Should we finish with memcpy
 	};
@@ -161,7 +159,6 @@ namespace stenos
 					// as it might be hard to recover from a VERY slow compression
 					clevel = 8;
 				}
-				
 
 				if (clevel < 1 && !target_rate) {
 					double factor = 0.5 + (1 - (double)remaining_bytes / (double)t.total_bytes) * 0.5;

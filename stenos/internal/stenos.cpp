@@ -569,7 +569,7 @@ namespace stenos
 					size_t zstd_rate = (size_t)((current_block_speed * target_speed) / (current_block_speed - target_speed));
 					zstd_level = detail::clevel_for_remaining(ctx->t, processed, &zstd_rate, 1);
 				}
-				
+
 				if (zstd_level < 1)
 					// No more time to perform zstd compression, copy back to destination
 					goto NO_ZSTD;
@@ -761,7 +761,6 @@ namespace stenos
 
 }
 
-
 size_t stenos_private_compress_block(stenos_context* ctx, const void* src, size_t bytesoftype, size_t super_block_size, size_t bytes, void* dst, size_t dst_size)
 {
 	// Private API used by cvector, compress a superblock
@@ -806,7 +805,7 @@ size_t stenos_private_block_size(const void* _src, size_t src_size)
 	if (src_size < 4)
 		return STENOS_ERROR_SRC_OVERFLOW;
 	const uint8_t* src = (const uint8_t*)_src;
-	//uint8_t code = *src++;
+	// uint8_t code = *src++;
 	++src; // skip code
 	unsigned csize = stenos::read_uint32_3(src);
 	return csize + 4;
@@ -837,8 +836,6 @@ size_t stenos_private_create_compression_header(size_t decompressed_size, size_t
 	dst += 4;
 	return (dst - (uint8_t*)_dst);
 }
-
-
 
 size_t stenos_compress_generic(stenos_context* opts, const void* _src, size_t bytesoftype, size_t bytes, void* _dst, size_t dst_size)
 {
@@ -907,8 +904,8 @@ size_t stenos_compress_generic(stenos_context* opts, const void* _src, size_t by
 
 	// Multithread compression
 
-	const bool raw_memcpy = !opts->t.nanoseconds && opts->level == 0;				// Check for direct memcpy (level 0)
-	const int threads = (int)std::min((size_t)opts->threads, super_block_count);	// Compute number of threads
+	const bool raw_memcpy = !opts->t.nanoseconds && opts->level == 0;	     // Check for direct memcpy (level 0)
+	const int threads = (int)std::min((size_t)opts->threads, super_block_count); // Compute number of threads
 	size_t res_code = 0;
 
 	if (!raw_memcpy) {
@@ -939,7 +936,7 @@ size_t stenos_compress_generic(stenos_context* opts, const void* _src, size_t by
 				    const uint8_t* in = src + idx * opts->superblock_size;
 
 				    if (raw_memcpy) {
-						// Direct memcpy
+					    // Direct memcpy
 					    size_t in_size = (size_t)(src_end - in) < opts->superblock_size ? (size_t)(src_end - in) : opts->superblock_size;
 					    uint8_t* out = dst + idx * (opts->superblock_size + 4);
 					    stenos::compress_memcpy(in, in_size, out, dst_end - out);
@@ -1224,10 +1221,6 @@ size_t stenos_decompress(const void* src, size_t bytesoftype, size_t bytes, void
 	return stenos_decompress_generic(&opts, src, bytesoftype, bytes, dst, dst_size);
 }
 
-
-
-
-
 //
 // C Timer structure wrapping stenos::timer
 //
@@ -1262,80 +1255,3 @@ uint64_t stenos_tock(stenos_timer* timer)
 #ifdef __clang__
 #pragma clang diagnostic pop
 #endif
-
-// TEST
-/*#include <fstream>
-#include <iostream>
-int main(int, char**)
-{
-	std::ifstream fin("C:/Users/VM213788/Desktop/results.data", std::ios::binary);
-	fin.seekg(0, std::ios::end);
-	size_t size = fin.tellg();
-	fin.seekg(0, std::ios::beg);
-
-	std::vector<char> buf(size);
-	fin.read(buf.data(), buf.size());
-
-	std::vector<char> dst(buf.size());
-	size_t r = 0;
-	for (int i = 0; i < 10; ++i)
-		r = stenos_compress(buf.data(), 5, buf.size(), dst.data(), dst.size(), 1);
-	std::cout << r << std::endl;
-}*/
-
-#include "delta.h"
-#include <iostream>
-
-int stenos_private_test(const void* data, size_t bytes)
-{
-	stenos::timer t;
-	for (int i = 0; i <= 10; ++i) {
-
-		t.tick();
-		/*double r =*/ stenos::lz4_guess_ratio((char*)data, bytes, 10);
-		auto el = t.tock() * 1e-9;
-		std::cout << (bytes / el) / 1000000000 << std::endl;
-	}
-	return 0;
-}
-
-int stenos_private_test_delta()
-{
-	{
-		char vec[127];
-		for (int i = 0; i < 127; ++i)
-			vec[i] = i + 1;
-		char dst[127];
-		char vec2[127];
-		stenos::delta(vec, dst, 127);
-
-		stenos::delta_inv(dst, vec2, 127);
-		//bool stop = true;
-	}
-	std::vector<char> src(9999);
-	for (size_t i = 0; i < src.size(); ++i)
-		src[i] = rand();
-
-	auto dst = src;
-
-	stenos::timer t;
-	t.tick();
-
-	size_t mult = 1000000;
-	for (size_t i = 0; i < mult; ++i)
-		stenos::delta(src.data(), dst.data(), src.size());
-
-	auto el = t.tock() * 1e-9;
-	std::cout << "delta " << (((src.size() * mult)) / el) / 1000000000 << " GB/s" << std::endl;
-
-	auto d2 = dst;
-
-	t.tick();
-	for (size_t i = 0; i < mult; ++i)
-		stenos::delta_inv(dst.data(), d2.data(), d2.size());
-
-	el = t.tock() * 1e-9;
-	std::cout << "delta inv " << (((src.size() * mult)) / el) / 1000000000 << " GB/s" << std::endl;
-
-	return memcmp(src.data(), d2.data(), d2.size());
-}

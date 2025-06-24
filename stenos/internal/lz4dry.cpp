@@ -705,7 +705,7 @@ namespace stenos
 				do {
 					U32 const h = forwardH;
 					ip = forwardIp;
-					forwardIp +=  step;
+					forwardIp += step;
 					step = (searchMatchNb++ >> LZ4_skipTrigger);
 
 					if STENOS_UNLIKELY (forwardIp > mflimit)

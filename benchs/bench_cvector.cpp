@@ -33,7 +33,6 @@
 #include <stenos/cvector.hpp>
 #include <stenos/timer.hpp>
 
-
 #ifdef max
 #undef min
 #undef max
@@ -42,7 +41,6 @@
 #define STENOS_TEST(...)                                                                                                                                                                               \
 	if (!(__VA_ARGS__))                                                                                                                                                                            \
 	STENOS_ABORT("Test error in %s line %i\n", __FILE__, __LINE__)
-
 
 template<typename Ch, typename Traits = std::char_traits<Ch>>
 struct basic_nullbuf : std::basic_streambuf<Ch, Traits>
@@ -54,8 +52,8 @@ struct basic_nullbuf : std::basic_streambuf<Ch, Traits>
 	virtual auto overflow(int_type c) -> int_type override { return traits_type::not_eof(c); }
 };
 
-	/// @brief For tests only, alias for null buffer, to be used with c++ iostreams
-	using nullbuf = basic_nullbuf<char>;
+/// @brief For tests only, alias for null buffer, to be used with c++ iostreams
+using nullbuf = basic_nullbuf<char>;
 template<class T>
 void print_null(const T& v)
 {
@@ -83,12 +81,11 @@ static inline std::string as_aligned_string(size_t width, const char* format, Ar
 }
 
 template<class T1, class T2, class T3>
-void write_line_generic(std::ostream & oss, const char * operation, const char *format, const T1 & t1, const T2 & t2, const T3 & t3)
+void write_line_generic(std::ostream& oss, const char* operation, const char* format, const T1& t1, const T2& t2, const T3& t3)
 {
 	static constexpr size_t width = 20;
 	oss << "|" << as_aligned_string(width * 2, "%s", operation) << "|" << as_aligned_string(width, format, t1) << "|" << as_aligned_string(width, format, t2) << "|"
-	    << as_aligned_string(width, format, t3)
-		  << "|" ;
+	    << as_aligned_string(width, format, t3) << "|";
 }
 
 void write_header()
@@ -100,7 +97,6 @@ void write_header()
 	std::string line(oss.str().size(), '-');
 	std::cout << line << std::endl;
 }
-
 
 void write_line(const char* operation, size_t ms1, size_t ms2, size_t ms3)
 {
@@ -116,9 +112,8 @@ static void tick()
 }
 static size_t tock_ms()
 {
-	return (size_t)( _timer.tock() * 1e-6);
+	return (size_t)(_timer.tock() * 1e-6);
 }
-
 
 template<class Deq1, class Deq2>
 void assert_equal(const Deq1& d1, const Deq2& d2)
@@ -142,7 +137,6 @@ void assert_equal(const Deq1& d1, const Deq2& d2)
 		++it2;
 	}
 }
-
 
 /// @brief Compare performances of std::vector, std::deque, seq::tiered_vector and seq::devector
 /// A value of 1000000000 means that the container has not been tested against a particular operation because too slow (for instance pop front on a std::vector).
@@ -182,7 +176,6 @@ void bench(size_t count = 10000000)
 		assert_equal(deq, tvec);
 		write_line("push_back", vec_t, deq_t, tvec_t);
 
-		
 		deq = std::deque<type>{};
 		vec = std::vector<type>{};
 		tvec = deque_type{};
@@ -241,7 +234,7 @@ void bench(size_t count = 10000000)
 		print_null(sum2);
 
 		STENOS_TEST(sum == sum2);
-		write_line("iterate iterators", vec_t, deq_t, tvec_t) ;
+		write_line("iterate iterators", vec_t, deq_t, tvec_t);
 
 		tick();
 		deq.resize(deq.size() / 10);
@@ -287,7 +280,7 @@ void bench(size_t count = 10000000)
 			tvec_t = tock_ms();
 
 			assert_equal(d2, dd2);
-			write_line("copy construct", vec_t, deq_t, tvec_t) ;
+			write_line("copy construct", vec_t, deq_t, tvec_t);
 		}
 
 		assert_equal(deq, tvec);
@@ -308,7 +301,7 @@ void bench(size_t count = 10000000)
 			tvec_t = tock_ms();
 
 			assert_equal(deq, tvec);
-			write_line("insert range left side", vec_t, deq_t, tvec_t) ;
+			write_line("insert range left side", vec_t, deq_t, tvec_t);
 
 			deq.resize(count);
 			tvec.resize(count);
@@ -357,7 +350,7 @@ void bench(size_t count = 10000000)
 			tvec_t = tock_ms();
 
 			assert_equal(deq, tvec);
-			write_line("erase range left side", vec_t, deq_t, tvec_t) ;
+			write_line("erase range left side", vec_t, deq_t, tvec_t);
 
 			deq.resize(count, 0);
 			vec.resize(count, 0);
@@ -401,7 +394,7 @@ void bench(size_t count = 10000000)
 			tvec_t = tock_ms();
 
 			assert_equal(deq, tvec);
-			write_line("assign grow random access", vec_t, deq_t, tvec_t) ;
+			write_line("assign grow random access", vec_t, deq_t, tvec_t);
 
 			deq.resize(count * 2, 0);
 			vec.resize(count * 2, 0);
@@ -444,7 +437,7 @@ void bench(size_t count = 10000000)
 			tvec_t = tock_ms();
 
 			assert_equal(deq, tvec);
-			write_line("assign grow forward iterator", vec_t, deq_t, tvec_t) ;
+			write_line("assign grow forward iterator", vec_t, deq_t, tvec_t);
 
 			deq.resize(lst.size() * 2, 0);
 			vec.resize(lst.size() * 2, 0);
@@ -494,7 +487,7 @@ void bench(size_t count = 10000000)
 		tvec_t = tock_ms();
 
 		assert_equal(deq, tvec);
-		write_line("pop_back", vec_t, deq_t, tvec_t) ;
+		write_line("pop_back", vec_t, deq_t, tvec_t);
 
 		deq.resize(count, 0);
 		tvec.resize(count, 0);
@@ -522,9 +515,9 @@ void bench(size_t count = 10000000)
 		tvec_t = tock_ms();
 
 		assert_equal(deq, tvec);
-		write_line("pop_front", 1000000000ULL, deq_t, tvec_t) ;
+		write_line("pop_front", 1000000000ULL, deq_t, tvec_t);
 
-		size_t insert_count = std::min((size_t)50, count );
+		size_t insert_count = std::min((size_t)50, count);
 		std::vector<size_t> in_pos;
 		size_t ss = deq.size();
 		srand(0);
@@ -544,7 +537,7 @@ void bench(size_t count = 10000000)
 		tvec_t = tock_ms();
 
 		assert_equal(deq, tvec);
-		write_line("insert random position", 1000000000ULL, deq_t, tvec_t) ;
+		write_line("insert random position", 1000000000ULL, deq_t, tvec_t);
 
 		deq.resize(count, 0);
 		tvec.resize(count, 0);
@@ -575,7 +568,7 @@ void bench(size_t count = 10000000)
 		tvec_t = tock_ms();
 
 		assert_equal(deq, tvec);
-		write_line("erase random position", 1000000000ULL, deq_t, tvec_t) ;
+		write_line("erase random position", 1000000000ULL, deq_t, tvec_t);
 	}
 }
 
@@ -647,12 +640,10 @@ int bench_cvector(int, char** const)
 		std::sort(w.begin(), w.end());
 		elapsed_ms = t.tock() * 1e-6;
 
-
 		// Go back to original ratio
 		std::cout << "sort: " << w.current_compression_ratio() << " in " << elapsed_ms << " ms" << std::endl;
-
 	}
-	
+
 	{
 		std::vector<int> w;
 
@@ -677,8 +668,6 @@ int bench_cvector(int, char** const)
 		// Go back to original ratio
 		std::cout << "sort in " << elapsed_ms << " ms" << std::endl;
 	}
-
-
 
 	bench<size_t>(10000000);
 	return 0;

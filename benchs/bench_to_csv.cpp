@@ -92,7 +92,6 @@ std::string test_to_csv(const std::vector<T>& vec)
 	std::ostringstream oss;
 	oss.imbue(std::locale("de_DE.utf8"));
 
-	
 	oss << "Level;StenosSpeed;StenosRatio;BloscZstdShuffleSpeed;BloscZstdShuffleRatio;BloscZstdBitshuffleSpeed;BloscZstdBitshuffleRatio" << std::endl;
 
 	int iterations = iteration_count(vec);
@@ -135,9 +134,8 @@ std::string test_to_csv(const std::vector<T>& vec)
 	return oss.str();
 }
 
-
 template<size_t N, class Type = void>
-void bench_file_csv(const char* filename, std::ofstream &csv)
+void bench_file_csv(const char* filename, std::ofstream& csv)
 {
 	std::cout << "Test file " << filename << std::endl;
 	std::string res;
@@ -159,7 +157,6 @@ void bench_file_csv(const char* filename, std::ofstream &csv)
 
 	std::cout << std::endl;
 }
-
 
 int bench_to_csv(int, char** const)
 {
@@ -184,6 +181,6 @@ int bench_to_csv(int, char** const)
 	bench_file_csv<2>(STENOS_DATA_DIR "/dataset/2_PI240_15s.wav", csv);
 	bench_file_csv<8, double>(STENOS_DATA_DIR "/dataset/8_UTOR.txt", csv);
 	bench_file_csv<8, double>(STENOS_DATA_DIR "/dataset/8_SHYBPTOT.txt", csv);
-	
+
 	return 0;
 }

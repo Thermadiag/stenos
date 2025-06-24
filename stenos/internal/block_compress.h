@@ -475,12 +475,6 @@ namespace stenos
 
 				pack->size = hsum_epu8(sizes) + 8u;
 
-				// TEST
-				/* if (pack->size > 256 - 8) {
-					pack->all_type = __STENOS_BLOCK_ALL_RAW;
-					return pack->size;
-				}*/
-
 				// Encode mins with rle
 
 				auto count_rle = popcnt16((uint16_t)((short)_mm_movemask_epi8(all_rle)));
@@ -497,12 +491,6 @@ namespace stenos
 			}
 			else
 				pack->size = hsum_epu8(sizes) + 8;
-
-			// TEST
-			/* if (pack->size > 256 - 8) {
-				pack->all_type = __STENOS_BLOCK_ALL_RAW;
-				return pack->size;
-			}*/
 
 			{
 				// Compute headers
@@ -1107,19 +1095,6 @@ namespace stenos
 			throw std::runtime_error("decompression error");
 	}
 #endif
-
-	static inline unsigned max_histogram(const uint8_t* src, size_t bytes)
-	{
-		unsigned hist[256];
-		memset(hist, 0, sizeof(hist));
-		for (size_t i = 0; i < bytes; ++i)
-			++hist[src[i]];
-		unsigned maxval = hist[0];
-		for (size_t i = 1; i < 256; ++i)
-			if (hist[i] > maxval)
-				maxval = hist[i];
-		return maxval;
-	}
 
 	static STENOS_ALWAYS_INLINE size_t block_compress(const void* STENOS_RESTRICT __src,
 							  size_t bytesoftype,

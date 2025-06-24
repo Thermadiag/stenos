@@ -621,7 +621,6 @@ static void test_for_each()
 	STENOS_TEST(get_alloc_bytes(al) == 0);
 }
 
-
 static inline void test_copy()
 {
 	{
@@ -659,11 +658,9 @@ struct Test
 	}
 
 	operator size_t() const { return value; }
-
 };
 
-
-inline bool operator==(const Test& l, const Test& r) 
+inline bool operator==(const Test& l, const Test& r)
 {
 	return l.value == r.value;
 }

@@ -15,17 +15,14 @@
 
 #include <cstdint>
 
-
 /**
   AVX2-accelerated shuffle routine.
 */
-void shuffle_avx2(const int32_t bytesoftype, const int32_t blocksize,
-                                  const uint8_t *_src, uint8_t *_dest);
+void shuffle_avx2(const int32_t bytesoftype, const int32_t blocksize, const uint8_t* _src, uint8_t* _dest);
 
 /**
   AVX2-accelerated unshuffle routine.
 */
-void unshuffle_avx2(const int32_t bytesoftype, const int32_t blocksize,
-                                    const uint8_t *_src, uint8_t *_dest);
+void unshuffle_avx2(const int32_t bytesoftype, const int32_t blocksize, const uint8_t* _src, uint8_t* _dest);
 
 #endif /* SHUFFLE_AVX2_H */

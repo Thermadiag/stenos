@@ -59,7 +59,6 @@ static std::vector<int> synthetic(int size)
 	return res;
 }*/
 
-
 template<class T>
 static size_t compress_vec_stenos(const std::vector<T>& vec, void* dst, size_t dst_size, int level, unsigned threads, int iterations)
 {
@@ -189,7 +188,7 @@ void test_compression(const std::vector<T>& vec, const std::vector<Compress<T>>&
 	for (const auto& c : functions) {
 		t.tick();
 		auto s = c.compress(vec, level, threads);
-		auto el = t.tock() * 1e-6; //ms
+		auto el = t.tock() * 1e-6; // ms
 		double ratio = (double)bytes / (double)s;
 		std::cout << as_aligned_string(width, "%d ms / %.2f", (int)el, ratio) << "|";
 	}
@@ -269,7 +268,6 @@ void test_time_limited(const std::vector<T>& vec, unsigned threads)
 	}
 }
 
-
 static unsigned STENOS_THREADS = 1;
 
 template<size_t N, class Type = void>
@@ -300,7 +298,6 @@ int bench_all(int, char** const)
 	}
 
 	blosc1_set_compressor("zstd");
-
 
 	bench_file<12>(STENOS_DATA_DIR "/dataset/12_953134_float3.bin");
 	bench_file<16>(STENOS_DATA_DIR "/dataset/16_232630_float4.bin");

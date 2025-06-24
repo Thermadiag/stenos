@@ -1691,7 +1691,7 @@ namespace stenos
 							this->decompress(bucket, context->storage);
 							context->clear_values();
 						}
-						RebindAlloc<char>(*this).deallocate(buffer, stenos_private_block_csize( buffer));
+						RebindAlloc<char>(*this).deallocate(buffer, stenos_private_block_csize(buffer));
 					}
 					// remove context
 					erase_context(context);
@@ -3191,7 +3191,6 @@ namespace stenos
 
 		template<class Istream>
 		size_t deserialize(Istream& iss);
-
 	};
 
 } // end namespace stenos

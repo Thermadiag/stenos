@@ -41,7 +41,6 @@
  *  @{
  */
 
-
 #include <cstdint>
 #include <cstring>
 #include <cstdlib>
