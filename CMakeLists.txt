@@ -76,7 +76,7 @@ if(NOT zstd_FOUND)
 	endif()
 	set(ZSTD_INCLUDE_DIR ${zstd_SOURCE_DIR}/lib CACHE INTERNAL "")
 else()
-message(STATUS "Using system ZSTD")
+message(STATUS "Using system ZSTD :${ZSTD_LIB_DIR} and ${ZSTD_INCLUDE_DIR}")
 endif()
 
 
