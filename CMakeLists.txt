@@ -40,7 +40,6 @@ set(STENOS_CMAKEDIR "${CMAKE_INSTALL_LIBDIR}/cmake/stenos")
 # Add zstd
 if(NOT STENOS_BUILD_ZSTD)
 	message(STATUS "Try to find package ZSTD")
-	find_package(zstd QUIET)
 endif()
 if((NOT zstd_FOUND) OR (NOT ZSTD_LIB_DIR) OR (NOT ${ZSTD_LIB_DIR}))
 	message(STATUS "Building ZSTD from sources")
@@ -130,7 +129,7 @@ if(STENOS_BUILD_SHARED)
 	target_include_directories(stenos PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
 
 	target_include_directories(stenos PUBLIC
-						   "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/stenos>"
+						   "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>"
 						   "$<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>")
 						   
 	install(TARGETS stenos EXPORT stenos ARCHIVE DESTINATION ${STENOS_INSTALL_LIBDIR} RUNTIME DESTINATION ${STENOS_INSTALL_BINDIR} LIBRARY DESTINATION ${STENOS_INSTALL_LIBDIR})
@@ -187,9 +186,10 @@ if(STENOS_BUILD_STATIC)
 	target_include_directories(stenos_static PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
 
 	target_include_directories(stenos_static  PUBLIC
-						   "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/stenos>"
+						   "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>"
 						   "$<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>")
-						   		   
+	
+	
 	install(TARGETS stenos_static EXPORT stenos DESTINATION ${STENOS_INSTALL_LIBDIR} LIBRARY)
 	install(EXPORT stenos DESTINATION ${STENOS_CMAKEDIR})
 	
@@ -229,6 +229,9 @@ install(FILES ${CMAKE_CURRENT_BINARY_DIR}/stenos.pc
 configure_file(stenos_config.h.in stenos_config.h @ONLY)
 install(FILES ${CMAKE_CURRENT_BINARY_DIR}/stenos_config.h
 			DESTINATION "${CMAKE_INSTALL_PREFIX}/include/stenos")
+
+# Configure stenos_config.h and put in the stenos folder for FetchContent_Declare from other projects
+configure_file(stenos_config.h.in ${CMAKE_CURRENT_SOURCE_DIR}/stenos/stenos_config.h @ONLY)
 
 # Configure and install stenosConfig.cmake and stenosConfigVersion.cmake
 include(CMakePackageConfigHelpers)
