@@ -22,8 +22,8 @@
  * SOFTWARE.
  */
 
-#include "stenos.h"
-#include "bits.hpp"
+#include "stenos/stenos.h"
+#include "stenos/bits.hpp"
 
 #include <vector>
 #include <random>
