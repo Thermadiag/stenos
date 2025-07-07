@@ -178,6 +178,12 @@ if(STENOS_BUILD_STATIC)
 			target_compile_options(stenos_static PRIVATE -Werror -Wall)
 		endif()
 	endif()
+
+	if (CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+		# correct link error ""relocation R_X86_64_32 against symbol..."
+		set( CMAKE_CXX_FLAGS  "${CMAKE_CXX_FLAGS} -Wall --std=c++14 -fPIC" )
+		set( CMAKE_C_FLAGS  "${CMAKE_C_FLAGS} -Wall -fPIC" )
+	endif()
 	
 	target_link_libraries(stenos_static PRIVATE libzstd_static)
 	target_link_directories(stenos_static PRIVATE ${ZSTD_LIB_DIR})
