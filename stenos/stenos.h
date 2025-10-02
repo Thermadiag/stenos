@@ -81,6 +81,7 @@ Stenos error codes
 #define STENOS_ERROR_INVALID_BYTESOFTYPE ((size_t)(-7))
 #define STENOS_ERROR_ZSTD_INTERNAL ((size_t)(-8))
 #define STENOS_ERROR_INVALID_PARAMETER ((size_t)(-9))
+#define STENOS_ERROR_INVALID_IO ((size_t)(-10))
 #define STENOS_LAST_ERROR_CODE ((size_t)(-100))
 
 #ifdef __cplusplus
@@ -101,6 +102,15 @@ It is usually wise to reuse compression contexts as they will
 (if possible) reuse previously allocated memory.
 */
 typedef struct stenos_context_s stenos_context;
+
+
+typedef struct stenos_io_s
+{
+	size_t (*read)(char *, size_t, void*); 	/* signature: size_t read(char * dst, size_t bytes, void * opaque)*/
+	size_t (*seek)(size_t, void*); 			/* signature: size_t seek(size_t absolute_bytes, void * opaque)*/
+	size_t (*eof)(void*); 					/* signature: size_t eof(void * opaque)*/
+} stenos_io;
+
 
 /**
 @brief Creates a new stenos_context object.
@@ -235,6 +245,13 @@ STENOS_EXPORT size_t stenos_compress(const void* src, size_t bytesoftype, size_t
 @warning the input and output buffers cannot overlapp.
 */
 STENOS_EXPORT size_t stenos_decompress(const void* src, size_t bytesoftype, size_t bytes, void* dst, size_t dst_size);
+
+
+STENOS_EXPORT size_t stenos_decompress_sub_part(stenos_context* ctx, void * opaque, stenos_io* io, size_t bytesoftype, void* dst, size_t dst_size,
+	size_t * ranges, size_t range_count);
+
+
+
 
 /**
 @brief Small class gathering information on a compressed frame.
