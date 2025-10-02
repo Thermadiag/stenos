@@ -1284,9 +1284,12 @@ size_t stenos_decompress_sub_part(stenos_context* ctx, void * opaque, stenos_io*
 	// Input compressed buffer for superblock
 	std::vector<char> in_buffer(stenos::compress_bound(superblock_size));
 
+
 	char * dst = (char*)_dst;
 	char * dst_end = (char*)_dst + dst_size;
 	size_t result = 0;
+
+	int skip_block = 0;
 	
 	size_t prev_end_byte = 0;
 	for(size_t i = 0; i < range_count; ++i){
@@ -1300,7 +1303,14 @@ size_t stenos_decompress_sub_part(stenos_context* ctx, void * opaque, stenos_io*
 		prev_end_byte = end_byte;
 
 		while(buffer_pos + superblock_size <= start_byte){
+
 			// Skip superblocks
+
+			// If buffer is valid, it means that we are at the end of a superblock, increment position
+			if(!out_buffer.empty())
+				buffer_pos += superblock_size;
+
+			
 			uint8_t code = 0;
 			if(io->read((char*)&code,1,opaque) != 1)
 				return STENOS_ERROR_SRC_OVERFLOW;
@@ -1321,17 +1331,22 @@ size_t stenos_decompress_sub_part(stenos_context* ctx, void * opaque, stenos_io*
 
 		if(!out_buffer.empty() && (buffer_pos + superblock_size) > start_byte){
 			// copy from current buffer
-			size_t start = start_byte - buffer_pos * superblock_size;
+			size_t start = start_byte - buffer_pos ;
 			size_t count = superblock_size - start;
 			if(count > (bytes))
 				count = bytes;
 			if(dst + count > dst_end)
 				return STENOS_ERROR_DST_OVERFLOW;;
-			memcpy(dst,out_buffer.data(), count);
+			memcpy(dst,out_buffer.data() + start, count);
 			dst += count;
 			start_byte += count;
 			bytes -= count;
 			result += count;
+
+			if(bytes){ 
+				buffer_pos += superblock_size;
+				out_buffer.clear();
+			}
 		}
 
 		while(bytes){
@@ -1356,18 +1371,22 @@ size_t stenos_decompress_sub_part(stenos_context* ctx, void * opaque, stenos_io*
 			if(out_buffer.empty())
 				out_buffer.resize(superblock_size);
 
-			size_t ret = stenos::decompress_generic_superblock(opts, code, (uint8_t*)in_buffer.data(), bytesoftype, csize, (uint8_t*)out_buffer.data(), out_buffer.size(), opts->tmp_buffers1[0]);
+			size_t rem = decompressed - buffer_pos;
+			if(rem > superblock_size)
+				rem = superblock_size;
+			
+			size_t ret = stenos::decompress_generic_superblock(opts, code, (uint8_t*)in_buffer.data(), bytesoftype, csize, (uint8_t*)out_buffer.data(), rem, opts->tmp_buffers1[0]);
 			if(stenos::has_error(ret))
 				return ret;
 
 			// copy from current buffer
-			size_t start = start_byte - buffer_pos * superblock_size;
+			size_t start = start_byte - buffer_pos ;
 			size_t count = superblock_size - start;
 			if(count > (bytes))
 				count = bytes;
 			if(dst + count > dst_end)
 				return STENOS_ERROR_DST_OVERFLOW;;
-			memcpy(dst,out_buffer.data(), count);
+			memcpy(dst,out_buffer.data() + start, count);
 			dst += count;
 			start_byte += count;
 			bytes -= count;
@@ -1376,7 +1395,7 @@ size_t stenos_decompress_sub_part(stenos_context* ctx, void * opaque, stenos_io*
 			if(bytes){ 
 				buffer_pos += superblock_size;
 				out_buffer.clear();
-			}	
+			}
 		} 
 	} 
 
