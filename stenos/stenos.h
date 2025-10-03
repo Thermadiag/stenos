@@ -103,6 +103,8 @@ It is usually wise to reuse compression contexts as they will
 */
 typedef struct stenos_context_s stenos_context;
 
+#define STENOS_SEEK_SET 0
+#define STENOS_SEEK_CUR 1
 
 typedef struct stenos_io_s
 {

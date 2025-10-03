@@ -1227,7 +1227,7 @@ static size_t read_next_block(void * opaque, stenos_io* io, uint8_t * code, unsi
 			return STENOS_ERROR_SRC_OVERFLOW;
 	} 
 	else{
-		if(io->seek((int64_t)*csize, SEEK_CUR, opaque) != 0)
+		if(io->seek((int64_t)*csize, STENOS_SEEK_CUR, opaque) != 0)
 			return STENOS_ERROR_SRC_OVERFLOW;
 	} 
 	return 0;
@@ -1355,7 +1355,7 @@ size_t stenos_decompress_sub_part(stenos_context* ctx, void * opaque, stenos_io*
 			if(block_pos != buffer_pos || out_buffer.empty()){
 				// Read and decompress block
 				out_buffer.resize(superblock_size);
-				if(io->seek(block_pos, SEEK_SET,opaque) != 0)
+				if(io->seek(block_pos, STENOS_SEEK_SET,opaque) != 0)
 					return STENOS_ERROR_INVALID_IO;
 				auto r = read_next_block(opaque,io,&code,&csize,in_buffer.data(),in_buffer.size());
 				if(stenos::has_error(r))
