@@ -107,8 +107,8 @@ typedef struct stenos_context_s stenos_context;
 typedef struct stenos_io_s
 {
 	size_t (*read)(char *, size_t, void*); 	/* signature: size_t read(char * dst, size_t bytes, void * opaque)*/
-	size_t (*seek)(size_t, void*); 			/* signature: size_t seek(size_t absolute_bytes, void * opaque)*/
-	size_t (*eof)(void*); 					/* signature: size_t eof(void * opaque)*/
+	size_t (*seek)(int64_t, int, void*); 		/* signature: size_t seek(long offset, int whence, void * opaque)*/
+	size_t (*tell)(void*); /* signature: size_t tell(void * opaque)*/
 } stenos_io;
 
 
