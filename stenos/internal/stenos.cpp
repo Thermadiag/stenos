@@ -1235,7 +1235,7 @@ static size_t read_next_block(void * opaque, stenos_io* io, uint8_t * code, unsi
 }
 
 
-size_t stenos_decompress_sub_part(stenos_context* ctx, void * opaque, stenos_io* io, size_t bytesoftype, 
+size_t stenos_decompress_sub_part(stenos_context* ctx, void * opaque, stenos_input* io, size_t bytesoftype, 
 	void* _dst, size_t dst_size,
 	size_t * ranges, size_t range_count)
 {
@@ -1337,9 +1337,6 @@ size_t stenos_decompress_sub_part(stenos_context* ctx, void * opaque, stenos_io*
 		blocks[i] = Block{pos, (i == total_block_count-1) ? last_block_size : superblock_size, csize, code};
 	} 
 
-
-
-	
 	size_t prev_end_byte = 0;
 	for(size_t i = 0; i < range_count; ++i){
 		size_t start_byte = ranges[i*2] * bytesoftype; 

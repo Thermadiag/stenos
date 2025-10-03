@@ -103,15 +103,31 @@ It is usually wise to reuse compression contexts as they will
 */
 typedef struct stenos_context_s stenos_context;
 
+
+/**
+@brief Seek flag used by stenos_input class.
+Seek to given absolute position within the stream.
+*/
 #define STENOS_SEEK_SET 0
+/**
+@brief Seek flag used by stenos_input class.
+Seek to given relative position within the stream.
+*/
 #define STENOS_SEEK_CUR 1
 
-typedef struct stenos_io_s
+/**
+@brief Input stream class used by stenos_decompress_sub_part.
+
+stenos_input structure provides read-only functions working
+on a underlying stream. This is currently only used by function
+stenos_decompress_sub_part() to reduce read latency.
+*/
+typedef struct stenos_input_s
 {
 	size_t (*read)(char *, size_t, void*); 	/* signature: size_t read(char * dst, size_t bytes, void * opaque)*/
 	size_t (*seek)(int64_t, int, void*); 		/* signature: size_t seek(long offset, int whence, void * opaque)*/
 	size_t (*tell)(void*); /* signature: size_t tell(void * opaque)*/
-} stenos_io;
+} stenos_input;
 
 
 /**
@@ -248,8 +264,25 @@ STENOS_EXPORT size_t stenos_compress(const void* src, size_t bytesoftype, size_t
 */
 STENOS_EXPORT size_t stenos_decompress(const void* src, size_t bytesoftype, size_t bytes, void* dst, size_t dst_size);
 
+/**
+@brief Decompress a sub-part of an input compressed stream.
+@param ctx decompression context, might be null.
+@param opaque opaque input stream
+@param io stream functions working on opaque
+@param bytesoftype number of bytes of a single element, must be same as used in stenos_compress_generic()
+@param dst destination buffer
+@param dst_size destination buffer size
+@param ranges input ranges to decompress. Vector of pair of [start,end) positions within the decompressed array. Positions are expressed in elements (NOT bytes) of size bytesoftype.
+@param range_count number of ranges. This is the number PAIRs: the ranges array contains range_count * 2 integers.
+@return the number of bytes decompressed, or an error code.
+@warning the input and output buffers cannot overlapp.
+@warning the input ranges must be in order without overlapping.
 
-STENOS_EXPORT size_t stenos_decompress_sub_part(stenos_context* ctx, void * opaque, stenos_io* io, size_t bytesoftype, void* dst, size_t dst_size,
+stenos_decompress_sub_part() is mostly usefull if you only need to decompress a small fraction of the compressed input.
+In such case, this might save some decompression time and possibly a LOT of reading time. Indeed, the input stream
+might directly read from a file, and a partial decompression might be a huge win if the underlying disk is slow.
+*/
+STENOS_EXPORT size_t stenos_decompress_sub_part(stenos_context* ctx, void * opaque, stenos_input* io, size_t bytesoftype, void* dst, size_t dst_size,
 	size_t * ranges, size_t range_count);
 
 
