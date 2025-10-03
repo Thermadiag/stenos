@@ -1208,7 +1208,7 @@ size_t stenos_decompress_generic(stenos_context* opts, const void* _src, size_t 
 }
 
 
-static size_t read_next_block(void * opaque, stenos_io* io, uint8_t * code, unsigned * csize, void * dst = nullptr, size_t dst_size = 0)
+static size_t read_next_block(void * opaque, stenos_input* io, uint8_t * code, unsigned * csize, void * dst = nullptr, size_t dst_size = 0)
 {
 	uint8_t data[4]; 
 	if(io->read((char*)data,4,opaque) != 4)
