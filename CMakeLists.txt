@@ -105,7 +105,8 @@ if(STENOS_BUILD_SHARED)
 			target_compile_options(stenos PRIVATE /arch:AVX2)
 		endif()
 	else()
-		target_compile_options(stenos PRIVATE -march=native)
+		#FIXME: need to be generalised for machines with incorrect binutil installed
+		target_compile_options(stenos PRIVATE -march=native -mno-avx512f)
 	endif()
 	
 	if(STENOS_WIDE_TABLE)
@@ -162,11 +163,12 @@ if(STENOS_BUILD_STATIC)
 			target_compile_options(stenos_static PRIVATE /arch:AVX2)
 		endif()
 	else()
-		target_compile_options(stenos_static PRIVATE -march=native)
+		#FIXME: need to be generalised for machines with incorrect binutil installed
+		target_compile_options(stenos_static PRIVATE -march=native -mno-avx512f)
 	endif()
 	
 	if(STENOS_WIDE_TABLE)
-		target_compile_options(stenos PRIVATE -DSTENOS_WIDE_TABLE)
+		target_compile_options(stenos_static PRIVATE -DSTENOS_WIDE_TABLE)
 	endif()
 	
 	if(STENOS_NO_WARNINGS)
