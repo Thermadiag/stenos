@@ -287,9 +287,6 @@ STENOS_EXPORT size_t stenos_decompress_sub_part(stenos_context* ctx, void * opaq
 
 
 
-
-STENOS_EXPORT float stenos_assess_compressibility(const void * src, size_t bytesoftype, size_t bytes, void * buffer);	
-
 /**
 @brief Small class gathering information on a compressed frame.
 */
@@ -353,6 +350,9 @@ STENOS_EXPORT size_t stenos_private_block_size(const void* _src, size_t src_size
 STENOS_EXPORT size_t stenos_private_block_csize(const void* _src);
 
 STENOS_EXPORT size_t stenos_private_create_compression_header(size_t decompressed_size, size_t super_block_size, void* _dst, size_t dst_size);
+
+STENOS_EXPORT size_t stenos_private_assess_compressibility(const void * src, size_t bytesoftype, size_t bytes, void * buffer);	
+
 
 #ifdef __cplusplus
 }
