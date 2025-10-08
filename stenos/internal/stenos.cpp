@@ -1208,6 +1208,14 @@ size_t stenos_decompress_generic(stenos_context* opts, const void* _src, size_t 
 }
 
 
+float stenos_assess_compressibility(const void * src, size_t bytesoftype, size_t bytes, void * buffer)
+{
+	stenos::shuffle(bytesoftype, bytes, (const uint8_t*)src, (uint8_t*)buffer);
+	return (float)bytes / (float)stenos::lz4_guess_size((const char*)buffer, bytes, 1);
+}
+
+
+ 
 static size_t read_next_block(void * opaque, stenos_input* io, uint8_t * code, unsigned * csize, void * dst = nullptr, size_t dst_size = 0)
 {
 	uint8_t data[4]; 

@@ -263,7 +263,7 @@ STENOS_EXPORT size_t stenos_compress(const void* src, size_t bytesoftype, size_t
 @warning the input and output buffers cannot overlapp.
 */
 STENOS_EXPORT size_t stenos_decompress(const void* src, size_t bytesoftype, size_t bytes, void* dst, size_t dst_size);
-
+ 
 /**
 @brief Decompress a sub-part of an input compressed stream.
 @param ctx decompression context, might be null.
@@ -287,6 +287,8 @@ STENOS_EXPORT size_t stenos_decompress_sub_part(stenos_context* ctx, void * opaq
 
 
 
+
+STENOS_EXPORT float stenos_assess_compressibility(const void * src, size_t bytesoftype, size_t bytes, void * buffer);	
 
 /**
 @brief Small class gathering information on a compressed frame.
