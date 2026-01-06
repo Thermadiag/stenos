@@ -120,6 +120,17 @@ namespace stenos
 				features.HAS_XOP = (info[2] & (1 << 11)) != 0;
 			}
 
+		#ifdef __ARM_NEON
+			// Use sse2neon.h to simulate sse
+			features.HAS_MMX = true;
+			features.HAS_SSE = true;
+			features.HAS_SSE2 = true;
+			features.HAS_SSE3 = true;
+			features.HAS_SSSE3 = true;
+			features.HAS_SSE41 = true;
+			features.HAS_SSE42 = true;
+		#endif
+
 			return features;
 		}
 	}

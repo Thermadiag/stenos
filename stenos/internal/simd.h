@@ -178,6 +178,15 @@ extern "C" {
 #if defined(__ARM_NEON) || defined(__ARM_NEON__)
 extern "C" {
 #include <arm_neon.h>
+#include "sse2neon.h"
+
+#define __SSE__
+#define __SSE2__
+#define __SSE3__
+#define __SSSE3__
+#define __SSE4_1__
+#define __SSE4_2__
+
 }
 #ifndef __ARM_NEON__
 // __ARM_NEON__ is not defined on AArch64, but we need it in our NEON detection.
