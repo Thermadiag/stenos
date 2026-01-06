@@ -23,6 +23,10 @@
 #include "shuffle-sse2.h"
 #endif /* defined(__SSE2__) */
 
+#if defined(__ARM_NEON)
+#include "shuffle-neon.h"
+#endif /* defined(__ARM_NEON) */
+
 namespace stenos
 {
 
@@ -64,6 +68,14 @@ namespace stenos
 			return impl_sse2;
 		}
 #endif /* defined(__SSE2__) */
+
+#if defined(__ARM_NEON)
+		shuffle_implementation_t impl_neon;
+		impl_neon.name = "neon";
+		impl_neon.shuffle = (shuffle_func)shuffle_neon;
+		impl_neon.unshuffle = (unshuffle_func)unshuffle_neon;
+		return impl_neon;
+#endif /* defined(__ARM_NEON) */
 
 		/*  Processor doesn't support any of the hardware-accelerated implementations,
 		    so use the generic implementation. */
