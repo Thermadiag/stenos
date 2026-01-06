@@ -1442,7 +1442,6 @@ static double test_bpp(const void* src, size_t bpp, size_t bytes, double min_rat
 
 		size_t target = has_target ? (size_t)(min_ratio * inspect_bytes) : 0;
 		size_t total = 0;
-		size_t inspected = 0;
 		const char* start = static_cast<const char*>(src);
 		const char* end = start + bytes;
 		while (start + block <= end) {
@@ -1451,7 +1450,6 @@ static double test_bpp(const void* src, size_t bpp, size_t bytes, double min_rat
 				return 0;
 			target -= c;
 			total += c;
-			inspected += block;
 			start += block * acceleration;
 		}
 		return (double)total / (double)inspect_bytes;

@@ -33,8 +33,8 @@ jobs:
           run: |
               mkdir build 
               cd build 
-              cmake .. -DCMAKE_BUILD_TYPE=Debug -DSTENOS_WIDE_TABLE=OFF -DSTENOS_NO_WARNINGS=ON -DSTENOS_ENABLE_AVX2=ON -DSTENOS_BUILD_TESTS=ON -DSTENOS_BUILD_BENCHS=ON -DCMAKE_INSTALL_PREFIX=./install
+              cmake .. -DCMAKE_BUILD_TYPE=Debug -DSTENOS_WIDE_TABLE=OFF -DSTENOS_NO_WARNINGS=ON -DSTENOS_BUILD_TESTS=ON -DSTENOS_BUILD_BENCHS=ON -DCMAKE_INSTALL_PREFIX=./install
               cmake --build ./ 
               cmake --build . --target install
-
+              ./install/bin/stenos_bench
         
