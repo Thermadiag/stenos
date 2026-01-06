@@ -162,7 +162,7 @@ struct stenos_context_s
 					new_superblock_size = new_superblock_size << (size_t)shift;
 					if (threads > 1) {
 						// Adjust to threads
-						while (shift > 0 && (bytes / new_superblock_size + 1) < threads) {
+						while (shift > 0 && (bytes / new_superblock_size + 1) < (size_t)threads) {
 							--shift;
 							new_superblock_size /= 2;
 						}

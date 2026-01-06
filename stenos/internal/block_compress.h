@@ -1111,7 +1111,6 @@ namespace stenos
 			if STENOS_UNLIKELY (bytes == 0)
 				return 0;
 
-			size_t elements = 0;
 			const uint8_t* src = static_cast<const uint8_t*>(__src);
 			size_t header_size = (bytesoftype >> 1) + ((bytesoftype & 1) ? 1 : 0);
 			int block_level = 1;
@@ -1128,8 +1127,6 @@ namespace stenos
 			detail::BlockEncoder encoder;
 			encoder.init(buff_src, bytesoftype);
 
-			uint8_t* anchor = nullptr;
-			uint32_t offset = 0;
 			uint32_t target = 0;
 			size_t full_size = 0;
 
@@ -1138,7 +1135,7 @@ namespace stenos
 
 			for (size_t bcount = 0; bcount < block_count; ++bcount, src += block_size) {
 
-				full_size += (uint32_t)((bytesoftype >> 1) + ((bytesoftype & 1) ? 1 : 0));
+				full_size += header_size;
 				if (max_bytes && full_size > max_bytes)
 					return STENOS_ERROR_DST_OVERFLOW;
 
