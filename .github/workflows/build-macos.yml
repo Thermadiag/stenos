@@ -36,7 +36,5 @@ jobs:
               cmake .. -DCMAKE_BUILD_TYPE=Debug -DSTENOS_WIDE_TABLE=OFF -DSTENOS_NO_WARNINGS=ON -DSTENOS_BUILD_TESTS=ON -DSTENOS_BUILD_BENCHS=ON -DCMAKE_INSTALL_PREFIX=./install
               cmake --build ./ 
               cmake --build . --target install
-              ls install
-              ls install/bin
-              ./install/bin/stenos_bench
+              ./install/bin/stenos_benchs
         
