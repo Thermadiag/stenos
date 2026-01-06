@@ -2282,12 +2282,8 @@ namespace stenos
 						    const void* STENOS_RESTRICT __shuffled) noexcept
 	{
 		STENOS_ASSERT_DEBUG(bytesoftype < STENOS_MAX_BYTESOFTYPE, "invalid bytesoftype");
-#ifdef __SSE4_1__
+#if defined(__SSE4_1__) && !defined(__ARM_NEON)
 		if STENOS_LIKELY (cpu_features().HAS_SSE41) {
-#ifdef __ARM_NEON
-			//TEST
-			block_level = 0;
-#endif
 			return block_compress(src, bytesoftype, bytes, dst, dst_size, block_level, full_level, t, target_ratio, __shuffled);
 		}
 #endif

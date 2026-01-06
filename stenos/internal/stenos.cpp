@@ -432,8 +432,13 @@ namespace stenos
 
 		STENOS_ASSERT_DEBUG(bytes % bytesoftype == 0, "invalid input byte size");
 
+		//Disable block compression on ARM for now
+#ifdef __ARM_NEON
+		static const bool no_sse = true;
+#else
 		// Check SSE4.1 support
 		static const bool no_sse = !stenos::cpu_features().HAS_SSE41;
+#endif
 
 		size_t result = 0;
 		uint8_t* dst = (uint8_t*)_dst;
