@@ -1100,7 +1100,7 @@ namespace stenos
 #endif
 
 
-	static inline size_t block_guess_compress_size(const void* __src, size_t bytesoftype, size_t bytes, size_t max_bytes) noexcept 
+	inline size_t block_guess_compress_size(const void* __src, size_t bytesoftype, size_t bytes, size_t max_bytes) noexcept 
 	{
 #ifdef __SSE4_1__
 		if ((cpu_features().HAS_SSE41)) {
