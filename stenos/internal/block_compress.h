@@ -536,28 +536,6 @@ namespace stenos
 
 		static inline const uint8_t* read_16_bits(const uint8_t* src, const uint8_t* end, uint8_t* out, uint32_t bits) noexcept;
 
-#if defined(__BMI2__) && defined(STENOS_ARCH_64)
-		static STENOS_ALWAYS_INLINE uint8_t* write_16_bmi2(const uint8_t* v, uint8_t* dst, uint8_t bits) noexcept
-		{
-			// Use BMI2 _pext_u64
-			static const uint64_t mask[9] = {
-				0,
-				0x0101010101010101ULL,
-				0x0303030303030303ULL,
-				0x0707070707070707ULL,
-				0x0F0F0F0F0F0F0F0FULL,
-				0x1F1F1F1F1F1F1F1FULL,
-				0x3F3F3F3F3F3F3F3FULL,
-				0x7F7F7F7F7F7F7F7FULL,
-				0xFFFFFFFFFFFFFFFFULL,
-			};
-			uint64_t v1 = _pext_u64(read_LE_64(v), mask[bits]);
-			write_LE_64(dst, v1);
-			uint64_t v2 = _pext_u64(read_LE_64(v + 8), mask[bits]);
-			write_LE_64(dst + bits, v2);
-			return dst + bits * 2;
-		}
-#endif
 
 		static inline uint8_t* write_16(const uint8_t* v, uint8_t* dst, uint8_t bits) noexcept
 		{
@@ -600,6 +578,31 @@ namespace stenos
 
 			return dst + bits * 2;
 		}
+
+
+#if defined(__BMI2__) && defined(STENOS_ARCH_64)
+		static STENOS_ALWAYS_INLINE uint8_t* write_16_bmi2(const uint8_t* v, uint8_t* dst, uint8_t bits) noexcept
+		{
+			// Use BMI2 _pext_u64
+			static const uint64_t mask[9] = {
+				0,
+				0x0101010101010101ULL,
+				0x0303030303030303ULL,
+				0x0707070707070707ULL,
+				0x0F0F0F0F0F0F0F0FULL,
+				0x1F1F1F1F1F1F1F1FULL,
+				0x3F3F3F3F3F3F3F3FULL,
+				0x7F7F7F7F7F7F7F7FULL,
+				0xFFFFFFFFFFFFFFFFULL,
+			};
+
+			uint64_t v1 = _pext_u64(read_LE_64(v), mask[bits]);
+			write_LE_64(dst, v1);
+			uint64_t v2 = _pext_u64(read_LE_64(v + 8), mask[bits]);
+			write_LE_64(dst + bits, v2);
+			return dst + bits * 2;
+		}
+#endif
 
 #if defined(__BMI2__) && defined(STENOS_ARCH_64)
 		template<bool First>
@@ -1096,6 +1099,87 @@ namespace stenos
 	}
 #endif
 
+
+	static STENOS_ALWAYS_INLINE size_t block_guess_compress_size(const void* __src, size_t bytesoftype, size_t bytes, size_t max_bytes) noexcept 
+	{
+#ifdef __SSE4_1__
+		if ((cpu_features().HAS_SSE41)) {
+
+			static const uint32_t diff[3] = { 25, 16, 0 };
+			static const int methods[3] = { 0, __STENOS_COMP_RLE, __STENOS_COMP_RLE };
+
+			if STENOS_UNLIKELY (bytes == 0)
+				return 0;
+
+			size_t elements = 0;
+			const uint8_t* src = static_cast<const uint8_t*>(__src);
+			size_t header_size = (bytesoftype >> 1) + ((bytesoftype & 1) ? 1 : 0);
+			int block_level = 1;
+			int level = (int)block_level;
+
+			size_t block_size = bytesoftype * 256;
+			size_t block_count = block_size == bytes ? 1 : bytes / block_size;
+			size_t remaining_bytes = 0;
+
+			void* buff_src = make_compression_buffer(detail::compression_buffer_size(bytesoftype));
+			if STENOS_UNLIKELY (!buff_src)
+				return STENOS_ERROR_ALLOC;
+
+			detail::BlockEncoder encoder;
+			encoder.init(buff_src, bytesoftype);
+
+			uint8_t* anchor = nullptr;
+			uint32_t offset = 0;
+			uint32_t target = 0;
+			size_t full_size = 0;
+
+			//__m128i input[16];
+			__m128i transpose[16];
+
+			for (size_t bcount = 0; bcount < block_count; ++bcount, src += block_size) {
+
+				full_size += (uint32_t)((bytesoftype >> 1) + ((bytesoftype & 1) ? 1 : 0));
+				if (max_bytes && full_size > max_bytes)
+					return STENOS_ERROR_DST_OVERFLOW;
+
+				// read source transposed
+				shuffle(bytesoftype, block_size, src, (uint8_t*)(encoder.arrays));
+
+				// copy first value for each bytesoftype
+				memcpy(encoder.firsts, src, bytesoftype);
+
+				target = 256 - diff[level];
+				for (uint32_t i = 0; i < (uint32_t)bytesoftype; i++) {
+
+					const void* input_tr = encoder.arrays[i][0].i8;
+
+					uint32_t size = detail::compute_block_generic(&encoder, input_tr, encoder.firsts[i], i, methods[level], transpose);
+					if (size > target) {
+
+						encoder.packs[i].all_type = __STENOS_BLOCK_ALL_RAW;
+						size = 256;
+					}
+
+					full_size += size;
+					if (max_bytes && full_size > max_bytes)
+						return STENOS_ERROR_DST_OVERFLOW;
+				}
+			}
+			remaining_bytes = bytes - (block_count * block_size);
+			if (remaining_bytes) {
+
+				// Last block is always a partial one
+				++full_size;
+				full_size += remaining_bytes;
+			}
+			if (max_bytes && full_size > max_bytes)
+				return STENOS_ERROR_DST_OVERFLOW;
+			return full_size;
+		}
+#endif
+		return 0;
+	}
+
 	static STENOS_ALWAYS_INLINE size_t block_compress(const void* STENOS_RESTRICT __src,
 							  size_t bytesoftype,
 							  size_t bytes,
@@ -1269,8 +1353,6 @@ namespace stenos
 
 				if (ratio < *target_ratio && level >= 0) // avoid going through zstd if block compression is too slow (level < 0)
 					return STENOS_ERROR_DST_OVERFLOW;
-
-				target_ratio = nullptr;
 			}
 		}
 

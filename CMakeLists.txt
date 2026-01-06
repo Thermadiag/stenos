@@ -2,18 +2,19 @@ cmake_minimum_required(VERSION 3.16)
 include(FetchContent)
 
 project(stenos
-    VERSION 0.2
+    VERSION 0.3
     DESCRIPTION "Compression library for binary data"
     HOMEPAGE_URL "https://github.com/Thermadiag/stenos"
-    LANGUAGES CXX
+    LANGUAGES C CXX
 )
 
 set(CMAKE_CXX_STANDARD 14)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 include(GNUInstallDirs)
 
+include("cmake/FindAVX2.cmake")
+
 # project options
-option(STENOS_ENABLE_AVX2 "Enable AVX2 support" ON)
 option(STENOS_WIDE_TABLE "Enable wide table support for RLE encoding/decoding" OFF)
 option(STENOS_BUILD_ZSTD "Fetch and build zstd internally" OFF)
 option(STENOS_BUILD_TESTS "Build tests" OFF)
@@ -101,8 +102,9 @@ if(STENOS_BUILD_SHARED)
 	
 	# add sse/avx flags
 	if(CMAKE_CXX_COMPILER_ID MATCHES "MSVC")
-		if(STENOS_ENABLE_AVX2)
-			target_compile_options(stenos PRIVATE /arch:AVX2)
+		if(AVX2_FOUND)
+			message(STATUS "Compile with AVX2 support")
+			target_compile_options(stenos PRIVATE ${AVX2_C_FLAGS})
 		endif()
 	else()
 		#FIXME: need to be generalised for machines with incorrect binutil installed
@@ -159,8 +161,9 @@ if(STENOS_BUILD_STATIC)
 	
 	# add sse/avx flags
 	if(CMAKE_CXX_COMPILER_ID MATCHES "MSVC")
-		if(STENOS_ENABLE_AVX2)
-			target_compile_options(stenos_static PRIVATE /arch:AVX2)
+		if(AVX2_FOUND)
+			message(STATUS "Compile with AVX2 support")
+			target_compile_options(stenos_static PRIVATE ${AVX2_C_FLAGS})
 		endif()
 	else()
 		#FIXME: need to be generalised for machines with incorrect binutil installed

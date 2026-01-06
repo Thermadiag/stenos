@@ -226,7 +226,7 @@ void test_compression(const std::vector<T>& vec, unsigned threads)
 	std::cout << std::endl;
 
 	// print benchmarks
-	for (int level = 1; level <= 9; ++level) {
+	for (int level = 1; level <= 8; ++level) {
 		test_compression(vec, functions, level, threads);
 	}
 }
@@ -247,7 +247,7 @@ void test_time_limited(const std::vector<T>& vec, unsigned threads)
 	auto r2 = stenos_compress(vec.data(), sizeof(T), vec.size() * sizeof(T), dst.data(), dst.size(), 1);
 	auto el_min = stenos_tock(timer);
 
-	std::cout << "ratios: " << (double)bytes / r2 << " to " << (double)bytes / r1 << std::endl;
+	std::cout << "ratios: " << (double)bytes / r2 << "in " << el_min << " to " << (double)bytes / r1 << " in " << el_max<< std::endl;
 
 	// start at half the minimum time
 	el_min /= 2;
@@ -277,7 +277,13 @@ void bench_file(const char* filename)
 	if (!std::is_same<Type, void>::value) {
 		using type = typename std::conditional<std::is_same<Type, void>::value, int, Type>::type;
 		auto vec = read_text<type>(filename);
-		test_compression(vec, STENOS_THREADS);
+		if (sizeof(type) != N) {
+			std::vector<std::array<uint8_t, N>> tmp((vec.size() * sizeof(type))/N);
+			memcpy(tmp.data(), vec.data(), tmp.size() * N);
+			test_compression(tmp, STENOS_THREADS);
+		}
+		else
+			test_compression(vec, STENOS_THREADS);
 	}
 	else {
 
@@ -286,6 +292,9 @@ void bench_file(const char* filename)
 	}
 	std::cout << std::endl;
 }
+
+#undef STENOS_DATA_DIR
+#define STENOS_DATA_DIR "C:/Users/VM213788/Documents/src/stenos/build/stenos_dataset"
 
 int bench_all(int, char** const)
 {

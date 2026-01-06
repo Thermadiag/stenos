@@ -103,7 +103,6 @@ It is usually wise to reuse compression contexts as they will
 */
 typedef struct stenos_context_s stenos_context;
 
-
 /**
 @brief Seek flag used by stenos_input class.
 Seek to given absolute position within the stream.
@@ -124,11 +123,10 @@ stenos_decompress_sub_part() to reduce read latency.
 */
 typedef struct stenos_input_s
 {
-	size_t (*read)(char *, size_t, void*); 	/* signature: size_t read(char * dst, size_t bytes, void * opaque)*/
-	size_t (*seek)(int64_t, int, void*); 		/* signature: size_t seek(long offset, int whence, void * opaque)*/
-	size_t (*tell)(void*); /* signature: size_t tell(void * opaque)*/
+	size_t (*read)(char*, size_t, void*); /* signature: size_t read(char * dst, size_t bytes, void * opaque)*/
+	size_t (*seek)(int64_t, int, void*);  /* signature: size_t seek(long offset, int whence, void * opaque)*/
+	size_t (*tell)(void*);		      /* signature: size_t tell(void * opaque)*/
 } stenos_input;
-
 
 /**
 @brief Creates a new stenos_context object.
@@ -263,7 +261,7 @@ STENOS_EXPORT size_t stenos_compress(const void* src, size_t bytesoftype, size_t
 @warning the input and output buffers cannot overlapp.
 */
 STENOS_EXPORT size_t stenos_decompress(const void* src, size_t bytesoftype, size_t bytes, void* dst, size_t dst_size);
- 
+
 /**
 @brief Decompress a sub-part of an input compressed stream.
 @param ctx decompression context, might be null.
@@ -280,12 +278,21 @@ STENOS_EXPORT size_t stenos_decompress(const void* src, size_t bytesoftype, size
 
 stenos_decompress_sub_part() is mostly usefull if you only need to decompress a small fraction of the compressed input.
 In such case, this might save some decompression time and possibly a LOT of reading time. Indeed, the input stream
-might directly read from a file, and a partial decompression might be a huge win if the underlying disk is slow.
+might directly read from a file, and a partial decompression might be a huge win if underlying disk access is slow.
 */
-STENOS_EXPORT size_t stenos_decompress_sub_part(stenos_context* ctx, void * opaque, stenos_input* io, size_t bytesoftype, void* dst, size_t dst_size,
-	size_t * ranges, size_t range_count);
+STENOS_EXPORT size_t stenos_decompress_sub_part(stenos_context* ctx, void* opaque, stenos_input* io, size_t bytesoftype, void* dst, size_t dst_size, size_t* ranges, size_t range_count);
 
+/**
+@brief Attempt to guess the bytes of type for given input.
+@param src input data
+@param bytes input data size
 
+The output bytesoftype will be either 1 (no suitable value found) or a multiple of
+2, 3 or 5, which are ususally the most frequently encountered values.
+
+If SSE4 is available, this function runs at 1.5 to 2 GB/s.
+*/
+STENOS_EXPORT size_t stenos_guess_bytesoftype(const void* src, size_t bytes);
 
 /**
 @brief Small class gathering information on a compressed frame.
@@ -351,8 +358,7 @@ STENOS_EXPORT size_t stenos_private_block_csize(const void* _src);
 
 STENOS_EXPORT size_t stenos_private_create_compression_header(size_t decompressed_size, size_t super_block_size, void* _dst, size_t dst_size);
 
-STENOS_EXPORT size_t stenos_private_assess_compressibility(const void * src, size_t bytesoftype, size_t bytes, void * buffer);	
-
+STENOS_EXPORT size_t stenos_private_assess_compressibility(const void* src, size_t bytesoftype, size_t bytes, void* buffer);
 
 #ifdef __cplusplus
 }

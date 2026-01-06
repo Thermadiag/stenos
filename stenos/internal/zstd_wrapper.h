@@ -76,12 +76,13 @@ namespace stenos
 		if (!ctx.ctx)
 			return STENOS_ERROR_ALLOC;
 
+
 		size_t r = 0;
 		if (dict)
 			r = ZSTD_compress_usingCDict(ctx.ctx, dst, dstCapacity, src, srcSize, dict);
 		else
 			r = ZSTD_compressCCtx(ctx.ctx, dst, dstCapacity, src, srcSize, zstd_from_reduced_level(level));
-
+		
 		if (ZSTD_getErrorCode(r) == ZSTD_error_dstSize_tooSmall)
 			return STENOS_ERROR_DST_OVERFLOW;
 		if (ZSTD_isError(r))
