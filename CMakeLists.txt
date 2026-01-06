@@ -109,7 +109,10 @@ if(STENOS_BUILD_SHARED)
 		endif()
 	else()
 		#FIXME: need to be generalised for machines with incorrect binutil installed
-		target_compile_options(stenos PRIVATE -march=native -mno-avx512f)
+		target_compile_options(stenos PRIVATE -march=native)
+		if (NOT ${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
+			target_compile_options(stenos PRIVATE -mno-avx512f)
+		endif()
 	endif()
 	
 	if(STENOS_WIDE_TABLE)
@@ -168,7 +171,10 @@ if(STENOS_BUILD_STATIC)
 		endif()
 	else()
 		#FIXME: need to be generalised for machines with incorrect binutil installed
-		target_compile_options(stenos_static PRIVATE -march=native -mno-avx512f)
+		target_compile_options(stenos_static PRIVATE -march=native)
+		if (NOT ${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
+			target_compile_options(stenos_static PRIVATE -mno-avx512f)
+		endif()
 	endif()
 	
 	if(STENOS_WIDE_TABLE)
