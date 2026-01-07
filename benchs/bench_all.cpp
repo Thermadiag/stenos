@@ -293,9 +293,6 @@ void bench_file(const char* filename)
 	std::cout << std::endl;
 }
 
-//#undef STENOS_DATA_DIR
-//#define STENOS_DATA_DIR "C:/Users/VM213788/Documents/src/stenos/build/stenos_dataset"
-
 int bench_all(int, char** const)
 {
 	char* _STENOS_THREADS = getenv("STENOS_THREADS");

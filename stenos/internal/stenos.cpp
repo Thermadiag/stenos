@@ -432,12 +432,12 @@ namespace stenos
 
 		STENOS_ASSERT_DEBUG(bytes % bytesoftype == 0, "invalid input byte size");
 
-		//Disable block compression on ARM for now
+		// Disable block compression on ARM for now
 #ifdef __ARM_NEON
 		static const bool no_sse = true;
 #else
 		// Check SSE4.1 support
-		static const bool no_sse = !stenos::cpu_features().HAS_SSE41;
+		static const bool no_sse = ! stenos::cpu_features().HAS_SSE41;
 #endif
 
 		size_t result = 0;
@@ -553,7 +553,7 @@ namespace stenos
 						// Try to favor ZSTD compression
 						// as it usually always outperform block compression
 						// for its highest levels
-						const double factor = 1. + level / 12.;
+						const double factor = 1. + level / 6.;
 						lz_transposed_ratio *= factor;
 						lz_transposed_delta_ratio *= factor;
 						lz_ratio *= factor;
@@ -561,14 +561,16 @@ namespace stenos
 				}
 			}
 			else if (target_speed < 2000000) {
-				const double factor = 1. + level / 12.;
+				const double factor = 1. + level / 6.;
 				lz_ratio *= factor;
 			}
 
 			// Try block compression
 			uint64_t tick = time_limited ? ctx->t.timer.tock() : 0;
-			size_t cblock =
-			  stenos::block_compress_generic(src, bytesoftype, bytes, buffer2->bytes, bytes, block_level, level, ctx->t, &lz_ratio, bytesoftype > 1 ? buffer1->bytes : nullptr);
+			size_t cblock = STENOS_ERROR_INVALID_INSTRUCTION_SET;
+			if (!no_sse)
+				cblock =
+				  stenos::block_compress_generic(src, bytesoftype, bytes, buffer2->bytes, bytes, block_level, level, ctx->t, &lz_ratio, bytesoftype > 1 ? buffer1->bytes : nullptr);
 			if (has_error(cblock) || cblock > bytes) {
 				// Failed: compression ratio too low
 				if (lz_ratio > 1.40) {
