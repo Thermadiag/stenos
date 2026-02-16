@@ -12,7 +12,9 @@ set(CMAKE_CXX_STANDARD 14)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 include(GNUInstallDirs)
 
-include("cmake/FindAVX2.cmake")
+#include("cmake/FindAVX2.cmake")
+set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} ${CMAKE_CURRENT_SOURCE_DIR}/cmake)
+find_package(AVX2)
 
 # project options
 option(STENOS_WIDE_TABLE "Enable wide table support for RLE encoding/decoding" OFF)
@@ -37,6 +39,7 @@ set(STENOS_INSTALL_LIBDIR       "${CMAKE_INSTALL_LIBDIR}")
 set(STENOS_INSTALL_BINDIR       "${CMAKE_INSTALL_BINDIR}")
 set(STENOS_INSTALL_DATAROOTDIR  "${CMAKE_INSTALL_DATAROOTDIR}")
 set(STENOS_CMAKEDIR "${CMAKE_INSTALL_LIBDIR}/cmake/stenos")
+set(STENOS_STATIC_CMAKEDIR "${CMAKE_INSTALL_LIBDIR}/cmake/stenos_static")
 
 # Add zstd
 if(NOT STENOS_BUILD_ZSTD)
@@ -129,6 +132,8 @@ if(STENOS_BUILD_SHARED)
 		endif()
 	endif()
 	
+	set_property(TARGET stenos PROPERTY POSITION_INDEPENDENT_CODE ON)
+
 	target_link_libraries(stenos PRIVATE libzstd_static)
 	target_link_directories(stenos PRIVATE ${ZSTD_LIB_DIR})
 	target_include_directories(stenos PRIVATE ${ZSTD_INCLUDE_DIR})
@@ -197,6 +202,8 @@ if(STENOS_BUILD_STATIC)
 		set_target_properties(stenos_static PROPERTIES CMAKE_C_FLAGS  "${CMAKE_C_FLAGS} -Wall -fPIC" )
 	endif()
 	
+	set_property(TARGET stenos_static PROPERTY POSITION_INDEPENDENT_CODE ON)
+
 	target_link_libraries(stenos_static PRIVATE libzstd_static)
 	target_link_directories(stenos_static PRIVATE ${ZSTD_LIB_DIR})
 	target_include_directories(stenos_static PRIVATE ${ZSTD_INCLUDE_DIR})
@@ -208,8 +215,8 @@ if(STENOS_BUILD_STATIC)
 						   "$<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>")
 	
 	
-	install(TARGETS stenos_static EXPORT stenos DESTINATION ${STENOS_INSTALL_LIBDIR} LIBRARY)
-	install(EXPORT stenos DESTINATION ${STENOS_CMAKEDIR})
+	install(TARGETS stenos_static EXPORT stenos_static DESTINATION ${STENOS_INSTALL_LIBDIR} LIBRARY)
+	install(EXPORT stenos_static DESTINATION ${STENOS_STATIC_CMAKEDIR})
 	
 endif()
 
@@ -254,9 +261,18 @@ configure_file(stenos_config.h.in ${CMAKE_CURRENT_SOURCE_DIR}/stenos/stenos_conf
 # Configure and install stenosConfig.cmake and stenosConfigVersion.cmake
 include(CMakePackageConfigHelpers)
 
+
+
+set(STENOS_CMAKE_FILE "stenos.cmake")
 configure_package_config_file("${CMAKE_CURRENT_SOURCE_DIR}/cmake/stenosConfig.cmake.in"
   "${CMAKE_CURRENT_BINARY_DIR}/stenosConfig.cmake"
   INSTALL_DESTINATION ${STENOS_INSTALL_LIBDIR}/cmake/stenos
+  PATH_VARS )
+  
+set(STENOS_CMAKE_FILE "stenos_static.cmake")
+configure_package_config_file("${CMAKE_CURRENT_SOURCE_DIR}/cmake/stenosConfig.cmake.in"
+  "${CMAKE_CURRENT_BINARY_DIR}/stenos_staticConfig.cmake"
+  INSTALL_DESTINATION ${STENOS_INSTALL_LIBDIR}/cmake/stenos_static
   PATH_VARS )
 
   
@@ -266,7 +282,16 @@ write_basic_package_version_file(
   VERSION ${PROJECT_VERSION}
   COMPATIBILITY SameMajorVersion )
   
+# Generate stenos_staticConfigVersion.cmake
+write_basic_package_version_file(
+  ${CMAKE_CURRENT_BINARY_DIR}/stenos_staticConfigVersion.cmake
+  VERSION ${PROJECT_VERSION}
+  COMPATIBILITY SameMajorVersion )
+  
 install(FILES ${CMAKE_CURRENT_BINARY_DIR}/stenosConfig.cmake
               ${CMAKE_CURRENT_BINARY_DIR}/stenosConfigVersion.cmake
         DESTINATION ${STENOS_INSTALL_LIBDIR}/cmake/stenos )
 		
+install(FILES ${CMAKE_CURRENT_BINARY_DIR}/stenos_staticConfig.cmake
+              ${CMAKE_CURRENT_BINARY_DIR}/stenos_staticConfigVersion.cmake
+        DESTINATION ${STENOS_INSTALL_LIBDIR}/cmake/stenos_static )
