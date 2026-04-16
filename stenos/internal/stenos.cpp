@@ -1141,6 +1141,9 @@ size_t stenos_decompress_generic(stenos_context* opts, const void* _src, size_t 
 	size_t super_block_remaining = decompressed % opts->superblock_size;
 	size_t super_block_count = decompressed / opts->superblock_size + (super_block_remaining ? 1 : 0);
 
+	if (super_block_remaining == 0)
+		super_block_remaining = opts->superblock_size;
+
 	if (opts->threads <= 1 || super_block_count == 1) {
 		// Mono thread decompression
 		if STENOS_UNLIKELY (stenos::has_error(opts->ensure_has_buffers(1)))
