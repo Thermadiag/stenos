@@ -778,13 +778,6 @@ namespace stenos
 		return dsize;
 	}
 
-	static inline stenos::tiny_pool& get_pool()
-	{
-		// Create static thread pool
-		static stenos::tiny_pool pool(std::thread::hardware_concurrency() * 2u);
-		return pool;
-	}
-
 	// Global thread pool used for multithreaded compression/decompression.
 	// Make sure that threads are created at program initialization.
 	static stenos::tiny_pool* pool = &get_pool();
@@ -1281,7 +1274,7 @@ static size_t read_next_block(void* opaque, stenos_input* io, uint8_t* code, uns
 	return 0;
 }
 
-size_t stenos_decompress_sub_part(stenos_context* ctx, void* opaque, stenos_input* io, size_t bytesoftype, void* _dst, size_t dst_size, size_t* ranges, size_t range_count)
+size_t stenos_decompress_sub_part(stenos_context* ctx, stenos_input* io, size_t bytesoftype, void* _dst, size_t dst_size, size_t* ranges, size_t range_count)
 {
 	if (range_count == 0)
 		return 0;
@@ -1292,7 +1285,7 @@ size_t stenos_decompress_sub_part(stenos_context* ctx, void* opaque, stenos_inpu
 
 	uint8_t shift = 0;
 	// read shift
-	if (io->read((char*)&shift, 1, opaque) != 1)
+	if (io->read((char*)&shift, 1, io->opaque) != 1)
 		return STENOS_ERROR_SRC_OVERFLOW;
 
 	// Check shift validity
@@ -1301,7 +1294,7 @@ size_t stenos_decompress_sub_part(stenos_context* ctx, void* opaque, stenos_inpu
 
 	// Read decompressed size
 	uint64_t decompressed = 0;
-	if (io->read((char*)&decompressed, 7, opaque) != 7)
+	if (io->read((char*)&decompressed, 7, io->opaque) != 7)
 		return STENOS_ERROR_SRC_OVERFLOW;
 #if STENOS_BYTEORDER_ENDIAN == STENOS_BYTEORDER_BIG_ENDIAN
 	decompressed = byte_swap_64(decompressed);
@@ -1317,7 +1310,7 @@ size_t stenos_decompress_sub_part(stenos_context* ctx, void* opaque, stenos_inpu
 	if (shift == 255) {
 		// Custom superblock size
 		uint32_t bsize = 0;
-		if (io->read((char*)&bsize, 4, opaque) != 4)
+		if (io->read((char*)&bsize, 4, io->opaque) != 4)
 			return STENOS_ERROR_SRC_OVERFLOW;
 		superblock_size = bsize;
 #if STENOS_BYTEORDER_ENDIAN == STENOS_BYTEORDER_BIG_ENDIAN
@@ -1370,10 +1363,10 @@ size_t stenos_decompress_sub_part(stenos_context* ctx, void* opaque, stenos_inpu
 	std::vector<Block> blocks(last_valid_block_idx + 1);
 
 	for (size_t i = 0; i < blocks.size(); ++i) {
-		size_t pos = io->tell(opaque);
+		size_t pos = io->tell(io->opaque);
 		uint8_t code;
 		unsigned csize;
-		auto r = read_next_block(opaque, io, &code, &csize);
+		auto r = read_next_block(io->opaque, io, &code, &csize);
 		if (stenos::has_error(r))
 			return r;
 		blocks[i] = Block{ pos, (i == total_block_count - 1) ? last_block_size : superblock_size, csize, code };
@@ -1398,9 +1391,9 @@ size_t stenos_decompress_sub_part(stenos_context* ctx, void* opaque, stenos_inpu
 			if (block_idx != current_block_idx || out_buffer.empty()) {
 				// Read and decompress block
 				out_buffer.resize(superblock_size);
-				if (io->seek(blocks[block_idx].pos + 4, STENOS_SEEK_SET, opaque) != 0)
+				if (io->seek(blocks[block_idx].pos + 4, STENOS_SEEK_SET, io->opaque) != 0)
 					return STENOS_ERROR_INVALID_IO;
-				if (io->read(in_buffer.data(), blocks[block_idx].csize, opaque) != blocks[block_idx].csize)
+				if (io->read(in_buffer.data(), blocks[block_idx].csize, io->opaque) != blocks[block_idx].csize)
 					return STENOS_ERROR_INVALID_IO;
 
 				auto r = stenos::decompress_generic_superblock(opts,

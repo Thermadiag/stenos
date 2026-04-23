@@ -120,13 +120,27 @@ Seek to given relative position within the stream.
 stenos_input structure provides read-only functions working
 on a underlying stream. This is currently only used by function
 stenos_decompress_sub_part() to reduce read latency.
+
+All functions can return a negative value to notify failure.
 */
 typedef struct stenos_input_s
 {
-	size_t (*read)(char*, size_t, void*); /* signature: size_t read(char * dst, size_t bytes, void * opaque)*/
-	size_t (*seek)(int64_t, int, void*);  /* signature: size_t seek(long offset, int whence, void * opaque)*/
-	size_t (*tell)(void*);		      /* signature: size_t tell(void * opaque)*/
+	int64_t (*read)(char*, int64_t, void*); /* signature: int64_t read(char * dst, int64_t bytes, void * opaque)*/
+	int64_t (*seek)(int64_t, int, void*);	/* signature: int64_t seek(int64_t offset, int whence, void * opaque)*/
+	int64_t (*tell)(void*);			/* signature: int64_t tell(void * opaque)*/
+	void* opaque;				/*opaque data*/
 } stenos_input;
+
+
+/**
+@brief Lock class used for video decompression (see stenos_video.h)
+*/
+typedef struct stenos_lock_s
+{
+	void (*lock)(void*); /* locking function */
+	void (*unlock)(void*); /* unlocking function */
+	void* opaque;				/*opaque lock object*/
+} stenos_lock;
 
 /**
 @brief Creates a new stenos_context object.
@@ -280,7 +294,7 @@ stenos_decompress_sub_part() is mostly usefull if you only need to decompress a 
 In such case, this might save some decompression time and possibly a LOT of reading time. Indeed, the input stream
 might directly read from a file, and a partial decompression might be a huge win if underlying disk access is slow.
 */
-STENOS_EXPORT size_t stenos_decompress_sub_part(stenos_context* ctx, void* opaque, stenos_input* io, size_t bytesoftype, void* dst, size_t dst_size, size_t* ranges, size_t range_count);
+STENOS_EXPORT size_t stenos_decompress_sub_part(stenos_context* ctx, stenos_input* io, size_t bytesoftype, void* dst, size_t dst_size, size_t* ranges, size_t range_count);
 
 /**
 @brief Attempt to guess the bytes of type for given input.

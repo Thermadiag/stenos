@@ -35,6 +35,11 @@
 #include <functional>
 #include <queue>
 
+#ifdef min
+#undef min
+#undef max
+#endif
+
 namespace stenos
 {
 
@@ -121,6 +126,7 @@ namespace stenos
 		{
 			BaseTask* left = nullptr;
 			BaseTask* right = nullptr;
+			std::atomic<bool>* sentinel = nullptr;
 			virtual ~BaseTask() noexcept {}
 			virtual void apply() noexcept {};
 
@@ -153,6 +159,8 @@ namespace stenos
 				}
 				catch (...) {
 				}
+				if (sentinel)
+					sentinel->store(true);
 			};
 		};
 
@@ -281,26 +289,92 @@ namespace stenos
 				threads[i].join();
 		}
 
-		void wait() noexcept
+		void wait(std::atomic<bool>* sentinel = nullptr) noexcept
 		{
 			std::unique_lock<std::mutex> lock(mutex);
 			waiting = true;
-			wait_condition.wait(lock, [this] { return (this->processing == 0) && this->list.empty(); });
+			wait_condition.wait(lock, [&] {
+				if (!sentinel)
+					return (this->processing == 0) && this->list.empty();
+				else
+					return sentinel->load(std::memory_order_relaxed);
+			});
 			waiting = false;
 		}
 
 		template<class U>
-		bool push(U&& u) noexcept
+		bool push(U&& u, std::atomic<bool>* sentinel = nullptr) noexcept
 		{
 			auto t = list.make_task(std::forward<U>(u));
 			if (t) {
+				t->sentinel = sentinel;
+				if (sentinel)
+					sentinel->store(false);
 				std::lock_guard<std::mutex> lock(mutex);
 				list.push_back(t);
 			}
 			condition.notify_one();
 			return t;
 		}
+
+		template<class U>
+		bool loop_for(int thread_count, int start, int end, int step, U u) noexcept
+		{
+			if (thread_count <= 1) {
+				for (; start < end; start += step) {
+					u(start);
+				}
+				return true;
+			}
+			//  Adjust thread count
+			thread_count = std::min(thread_count, (int)threads.size());
+			// Compute range
+			int count = (end - start);
+			// Compute number of blocks
+			int block_count = std::min(count / step, thread_count);
+			if (block_count == 0) {
+				if (end == start) {
+					// Nothing to do
+					return true;
+				}
+				block_count = 1;
+			}
+			// Compute block size
+			int block_size = count / block_count;
+			if (block_count > 1 && (block_size % step) != 0) {
+				block_size = (block_size / step) * step;
+				block_count = count / block_size + (count % block_size ? 1 : 0);
+			}
+
+			std::atomic<bool> sentinel;
+			for (int i = 0; i < block_count; ++i) {
+				bool r = push(
+				  [&, i]() {
+					  int first = start + i * block_size;
+					  int last = (i == block_count - 1) ? end : first + block_size;
+					  for (; first < last; first += step)
+						  u(first);
+				  },
+				  i == block_count - 1 ? &sentinel : nullptr);
+				if (!r) {
+					wait();
+					return false;
+				}
+			}
+			wait(&sentinel);
+			return true;
+		}
 	};
+
+
+	
+	static inline stenos::tiny_pool& get_pool()
+	{
+		// Create static thread pool
+		static stenos::tiny_pool pool(std::thread::hardware_concurrency() * 2u);
+		return pool;
+	}
+
 }
 
 #endif
