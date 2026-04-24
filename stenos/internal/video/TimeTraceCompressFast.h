@@ -12,6 +12,7 @@
 #include <mutex>
 #include <atomic>
 #include <thread>
+#include <cmath>
 
 #include "../../bits.hpp"
 #include "../../timer.hpp"
@@ -166,7 +167,7 @@ namespace stenos
 		static STENOS_ALWAYS_INLINE T fround_to(double v) noexcept
 		{
 			if (std::is_integral<T>::value)
-				return (T)(v + 0.5f);
+				return (T)std::llrint(v);
 			return (T)v;
 		}
 
@@ -454,12 +455,12 @@ namespace stenos
 				level = 9;
 
 			// Write number of frame
-			stenos_vblock_header h;
+			stenosv_block_header h;
 			h.width = (uint16_t)d_width;
 			h.height = (uint16_t)d_height;
 			h.version = STENOS_VIDEO_TRACE_VERSION;
 			h.count = (uint16_t)d_times.size();
-			h.pixel_type = (unsigned char)stenos_to_pixel_type<T>();
+			h.pixel_type = (unsigned char)stenosv_to_pixel_type<T>();
 
 			out.insert(out.size(), (char*)&h, sizeof(h));
 
@@ -478,14 +479,14 @@ namespace stenos
 				// Directly take the decimated points
 #ifdef STENOS_OPENCL
 				if (d_openCL) {
-					stenos::timer t;
-					t.tick();
+					//stenos::timer t;
+					//t.tick();
 					for (size_t i = 0; i < size; ++i) {
 						cnts_pix[i] = (uint16_t)d_openCL->retrieve_decimated_pixels(i, (std::vector<CLPixelType<T>>&)pixels);
 						total_pixels += cnts_pix[i];
 					}
-					auto el = t.tock();
-					printf("%f\n", (el * 1e-6));
+					//auto el = t.tock();
+					//printf("%f\n", (el * 1e-6));
 				}
 				else
 #endif
@@ -918,7 +919,7 @@ namespace stenos
 		virtual int threads() const noexcept = 0;
 		virtual void set_threads(int threads) noexcept = 0;
 
-		virtual const stenos_vblock_header& header() const noexcept = 0;
+		virtual const stenosv_block_header& header() const noexcept = 0;
 		virtual const std::vector<int64_t>& times() const noexcept = 0;
 
 		virtual bool open(stenos_input* in, bool read_data) = 0;
@@ -944,7 +945,7 @@ namespace stenos
 
 	private:
 		std::vector<int64_t> d_times;
-		stenos_vblock_header d_header;
+		stenosv_block_header d_header;
 		std::uint64_t d_pos{ 0 };
 		std::vector<uint64_t> d_trace_pos;
 		int d_threads{ 1 };
@@ -966,7 +967,7 @@ namespace stenos
 				return false;
 			}
 
-			if (d_header.pixel_type != stenos_to_pixel_type<T>())
+			if (d_header.pixel_type != stenosv_to_pixel_type<T>())
 				return false;
 
 			d_times.resize(d_header.count);
@@ -1072,7 +1073,7 @@ namespace stenos
 		}
 		static int64_t tell_stream(void* opaque) { return static_cast<Istream*>(opaque)->pos; }
 
-		std::vector<TimeTraceRange> open_skip_size_partial(stenos_input* in, const stenos_coordinate* coords, size_t count, stenos_lock* lock)
+		std::vector<TimeTraceRange> open_skip_size_partial(stenos_input* in, const stenosv_coordinate* coords, size_t count, stenos_lock* lock)
 		{
 			// Extract given time traces without opening the block.
 			// This performs a partial decompression of the block,
@@ -1088,7 +1089,7 @@ namespace stenos
 				return res;
 			}
 
-			if (d_header.pixel_type != stenos_to_pixel_type<T>()) {
+			if (d_header.pixel_type != stenosv_to_pixel_type<T>()) {
 				close();
 				return res;
 			}
@@ -1178,7 +1179,7 @@ namespace stenos
 		void set_threads(int threads) noexcept { d_threads = threads; }
 
 		bool empty() const noexcept { return d_times.empty() || d_time_traces.empty(); }
-		const stenos_vblock_header& header() const noexcept { return d_header; }
+		const stenosv_block_header& header() const noexcept { return d_header; }
 		const std::vector<int64_t>& times() const noexcept { return d_times; }
 		int64_t time() const noexcept { return d_times.empty() ? 0 : d_times[0]; }
 		std::pair<int64_t, int64_t> bounds() const noexcept { return d_times.empty() ? std::pair<int64_t, int64_t>{ 0ll, 0ll } : std::pair<int64_t, int64_t>{ d_times[0], d_times.back() }; }
@@ -1190,7 +1191,7 @@ namespace stenos
 			const auto* start = d_time_traces.data() + d_poss[pos].first;
 			return { start, start + d_poss[pos].second };
 		}
-		/*std::vector<TimeTraceRange> time_trace2(const stenos_coordinate * coords, size_t count) const
+		/*std::vector<TimeTraceRange> time_trace2(const stenosv_coordinate * coords, size_t count) const
 		{
 			std::vector<TimeTraceRange> res(count);
 			for(size_t i = 0; i < count; ++i){
@@ -1275,7 +1276,7 @@ namespace stenos
 			return open_skip_size(iss, read_content);
 		}*/
 
-		std::vector<TimeTraceRange> open_parallel_partial(stenos_input* in, const stenos_coordinate* coords, size_t count, stenos_lock* lock = nullptr)
+		std::vector<TimeTraceRange> open_parallel_partial(stenos_input* in, const stenosv_coordinate* coords, size_t count, stenos_lock* lock = nullptr)
 		{
 			close();
 

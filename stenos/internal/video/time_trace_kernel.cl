@@ -242,33 +242,33 @@ kernel void advance_pixel_data_int( global GENERATE_NAME(CLPixelData,int)* pixel
 
 
 GENERATE_FUNCTIONS(uint,double)
-kernel void insert_key_frame_uint(global GENERATE_NAME(CLPixelData,uint)* pixel_data, const uint pos, const double error, global const double* times)
+kernel void insert_key_frame_uint(global GENERATE_NAME(CLPixelData,uint)* pixel_data, const int pos, const double error, global const double* times)
 {
 	GENERATE_NAME(insert_key_frame_internal,uint)(pixel_data, pos, error, times);
 }
-kernel void advance_pixel_data_uint( global GENERATE_NAME(CLPixelData,uint)* pixel_data, global GENERATE_NAME(CLPixelType,uint)* all_pixels, global const uint* img, const uint pos, const double error, const int GOP, global const double* times)
+kernel void advance_pixel_data_uint( global GENERATE_NAME(CLPixelData,uint)* pixel_data, global GENERATE_NAME(CLPixelType,uint)* all_pixels, global const uint* img, const int pos, const double error, const int GOP, global const double* times)
 {
 	GENERATE_NAME(advance_pixel_data_internal,uint)(pixel_data,all_pixels,img,pos,error,GOP,times);
 }
 
 
 GENERATE_FUNCTIONS(long,double)
-kernel void insert_key_frame_long(global GENERATE_NAME(CLPixelData,long)* pixel_data, const long pos, const double error, global const double* times)
+kernel void insert_key_frame_long(global GENERATE_NAME(CLPixelData,long)* pixel_data, const int pos, const double error, global const double* times)
 {
 	GENERATE_NAME(insert_key_frame_internal,long)(pixel_data, pos, error, times);
 }
-kernel void advance_pixel_data_long( global GENERATE_NAME(CLPixelData,long)* pixel_data, global GENERATE_NAME(CLPixelType,long)* all_pixels, global const long* img, const long pos, const double error, const int GOP, global const double* times)
+kernel void advance_pixel_data_long( global GENERATE_NAME(CLPixelData,long)* pixel_data, global GENERATE_NAME(CLPixelType,long)* all_pixels, global const long* img, const int pos, const double error, const int GOP, global const double* times)
 {
 	GENERATE_NAME(advance_pixel_data_internal,long)(pixel_data,all_pixels,img,pos,error,GOP,times);
 }
 
 
 GENERATE_FUNCTIONS(ulong,double)
-kernel void insert_key_frame_ulong(global GENERATE_NAME(CLPixelData,ulong)* pixel_data, const ulong pos, const double error, global const double* times)
+kernel void insert_key_frame_ulong(global GENERATE_NAME(CLPixelData,ulong)* pixel_data, const int pos, const double error, global const double* times)
 {
 	GENERATE_NAME(insert_key_frame_internal,ulong)(pixel_data, pos, error, times);
 }
-kernel void advance_pixel_data_ulong( global GENERATE_NAME(CLPixelData,ulong)* pixel_data, global GENERATE_NAME(CLPixelType,ulong)* all_pixels, global const ulong* img, const ulong pos, const double error, const int GOP, global const double* times)
+kernel void advance_pixel_data_ulong( global GENERATE_NAME(CLPixelData,ulong)* pixel_data, global GENERATE_NAME(CLPixelType,ulong)* all_pixels, global const ulong* img, const int pos, const double error, const int GOP, global const double* times)
 {
 	GENERATE_NAME(advance_pixel_data_internal,ulong)(pixel_data,all_pixels,img,pos,error,GOP,times);
 }
@@ -286,11 +286,11 @@ kernel void advance_pixel_data_float( global GENERATE_NAME(CLPixelData,float)* p
 
 
 GENERATE_FUNCTIONS(double,double)
-kernel void insert_key_frame_double(global GENERATE_NAME(CLPixelData,double)* pixel_data, const double pos, const double error, global const double* times)
+kernel void insert_key_frame_double(global GENERATE_NAME(CLPixelData,double)* pixel_data, const int pos, const double error, global const double* times)
 {
 	GENERATE_NAME(insert_key_frame_internal,double)(pixel_data, pos, error, times);
 }
-kernel void advance_pixel_data_double( global GENERATE_NAME(CLPixelData,double)* pixel_data, global GENERATE_NAME(CLPixelType,double)* all_pixels, global const double* img, const double pos, const double error, const int GOP, global const double* times)
+kernel void advance_pixel_data_double( global GENERATE_NAME(CLPixelData,double)* pixel_data, global GENERATE_NAME(CLPixelType,double)* all_pixels, global const double* img, const int pos, const double error, const int GOP, global const double* times)
 {
 	GENERATE_NAME(advance_pixel_data_internal,double)(pixel_data,all_pixels,img,pos,error,GOP,times);
 }

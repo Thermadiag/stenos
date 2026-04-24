@@ -86,6 +86,42 @@ namespace stenos
 		return ret;
 	}
 
+	/* struct TimeTraceContext
+	{
+		int device_id = -1;
+		cl::Device device;
+		cl::Context context;
+		cl::Program program;
+		std::string error;
+	};
+
+	// Returns all opencl 
+	static inline TimeTraceContext* getContext(int device)
+	{
+		static std::deque<TimeTraceContext> inst;
+		static std::mutex mutex;
+
+		if (device < 0 || device >= (int)getSupportedGPUs().size())
+			return nullptr;
+
+		std::scoped_lock<std::mutex> lock(mutex);
+
+		for (TimeTraceContext& c : inst) {
+			if (c.device_id == device)
+				return &c;
+		}
+		TimeTraceContext& c = inst.emplace_back();
+		c.device = (getSupportedGPUs()[(size_t)device].device);
+		c.context = cl::Context(c.device);
+		cl::Program::Sources sources;
+		sources.push_back(kernel_code);
+		c.program = cl::Program(c.context, sources);
+		if (c.program.build(c.device) != CL_SUCCESS)
+			c.error = c.program.getBuildInfo<CL_PROGRAM_BUILD_LOG>(c.device);
+		return &c;
+	}*/
+
+
 
 #pragma pack(1)
 	// Pixel value and temporal position, similar to the one in TimeTraceCompressionFast.h
@@ -220,6 +256,7 @@ namespace stenos
 	public:
 		static_assert(std::is_arithmetic<T>::value, "invalid pixel type");
 
+		
 		TimeTraceCompressCL(int device_idx, size_t width, size_t height, double error, size_t GOP)
 		{
 			if (device_idx < 0 || device_idx >= (int)getSupportedGPUs().size())
@@ -231,7 +268,7 @@ namespace stenos
 			sources.push_back(kernel_code);
 
 			d_program = cl::Program(d_context, sources);
-			if (d_program.build({ d_device }) != CL_SUCCESS) {
+			if (d_program.build(d_device) != CL_SUCCESS) {
 				//RIR_LOG_ERROR("error building opencl kernel: ", d_program.getBuildInfo<CL_PROGRAM_BUILD_LOG>(d_device));
 				//std::cout << d_program.getBuildInfo<CL_PROGRAM_BUILD_LOG>(d_device) << std::endl;
 				return;
@@ -291,7 +328,7 @@ namespace stenos
 				return;
 
 			// Launch kernel
-			cl::EnqueueArgs args(d_queue, cl::NullRange, cl::NDRange(d_width * d_height), cl::NDRange(32));
+			cl::EnqueueArgs args(d_queue, cl::NullRange, cl::NDRange(d_width * d_height), cl::NullRange);
 			(*d_insert_key_frame)(args, d_buffer_data, d_pos, d_error, d_buffer_times);
 
 			// We need to retrieve the data buffer
@@ -317,7 +354,7 @@ namespace stenos
 			d_queue.enqueueWriteBuffer(d_buffer_img, CL_FALSE, 0, sizeof(T) * d_width * d_height, img);
 
 			// Launch kernel without waiting
-			cl::EnqueueArgs args(d_queue, cl::NullRange, cl::NDRange(d_width * d_height), cl::NDRange(32));
+			cl::EnqueueArgs args(d_queue, cl::NullRange, cl::NDRange(d_width * d_height), cl::NullRange);
 			d_last_evt = (*d_advance_pixel_data)(args, d_buffer_data, d_buffer_pixels, d_buffer_img, d_pos, d_error, (int)d_gop, d_buffer_times);
 
 			++d_pos;
@@ -350,7 +387,7 @@ namespace stenos
 		{
 			auto* trace = bufferize_time_trace(idx);
 
-			for (size_t i = 0; i < d_gop; ++i) {
+			for (size_t i = 0; i < d_times.size(); ++i) {
 				out.push_back(trace[i]);
 			}
 			return (size_t)d_gop;
