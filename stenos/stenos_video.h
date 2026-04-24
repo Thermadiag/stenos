@@ -25,6 +25,7 @@
 #ifndef STENOS_VIDEO_H
 #define STENOS_VIDEO_H
 
+#include "stenos.h"
 
 /**
 Supported image pixel type for video compression/decompression
@@ -88,7 +89,7 @@ static STENOS_CONSTEXPR stenosv_pixel_type stenosv_to_pixel_type()
 	}
 }
 
-#include "stenos.h"
+
 
 extern "C" {
 #endif
