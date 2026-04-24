@@ -112,10 +112,9 @@ void test_codec(int width, int height, int GOP, double error, int threads, int d
 
 	while (true) {
 		auto streampos = fin.tellg();
-		auto codec = stenosv_decompress_make_stream(&in);
+		auto codec = stenosv_decompress_make_stream(&in, threads);
 		if (!codec)
 			break;
-		stenosv_decompress_set_threads(codec, threads);
 		stenosv_block_header h = stenosv_decompress_info(codec);
 		STENOS_TEST(h.version);
 		STENOS_TEST((int)h.width == width);

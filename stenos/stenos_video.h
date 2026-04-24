@@ -291,7 +291,7 @@ Video decompression API
 /**
 Video decompression context structure
 */
-typedef struct stenosv_decompress_s stenos_vdecompress;
+typedef struct stenosv_decompress_s stenosv_decompress;
 
 /**
 Returns the block header for given payload.
@@ -324,7 +324,7 @@ The passed threads will also be used to read images with stenosv_decompress_read
 
 Returns a null pointer on error.
 */
-STENOS_EXPORT stenos_vdecompress* stenosv_decompress_make_buffer(stenosv_payload buffer, int threads);
+STENOS_EXPORT stenosv_decompress* stenosv_decompress_make_buffer(stenosv_payload buffer, int threads);
 
 /**
 Create a video decompression context from a complete payload.
@@ -338,22 +338,22 @@ The passed threads will also be used to read images with stenosv_decompress_read
 
 Returns a null pointer on error.
 */
-STENOS_EXPORT stenos_vdecompress* stenosv_decompress_make_stream(stenos_input* input, int threads);
+STENOS_EXPORT stenosv_decompress* stenosv_decompress_make_stream(stenos_input* input, int threads);
 
 /**
 Destroy/deallocate video decompression context.
 */
-STENOS_EXPORT void stenosv_decompress_destroy(stenos_vdecompress*);
+STENOS_EXPORT void stenosv_decompress_destroy(stenosv_decompress*);
 
 /**
 Returns the block header of a video decompression context.
 */
-STENOS_EXPORT stenosv_block_header stenosv_decompress_info(stenos_vdecompress*);
+STENOS_EXPORT stenosv_block_header stenosv_decompress_info(stenosv_decompress*);
 
 /**
 Returns the timestamps contained by a video decompression context.
 */
-STENOS_EXPORT int64_t* stenosv_decompress_get_timestamps(stenos_vdecompress*);
+STENOS_EXPORT int64_t* stenosv_decompress_get_timestamps(stenosv_decompress*);
 
 /**
 Read an image at given position from a video decompression context.
@@ -364,7 +364,7 @@ Use stenosv_decompress_info() to retrieve these information.
 An inner pixel stride different than 1 can be passed in order to reconstruct
 multi-channel images (like RGB ones).
 */
-STENOS_EXPORT size_t stenosv_decompress_read_image(stenos_vdecompress*, int pos, int inner_stride, void* out_image);
+STENOS_EXPORT size_t stenosv_decompress_read_image(stenosv_decompress*, int pos, int inner_stride, void* out_image);
 
 
 

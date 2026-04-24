@@ -310,12 +310,12 @@ stenosv_block_header stenosv_read_block_header_stream(stenos_input* input, uint6
 	}
 }
 
-stenos_vdecompress* stenosv_decompress_make_buffer(stenosv_payload buffer, int threads)
+stenosv_decompress* stenosv_decompress_make_buffer(stenosv_payload buffer, int threads)
 {
 	if (threads < 1)
 		threads = 1;
 	
-	stenos_vdecompress* ret = nullptr;
+	stenosv_decompress* ret = nullptr;
 	stenosv_block_header h = stenosv_read_block_header_buffer(buffer, nullptr);
 	if (h.version == 0)
 		return ret;
@@ -325,7 +325,7 @@ stenos_vdecompress* stenosv_decompress_make_buffer(stenosv_payload buffer, int t
 	try {
 		std::unique_ptr<BaseTimeTraceDecompressBlock> dec(from_type(ptype));
 		if (dec) {
-			ret = new stenos_vdecompress();
+			ret = new stenosv_decompress();
 			ret->dec = std::move(dec);
 			ret->pixel_type = ptype;
 			ret->buffer.buf = buffer;
@@ -348,12 +348,12 @@ stenos_vdecompress* stenosv_decompress_make_buffer(stenosv_payload buffer, int t
 	return ret;
 }
 
-stenos_vdecompress* stenosv_decompress_make_stream(stenos_input* read, int threads)
+stenosv_decompress* stenosv_decompress_make_stream(stenos_input* read, int threads)
 {
 	if (threads < 1)
 		threads = 1;
 
-	stenos_vdecompress* ret = nullptr;
+	stenosv_decompress* ret = nullptr;
 	stenosv_block_header h = stenosv_read_block_header_stream(read, nullptr);
 	if (h.version == 0)
 		return ret;
@@ -363,7 +363,7 @@ stenos_vdecompress* stenosv_decompress_make_stream(stenos_input* read, int threa
 	try {
 		std::unique_ptr<BaseTimeTraceDecompressBlock> dec(from_type(ptype));
 		if (dec) {
-			ret = new stenos_vdecompress();
+			ret = new stenosv_decompress();
 			ret->dec = std::move(dec);
 			ret->pixel_type = ptype;
 			ret->input = *read;
@@ -382,30 +382,30 @@ stenos_vdecompress* stenosv_decompress_make_stream(stenos_input* read, int threa
 	return ret;
 }
 
-void stenosv_decompress_set_threads(stenos_vdecompress* ctx, int threads)
+void stenosv_decompress_set_threads(stenosv_decompress* ctx, int threads)
 {
 	if (threads < 1)
 		threads = 1;
 	ctx->dec->set_threads(threads);
 }
 
-void stenosv_decompress_destroy(stenos_vdecompress* ctx)
+void stenosv_decompress_destroy(stenosv_decompress* ctx)
 {
 	if (ctx)
 		delete ctx;
 }
 
-stenosv_block_header stenosv_decompress_info(stenos_vdecompress* ctx)
+stenosv_block_header stenosv_decompress_info(stenosv_decompress* ctx)
 {
 	return (const stenosv_block_header&)ctx->dec->header();
 }
 
-int64_t* stenosv_decompress_get_timestamps(stenos_vdecompress* ctx)
+int64_t* stenosv_decompress_get_timestamps(stenosv_decompress* ctx)
 {
 	return (int64_t*)ctx->dec->times().data();
 }
 
-size_t stenosv_decompress_read_image(stenos_vdecompress* ctx, int pos, int inner_stride, void* out_image)
+size_t stenosv_decompress_read_image(stenosv_decompress* ctx, int pos, int inner_stride, void* out_image)
 {
 	try {
 		if (pos < 0 || pos >= (int)ctx->dec->header().count)
