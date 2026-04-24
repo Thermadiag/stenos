@@ -5,6 +5,9 @@
 
 using namespace stenos;
 
+
+
+
 static std::vector<stenosv_gpu_device> compute_gpu_list()
 {
 	std::vector<stenosv_gpu_device> devices;

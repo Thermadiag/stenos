@@ -25,34 +25,6 @@
 #ifndef STENOS_VIDEO_H
 #define STENOS_VIDEO_H
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-#include <stddef.h>
-#include <stdint.h>
-#include <string.h>
-#ifdef __cplusplus
-}
-#endif
-
-#include "stenos.h"
-
-/**
-Video block format version
-*/
-#define STENOS_VIDEO_TRACE_VERSION 1
-
-/**
-Structure describing a GPU device
-*/
-typedef struct stenosv_gpu_device
-{
-	const char* name;
-	uint64_t compute_units;
-	uint64_t max_memory;
-	uint64_t vendor_id;
-} stenosv_gpu_device;
-
 
 /**
 Supported image pixel type for video compression/decompression
@@ -71,79 +43,10 @@ typedef enum
 	StenosFloat64,
 } stenosv_pixel_type;
 
-/**
-Generic buffer class
-*/
-typedef struct stenosv_payload_s
-{
-	void* data;
-	uint64_t size;
-} stenosv_payload;
-
-/**
-Header of a compressed video block
-*/
-typedef struct stenosv_block_header
-{
-	unsigned char version; /* Codec version */
-	unsigned char pixel_type; /* Pixel type (stenosv_pixel_type) */
-	unsigned short width;	  /* Image width */
-	unsigned short height;	/* Image height */
-	unsigned short count; /* Number of images */
-} stenosv_block_header;
-
-
-/**
- * Time trace features to extract using extract_time_trace().
- */
-typedef enum
-{
-	StenosTraceMin = 1,
-	StenosTraceMax = 2,
-	StenosTraceMean = 4,
-	StenosTraceVar = 8,
-	StenosTraceAll = 15
-} stenosv_trace_component;
-
-/**
- * Pixel coordinate type for trace_query structure
- */
-typedef struct stenosv_coordinate
-{
-	unsigned x, y;
-} stenosv_coordinate;
-
-/**
- * Time trace query information as used by stenosv_extract_time_trace().
- */
-typedef struct stenosv_trace_query
-{
-	int threads;		   /* Number of thread used for trace extraction*/
-	int components;		   /*  Parameters to extract, combination of stenosv_trace_component*/
-	stenosv_coordinate* pixels; /*  Region Of Intereset(ROI) pixels on which time trace is computed*/
-	unsigned pixel_count;
-} stenosv_trace_query;
-
-/**
-Output of stenosv_extract_time_trace().
-Members must be allocated up front if they are going to be computed (based on stenosv_trace_query::components).
-Note that the timestamps must ALWAYS be allocated.
-*/
-typedef struct stenosv_trace_result
-{
-	int64_t* timestamps;
-	double* max_values;
-	double* min_values;
-	double* mean_values;
-	double* var_values;
-} stenosv_trace_result;
-
-
 
 #ifdef __cplusplus
 
 #include "bits.hpp"
-
 /**
 For C++ users, convert arithmetic type to stenosv_pixel_type
 */
@@ -185,7 +88,97 @@ static STENOS_CONSTEXPR stenosv_pixel_type stenosv_to_pixel_type()
 	}
 }
 
+#include "stenos.h"
+
+extern "C" {
 #endif
+
+#include <stddef.h>
+#include <stdint.h>
+#include <string.h>
+
+/**
+Video block format version
+*/
+#define STENOS_VIDEO_TRACE_VERSION 1
+
+/**
+Structure describing a GPU device
+*/
+typedef struct stenosv_gpu_device
+{
+	const char* name;
+	uint64_t compute_units;
+	uint64_t max_memory;
+	uint64_t vendor_id;
+} stenosv_gpu_device;
+
+/**
+Generic buffer class
+*/
+typedef struct stenosv_payload_s
+{
+	void* data;
+	uint64_t size;
+} stenosv_payload;
+
+/**
+Header of a compressed video block
+*/
+typedef struct stenosv_block_header
+{
+	unsigned char version;	  /* Codec version */
+	unsigned char pixel_type; /* Pixel type (stenosv_pixel_type) */
+	unsigned short width;	  /* Image width */
+	unsigned short height;	  /* Image height */
+	unsigned short count;	  /* Number of images */
+} stenosv_block_header;
+
+/**
+ * Time trace features to extract using extract_time_trace().
+ */
+typedef enum
+{
+	StenosTraceMin = 1,
+	StenosTraceMax = 2,
+	StenosTraceMean = 4,
+	StenosTraceVar = 8,
+	StenosTraceAll = 15
+} stenosv_trace_component;
+
+/**
+ * Pixel coordinate type for trace_query structure
+ */
+typedef struct stenosv_coordinate
+{
+	unsigned x, y;
+} stenosv_coordinate;
+
+/**
+ * Time trace query information as used by stenosv_extract_time_trace().
+ */
+typedef struct stenosv_trace_query
+{
+	int threads;		    /* Number of thread used for trace extraction*/
+	int components;		    /*  Parameters to extract, combination of stenosv_trace_component*/
+	stenosv_coordinate* pixels; /*  Region Of Intereset(ROI) pixels on which time trace is computed*/
+	unsigned pixel_count;
+} stenosv_trace_query;
+
+/**
+Output of stenosv_extract_time_trace().
+Members must be allocated up front if they are going to be computed (based on stenosv_trace_query::components).
+Note that the timestamps must ALWAYS be allocated.
+*/
+typedef struct stenosv_trace_result
+{
+	int64_t* timestamps;
+	double* max_values;
+	double* min_values;
+	double* mean_values;
+	double* var_values;
+} stenosv_trace_result;
+
 
 
 
@@ -283,9 +276,6 @@ This function should be called if stenosv_compress_add_image() returns 1 or afte
 */
 STENOS_EXPORT stenosv_payload stenosv_compress_payload(stenosv_compress*);
 
-
-
-
 /*************************************************************************
 Video decompression API
 *************************************************************************/
@@ -373,19 +363,17 @@ multi-channel images (like RGB ones).
 */
 STENOS_EXPORT size_t stenosv_decompress_read_image(stenosv_decompress*, int pos, int inner_stride, void* out_image);
 
-
 /**
 Read an image at given position from a video decompression context.
 
 The image must have the pixel type and dimensions of the Group Of Pictures.
 Use stenosv_decompress_info() to retrieve these information.
 
-The inner stride is given in bytes. Unlike stenosv_decompress_read_image, 
+The inner stride is given in bytes. Unlike stenosv_decompress_read_image,
 this function can reconstruct a multi-channel image where each channel
 has a different size.
 */
 STENOS_EXPORT size_t stenosv_decompress_read_image_bytes(stenosv_decompress*, int pos, int inner_stride_bytes, void* out_image);
-
 
 /*************************************************************************
 Time trace extraction API
@@ -406,7 +394,6 @@ inline void stenosv_init_trace_result(stenosv_trace_result* r)
 	memset(r, 0, sizeof(stenosv_trace_result));
 }
 
-
 /**
 Extract time trace information from a Group Of Pictures.
 
@@ -422,12 +409,16 @@ The out_trace object will hold extracted features. Its member arrays must point 
 For instance, if query->components contains StenosTraceMax, out_trace->max_values must be valid and point to a meory area of at least the GOP size.
 Note that the query->timestamps must ALWAYS be valid.
 
-This function can be called from multiple threads using the same input stream. 
+This function can be called from multiple threads using the same input stream.
 For that, a valid lock object must be passed and this object must be in the locked state.
 
 Returns the GOP size on success, an error code on failure.
 
 */
 STENOS_EXPORT size_t stenosv_extract_time_trace(stenos_input* input, stenosv_trace_query* query, stenosv_trace_result* out_trace, stenos_lock* opt_lock);
+
+#ifdef __cplusplus
+} // end extern "C"
+#endif
 
 #endif
