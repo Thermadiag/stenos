@@ -23,11 +23,8 @@
 #include "TimeTraceCompressOpenCL.h"
 #endif
 
-
-
 namespace stenos
 {
-	
 
 	namespace compress_detail
 	{
@@ -225,6 +222,8 @@ namespace stenos
 		virtual const std::vector<int64_t>& times() const noexcept = 0;
 
 		virtual std::string add_frame(const void* img, std::int64_t time) = 0;
+		virtual std::string add_frame_bytes(const void* img, int inner_stride_bytes, std::int64_t time) = 0;
+
 		virtual std::string finish() = 0;
 	};
 
@@ -247,6 +246,7 @@ namespace stenos
 			size_t start = 0;
 		};
 
+		std::vector<T> d_tmp_img;
 		std::vector<PixelData> d_data;
 		size_t d_width{ 0 };
 		size_t d_height{ 0 };
@@ -385,49 +385,44 @@ namespace stenos
 				size = key_pixels.size();
 
 			// #pragma omp parallel for num_threads(d_threads)
-			get_pool()
-			  .loop_for(d_threads,
-				    0,
-				    (int)size,
-				    1,
-				    [&](auto p) {
-					    size_t pix = (size_t)p;
-					    if (!key_pixels.empty())
-						    pix = key_pixels[pix];
+			get_pool().loop_for(d_threads, 0, (int)size, 1, [&](auto p) {
+				size_t pix = (size_t)p;
+				if (!key_pixels.empty())
+					pix = key_pixels[pix];
 
-					    PixelData& d = this->d_data[pix];
+				PixelData& d = this->d_data[pix];
 
-					    if (d.pos >= d.last_pixels.size() - 1) {
-						    // we reach the end
-						    if (d.candidate != MaxSpace) {
-							    // add previous candidate
-							    d.points.push_back(d.last_pixels[d.candidate]);
-							    d.last_pixels.erase(d.last_pixels.begin(), d.last_pixels.begin() + d.candidate);
-							    d.pos = 0;
-							    d.candidate = (size_t)-1;
-						    }
-					    }
+				if (d.pos >= d.last_pixels.size() - 1) {
+					// we reach the end
+					if (d.candidate != MaxSpace) {
+						// add previous candidate
+						d.points.push_back(d.last_pixels[d.candidate]);
+						d.last_pixels.erase(d.last_pixels.begin(), d.last_pixels.begin() + d.candidate);
+						d.pos = 0;
+						d.candidate = (size_t)-1;
+					}
+				}
 
-					    for (; d.pos != d.last_pixels.size(); ++d.pos) {
-						    advance_min_max(d, false);
-						    if (d.pos >= d.last_pixels.size() - 1) {
-							    // we reach the end
-							    if (d.candidate != MaxSpace) {
-								    // add previous candidate
-								    if (d.points.back().index != d_pos - 1) {
-									    d.points.push_back(d.last_pixels[d.candidate]);
-									    d.last_pixels.erase(d.last_pixels.begin(), d.last_pixels.begin() + d.candidate);
-									    d.pos = 0;
-									    d.candidate = (size_t)-1;
-								    }
-							    }
-						    }
-					    }
+				for (; d.pos != d.last_pixels.size(); ++d.pos) {
+					advance_min_max(d, false);
+					if (d.pos >= d.last_pixels.size() - 1) {
+						// we reach the end
+						if (d.candidate != MaxSpace) {
+							// add previous candidate
+							if (d.points.back().index != d_pos - 1) {
+								d.points.push_back(d.last_pixels[d.candidate]);
+								d.last_pixels.erase(d.last_pixels.begin(), d.last_pixels.begin() + d.candidate);
+								d.pos = 0;
+								d.candidate = (size_t)-1;
+							}
+						}
+					}
+				}
 
-					    // Add last point
-					    if (d.points.back().index != d_pos - 1)
-						    d.points.push_back(d.last_pixels.back());
-				    });
+				// Add last point
+				if (d.points.back().index != d_pos - 1)
+					d.points.push_back(d.last_pixels.back());
+			});
 		}
 
 		std::string finish_internal()
@@ -479,14 +474,14 @@ namespace stenos
 				// Directly take the decimated points
 #ifdef STENOS_OPENCL
 				if (d_openCL) {
-					//stenos::timer t;
-					//t.tick();
+					// stenos::timer t;
+					// t.tick();
 					for (size_t i = 0; i < size; ++i) {
 						cnts_pix[i] = (uint16_t)d_openCL->retrieve_decimated_pixels(i, (std::vector<CLPixelType<T>>&)pixels);
 						total_pixels += cnts_pix[i];
 					}
-					//auto el = t.tock();
-					//printf("%f\n", (el * 1e-6));
+					// auto el = t.tock();
+					// printf("%f\n", (el * 1e-6));
 				}
 				else
 #endif
@@ -601,7 +596,7 @@ namespace stenos
 		TimeTraceCompressFast(size_t width, size_t height, double error, size_t GOP, int threads, int device_id = -1)
 		{
 #ifdef STENOS_OPENCL
-			if (device_id >= 0 ) {
+			if (device_id >= 0) {
 				d_openCL.reset(new TimeTraceCompressCL<T>((unsigned)device_id, width, height, error, GOP));
 				if (d_openCL->is_valid()) {
 					d_max_gop = GOP;
@@ -692,8 +687,19 @@ namespace stenos
 
 		virtual std::string add_frame(const void* img, std::int64_t time) { return this->add_image(static_cast<const T*>(img), time); }
 
-		std::string add_image(const T* _img, int64_t time, bool key = false)
+		virtual std::string add_frame_bytes(const void* img, int inner_stride_bytes, std::int64_t time) { return this->add_image_bytes(img, (size_t)inner_stride_bytes, time); }
+
+		std::string add_image_bytes(const void* _img, size_t inner_bytes, int64_t time)
 		{
+			if (inner_bytes < sizeof(T))
+				return {};
+
+			static constexpr size_t alignment = alignof(T);
+			bool is_aligned = ((uintptr_t)_img % alignment) == 0 && (inner_bytes % alignment) == 0 && (inner_bytes % sizeof(T) == 0);
+			size_t inner = is_aligned ? inner_bytes / sizeof(T) : 0;
+			const T* t_img = static_cast<const T*>(_img);
+			const char* c_img = static_cast<const char*>(_img);
+
 			if (d_pos == 0)
 				d_times.clear();
 			d_times.push_back(time);
@@ -701,7 +707,24 @@ namespace stenos
 #ifdef STENOS_OPENCL
 
 			if (d_openCL) {
-				bool has_finish = d_openCL->add_image(_img, time);
+				bool has_finish = false;
+				if (is_aligned && inner == 1)
+					has_finish = d_openCL->add_image(static_cast<const T*>(_img), time);
+				else {
+					d_tmp_img.resize(d_width * d_height);
+					if (is_aligned) {
+						for (size_t i = 0; i < d_tmp_img.size(); ++i)
+							d_tmp_img[i] = t_img[i * inner];
+					}
+					else {
+						for (size_t i = 0; i < d_tmp_img.size(); ++i) {
+							T tmp;
+							memcpy(&tmp, c_img + i * inner_bytes, sizeof(T));
+							d_tmp_img[i] = tmp;
+						}
+					}
+					has_finish = d_openCL->add_image(d_tmp_img.data(), time);
+				}
 				++d_pos;
 				if (has_finish)
 					return finish();
@@ -718,45 +741,45 @@ namespace stenos
 
 			if (d_pos == 0) {
 				// #pragma omp parallel for num_threads(d_threads)
-				get_pool()
-				  .loop_for(d_threads,
-					    0,
-					    (int)size,
-					    1,
-					    [&](auto _i) {
-						    size_t pix = (size_t)_i;
-						    const auto val = _img[pix];
-						    PixelData& d = d_data[pix];
-						    d.candidate = MaxSpace;
+				get_pool().loop_for(d_threads, 0, (int)size, 1, [&](auto _i) {
+					size_t pix = (size_t)_i;
+					T val;
+					if (is_aligned)
+						val = t_img[pix * inner];
+					else
+						memcpy(&val, c_img + pix * inner_bytes, sizeof(T));
+					PixelData& d = d_data[pix];
+					d.candidate = MaxSpace;
 
-						    d.points.clear();
-						    d.last_pixels.clear();
-						    d.points.shrink_to_fit();
-						    d.last_pixels.shrink_to_fit();
+					d.points.clear();
+					d.last_pixels.clear();
+					d.points.shrink_to_fit();
+					d.last_pixels.shrink_to_fit();
 
-						    d.points.push_back(PixelType{ val, d_pos });
-						    d.last_pixels.push_back(d.points.back());
-						    d.pos = 1;
-						    d.start = 0;
-					    });
+					d.points.push_back(PixelType{ val, d_pos });
+					d.last_pixels.push_back(d.points.back());
+					d.pos = 1;
+					d.start = 0;
+				});
 				++d_pos;
 				return std::string();
 			}
 
 			// #pragma omp parallel for num_threads(d_threads)
-			get_pool()
-			  .loop_for(d_threads,
-				    0,
-				    (int)size,
-				    1,
-				    [&](auto p) {
-					    size_t pix = (size_t)p;
-					    PixelData& d = this->d_data[pix];
+			get_pool().loop_for(d_threads, 0, (int)size, 1, [&](auto p) {
+				size_t pix = (size_t)p;
+				PixelData& d = this->d_data[pix];
 
-					    d.last_pixels.push_back(PixelType{ _img[pix], d_pos });
-					    advance_min_max(d, key);
-					    d.pos++;
-				    });
+				T val;
+				if (is_aligned)
+					val = t_img[pix * inner];
+				else
+					memcpy(&val, c_img + pix * inner_bytes, sizeof(T));
+
+				d.last_pixels.push_back(PixelType{ val, d_pos });
+				advance_min_max(d, false);
+				d.pos++;
+			});
 			++d_pos;
 
 			// compute total number of points
@@ -772,6 +795,8 @@ namespace stenos
 
 			return std::string();
 		}
+
+		std::string add_image(const T* _img, int64_t time) { return add_image_bytes(_img, sizeof(T), time); }
 	};
 
 	template<class T>
@@ -962,7 +987,7 @@ namespace stenos
 			if (!in)
 				return false;
 
-			in->read((char*)&d_header, sizeof(d_header),in->opaque);
+			in->read((char*)&d_header, sizeof(d_header), in->opaque);
 			if (!in) {
 				close();
 				return false;
@@ -1049,11 +1074,11 @@ namespace stenos
 			Istream* iss = static_cast<Istream*>(opaque);
 			Locker lock(iss->lock);
 			auto pos = iss->in->seek(iss->start + iss->pos, STENOS_SEEK_SET, iss->in->opaque);
-			if (pos < 0) 
+			if (pos < 0)
 				return (int64_t)STENOS_ERROR_INVALID_IO;
-			if ((int64_t)iss->in->read(dst, size, iss->in->opaque) != size) 
+			if ((int64_t)iss->in->read(dst, size, iss->in->opaque) != size)
 				return (int64_t)STENOS_ERROR_INVALID_IO;
-			
+
 			iss->pos += size;
 			return size;
 		}
@@ -1118,7 +1143,7 @@ namespace stenos
 
 			// Unlock the lock during heavy computation, relock at the end
 			Unlocker unlock(lock);
-			
+
 			d_poss.resize(cnts_pix.size());
 			size_t cum_count = 0;
 			for (size_t i = 0; i < cnts_pix.size(); ++i) {
@@ -1151,7 +1176,7 @@ namespace stenos
 				io.tell = tell_stream;
 				io.opaque = &iss;
 				size_t r = stenos_decompress_sub_part(
-					ctx, &io, sizeof(PixelType), d_partial_time_traces.data(), d_partial_time_traces.size() * sizeof(PixelType), (size_t*)ranges.data(), ranges.size());
+				  ctx, &io, sizeof(PixelType), d_partial_time_traces.data(), d_partial_time_traces.size() * sizeof(PixelType), (size_t*)ranges.data(), ranges.size());
 				if (stenos_has_error(r) || r != partial_pixels * sizeof(PixelType)) {
 					close();
 					return res;
@@ -1163,7 +1188,7 @@ namespace stenos
 				const auto* start = d_partial_time_traces.data() + d_partial_poss[i].first;
 				res[i] = { start, start + d_partial_poss[i].second };
 			}
-			
+
 			return res;
 		}
 
@@ -1265,7 +1290,7 @@ namespace stenos
 				return false;
 
 			uint64_t full_block_size = compress_detail::read_uint64(in);
-			
+
 			std::string str(full_block_size, (char)0);
 			if(in->read((char*)str.data(), full_block_size, in->opaque) != full_block_size)
 				return false;
@@ -1302,40 +1327,35 @@ namespace stenos
 			size_t size = d_header.width * d_header.height;
 
 			// #pragma omp parallel for num_threads(d_threads)
-			get_pool()
-			  .loop_for(d_threads,
-				    0,
-				    (int)size,
-				    1,
-				    [&](auto _i) {
-					    size_t i = (size_t)_i;
-					    const size_t tr_size = d_poss[i].second;
-					    const PixelType* tr = d_time_traces.data() + d_poss[i].first;
-					    auto it = std::lower_bound(tr, tr + tr_size, time, [this](const auto& l, const auto& r) { return this->times()[l.index] < r; });
-					    if (it == tr + tr_size)
-						    --it;
-					    d_trace_pos[i] = it - tr;
-					    if (d_trace_pos[i] > 0)
-						    --d_trace_pos[i];
-				    });
+			get_pool().loop_for(d_threads, 0, (int)size, 1, [&](auto _i) {
+				size_t i = (size_t)_i;
+				const size_t tr_size = d_poss[i].second;
+				const PixelType* tr = d_time_traces.data() + d_poss[i].first;
+				auto it = std::lower_bound(tr, tr + tr_size, time, [this](const auto& l, const auto& r) { return this->times()[l.index] < r; });
+				if (it == tr + tr_size)
+					--it;
+				d_trace_pos[i] = it - tr;
+				if (d_trace_pos[i] > 0)
+					--d_trace_pos[i];
+			});
 			return true;
 		}
 
 		virtual bool read(void* img, size_t inner_stride = 1)
 		{
 			if (inner_stride == 1)
-				return read_next<1>(static_cast<T*>(img),1);
+				return read_next<1>(static_cast<T*>(img), 1);
 			else if (inner_stride == 2)
-				return read_next<2>(static_cast<T*>(img),2);
+				return read_next<2>(static_cast<T*>(img), 2);
 			else if (inner_stride == 3)
-				return read_next<3>(static_cast<T*>(img),3);
+				return read_next<3>(static_cast<T*>(img), 3);
 			else if (inner_stride == 4)
-				return read_next<4>(static_cast<T*>(img),4);
+				return read_next<4>(static_cast<T*>(img), 4);
 			else
 				return read_next<0>(static_cast<T*>(img), inner_stride);
 		}
 
-		template<size_t InnerStride >
+		template<size_t InnerStride>
 		static constexpr size_t get(size_t inner)
 		{
 			if constexpr (InnerStride > 0) {
@@ -1364,103 +1384,96 @@ namespace stenos
 			size_t remaining = size % (size_t)d_threads;
 
 			// #pragma omp parallel for num_threads(d_threads)
-			get_pool()
-			  .loop_for(d_threads,
-				    0,
-				    d_threads,
-				    1,
-				    [&](auto i) {
-					    size_t first = (size_t)i * pixels_per_thread;
-					    size_t end = first + ((i == d_threads - 1) ? (pixels_per_thread + remaining) : pixels_per_thread);
-					    size_t count = end - first;
-					    size_t end4 = first + (count & (~3ull));
-					    size_t j = first;
-					    for (; j < end4; j += 4) {
-						    const PixelType* tr1 = d_time_traces.data() + d_poss[j].first;
-						    const PixelType* tr2 = d_time_traces.data() + d_poss[j + 1].first;
-						    const PixelType* tr3 = d_time_traces.data() + d_poss[j + 2].first;
-						    const PixelType* tr4 = d_time_traces.data() + d_poss[j + 3].first;
+			get_pool().loop_for(d_threads, 0, d_threads, 1, [&](auto i) {
+				size_t first = (size_t)i * pixels_per_thread;
+				size_t end = first + ((i == d_threads - 1) ? (pixels_per_thread + remaining) : pixels_per_thread);
+				size_t count = end - first;
+				size_t end4 = first + (count & (~3ull));
+				size_t j = first;
+				for (; j < end4; j += 4) {
+					const PixelType* tr1 = d_time_traces.data() + d_poss[j].first;
+					const PixelType* tr2 = d_time_traces.data() + d_poss[j + 1].first;
+					const PixelType* tr3 = d_time_traces.data() + d_poss[j + 2].first;
+					const PixelType* tr4 = d_time_traces.data() + d_poss[j + 3].first;
 
-						    const size_t tr_size1 = d_poss[j].second;
-						    const size_t tr_size2 = d_poss[j + 1].second;
-						    const size_t tr_size3 = d_poss[j + 2].second;
-						    const size_t tr_size4 = d_poss[j + 3].second;
+					const size_t tr_size1 = d_poss[j].second;
+					const size_t tr_size2 = d_poss[j + 1].second;
+					const size_t tr_size3 = d_poss[j + 2].second;
+					const size_t tr_size4 = d_poss[j + 3].second;
 
-						    const size_t pos1 = this->d_trace_pos[j];
-						    const size_t pos2 = this->d_trace_pos[j + 1];
-						    const size_t pos3 = this->d_trace_pos[j + 2];
-						    const size_t pos4 = this->d_trace_pos[j + 3];
+					const size_t pos1 = this->d_trace_pos[j];
+					const size_t pos2 = this->d_trace_pos[j + 1];
+					const size_t pos3 = this->d_trace_pos[j + 2];
+					const size_t pos4 = this->d_trace_pos[j + 3];
 
-						    const auto prev_val1 = tr1[pos1];
-						    const auto prev_val2 = tr2[pos2];
-						    const auto prev_val3 = tr3[pos3];
-						    const auto prev_val4 = tr4[pos4];
+					const auto prev_val1 = tr1[pos1];
+					const auto prev_val2 = tr2[pos2];
+					const auto prev_val3 = tr3[pos3];
+					const auto prev_val4 = tr4[pos4];
 
-						    const auto next_val1 = (pos1 == tr_size1 - 1) ? tr1[pos1] : tr1[pos1 + 1];
-						    const auto next_val2 = (pos2 == tr_size2 - 1) ? tr2[pos2] : tr2[pos2 + 1];
-						    const auto next_val3 = (pos3 == tr_size3 - 1) ? tr3[pos3] : tr3[pos3 + 1];
-						    const auto next_val4 = (pos4 == tr_size4 - 1) ? tr4[pos4] : tr4[pos4 + 1];
+					const auto next_val1 = (pos1 == tr_size1 - 1) ? tr1[pos1] : tr1[pos1 + 1];
+					const auto next_val2 = (pos2 == tr_size2 - 1) ? tr2[pos2] : tr2[pos2 + 1];
+					const auto next_val3 = (pos3 == tr_size3 - 1) ? tr3[pos3] : tr3[pos3 + 1];
+					const auto next_val4 = (pos4 == tr_size4 - 1) ? tr4[pos4] : tr4[pos4 + 1];
 
-						    double value1 = (double)next_val1.value;
-						    double value2 = (double)next_val2.value;
-						    double value3 = (double)next_val3.value;
-						    double value4 = (double)next_val4.value;
+					double value1 = (double)next_val1.value;
+					double value2 = (double)next_val2.value;
+					double value3 = (double)next_val3.value;
+					double value4 = (double)next_val4.value;
 
-						    if (utime == d_times[next_val1.index])
-							    this->d_trace_pos[j] += (pos1 < tr_size1 - 1);
-						    else {
-							    double advance1 = (time - (double)d_times[prev_val1.index]) / ((double)d_times[next_val1.index] - (double)d_times[prev_val1.index]);
-							    value1 = value1 * advance1 + (1. - advance1) * prev_val1.value;
-						    }
-						    if (utime == d_times[next_val2.index])
-							    this->d_trace_pos[j + 1] += (pos2 < tr_size2 - 1);
-						    else {
-							    double advance2 = (time - (double)d_times[prev_val2.index]) / ((double)d_times[next_val2.index] - (double)d_times[prev_val2.index]);
-							    value2 = value2 * advance2 + (1. - advance2) * prev_val2.value;
-						    }
-						    if (utime == d_times[next_val3.index])
-							    this->d_trace_pos[j + 2] += (pos3 < tr_size3 - 1);
-						    else {
-							    double advance3 = (time - (double)d_times[prev_val3.index]) / ((double)d_times[next_val3.index] - (double)d_times[prev_val3.index]);
-							    value3 = value3 * advance3 + (1. - advance3) * prev_val3.value;
-						    }
-						    if (utime == d_times[next_val4.index])
-							    this->d_trace_pos[j + 3] += (pos4 < tr_size4 - 1);
-						    else {
-							    double advance4 = (time - (double)d_times[prev_val4.index]) / ((double)d_times[next_val4.index] - (double)d_times[prev_val4.index]);
-							    value4 = value4 * advance4 + (1. - advance4) * prev_val4.value;
-						    }
+					if (utime == d_times[next_val1.index])
+						this->d_trace_pos[j] += (pos1 < tr_size1 - 1);
+					else {
+						double advance1 = (time - (double)d_times[prev_val1.index]) / ((double)d_times[next_val1.index] - (double)d_times[prev_val1.index]);
+						value1 = value1 * advance1 + (1. - advance1) * prev_val1.value;
+					}
+					if (utime == d_times[next_val2.index])
+						this->d_trace_pos[j + 1] += (pos2 < tr_size2 - 1);
+					else {
+						double advance2 = (time - (double)d_times[prev_val2.index]) / ((double)d_times[next_val2.index] - (double)d_times[prev_val2.index]);
+						value2 = value2 * advance2 + (1. - advance2) * prev_val2.value;
+					}
+					if (utime == d_times[next_val3.index])
+						this->d_trace_pos[j + 2] += (pos3 < tr_size3 - 1);
+					else {
+						double advance3 = (time - (double)d_times[prev_val3.index]) / ((double)d_times[next_val3.index] - (double)d_times[prev_val3.index]);
+						value3 = value3 * advance3 + (1. - advance3) * prev_val3.value;
+					}
+					if (utime == d_times[next_val4.index])
+						this->d_trace_pos[j + 3] += (pos4 < tr_size4 - 1);
+					else {
+						double advance4 = (time - (double)d_times[prev_val4.index]) / ((double)d_times[next_val4.index] - (double)d_times[prev_val4.index]);
+						value4 = value4 * advance4 + (1. - advance4) * prev_val4.value;
+					}
 
-						    img[j * get<InnerStride>(inner)] = compress_detail::fround_to<T>(value1);
-						    img[(j + 1) * get<InnerStride>(inner)] = compress_detail::fround_to<T>(value2);
-						    img[(j + 2) * get<InnerStride>(inner)] = compress_detail::fround_to<T>(value3);
-						    img[(j + 3) * get<InnerStride>(inner)] = compress_detail::fround_to<T>(value4);
-					    }
+					img[j * get<InnerStride>(inner)] = compress_detail::fround_to<T>(value1);
+					img[(j + 1) * get<InnerStride>(inner)] = compress_detail::fround_to<T>(value2);
+					img[(j + 2) * get<InnerStride>(inner)] = compress_detail::fround_to<T>(value3);
+					img[(j + 3) * get<InnerStride>(inner)] = compress_detail::fround_to<T>(value4);
+				}
 
-					    for (; j < end; ++j) {
-						    const PixelType* tr = d_time_traces.data() + d_poss[j].first;
-						    const size_t tr_size = d_poss[j].second;
-						    const size_t pos = this->d_trace_pos[j];
-						    const auto prev_val = tr[pos];
-						    const auto next_val = (pos == tr_size - 1) ? tr[pos] : tr[pos + 1];
+				for (; j < end; ++j) {
+					const PixelType* tr = d_time_traces.data() + d_poss[j].first;
+					const size_t tr_size = d_poss[j].second;
+					const size_t pos = this->d_trace_pos[j];
+					const auto prev_val = tr[pos];
+					const auto next_val = (pos == tr_size - 1) ? tr[pos] : tr[pos + 1];
 
-						    double value = (double)next_val.value;
-						    if (utime == d_times[next_val.index]) {
-							    this->d_trace_pos[j] += (pos < tr_size - 1);
-						    }
-						    else {
-							    double advance = (time - (double)d_times[prev_val.index]) / ((double)d_times[next_val.index] - (double)d_times[prev_val.index]);
-							    value = value * advance + (1. - advance) * prev_val.value;
-						    }
-						    img[j * get<InnerStride>(inner)] = compress_detail::fround_to<T>(value);
-					    }
-				    });
+					double value = (double)next_val.value;
+					if (utime == d_times[next_val.index]) {
+						this->d_trace_pos[j] += (pos < tr_size - 1);
+					}
+					else {
+						double advance = (time - (double)d_times[prev_val.index]) / ((double)d_times[next_val.index] - (double)d_times[prev_val.index]);
+						value = value * advance + (1. - advance) * prev_val.value;
+					}
+					img[j * get<InnerStride>(inner)] = compress_detail::fround_to<T>(value);
+				}
+			});
 
 			++d_pos;
 			return true;
 		}
-
-
 
 		bool read_bytes(void* img, size_t inner_bytes)
 		{
@@ -1596,6 +1609,5 @@ namespace stenos
 			return true;
 		}
 	};
-
 
 } // end namespace stenos

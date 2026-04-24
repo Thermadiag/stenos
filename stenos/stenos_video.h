@@ -264,6 +264,8 @@ This function might returns and error code on failure.
 */
 STENOS_EXPORT size_t stenosv_compress_add_image(stenosv_compress*, void* img, int64_t timestamp);
 
+STENOS_EXPORT size_t stenosv_compress_add_image_bytes(stenosv_compress*, void* img, int inner_stride_bytes, int64_t timestamp);
+
 /**
 Stop the current Group Of Pictures.
 stenosv_compress_payload() must then be called to retrieve the compressed payload.

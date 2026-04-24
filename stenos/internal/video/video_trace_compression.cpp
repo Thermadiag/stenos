@@ -152,6 +152,24 @@ size_t stenosv_compress_add_image(stenosv_compress* ctx, void* img, int64_t time
 	}
 }
 
+size_t stenosv_compress_add_image_bytes(stenosv_compress* ctx, void* img, int inner_stride_bytes, int64_t timestamp)
+{
+	try {
+		const auto& times = ctx->compress->times();
+		if (!times.empty() && timestamp <= times.back())
+			return STENOS_ERROR_INVALID_PARAMETER;
+
+		ctx->payload.clear();
+		ctx->payload = ctx->compress->add_frame_bytes(img, inner_stride_bytes, timestamp);
+		if (ctx->payload.empty())
+			return 0;
+		return 1;
+	}
+	catch (...) {
+		return STENOS_ERROR_ALLOC;
+	}
+}
+
 size_t stenosv_compress_stop(stenosv_compress* ctx)
 {
 	try {
