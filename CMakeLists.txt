@@ -194,8 +194,7 @@ if(STENOS_BUILD_SHARED)
 						   "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>"
 						   "$<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>")
 	
-	
-	install(TARGETS stenos EXPORT stenos DESTINATION ${STENOS_INSTALL_LIBDIR} LIBRARY)
+	install(TARGETS stenos EXPORT stenos ARCHIVE DESTINATION ${STENOS_INSTALL_LIBDIR} RUNTIME DESTINATION ${STENOS_INSTALL_BINDIR} LIBRARY DESTINATION ${STENOS_INSTALL_LIBDIR})
 	install(EXPORT stenos DESTINATION ${STENOS_CMAKEDIR})
 	
 endif()
@@ -214,12 +213,12 @@ if(STENOS_BUILD_STATIC)
 		target_link_libraries(stenos_static PRIVATE OpenCL::OpenCL)
 	endif()
 	
-	if (CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
-		# correct link error ""relocation R_X86_64_32 against symbol..."
-		set_target_properties(stenos_static PROPERTIES CMAKE_CXX_FLAGS  "${CMAKE_CXX_FLAGS} -Wall --std=c++14 -fPIC" )
-		set_target_properties(stenos_static PROPERTIES CMAKE_C_FLAGS  "${CMAKE_C_FLAGS} -Wall -fPIC" )
-	endif()
-	set_property(TARGET stenos_static PROPERTY POSITION_INDEPENDENT_CODE ON)
+	# if (CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+		# # correct link error ""relocation R_X86_64_32 against symbol..."
+		# set_target_properties(stenos_static PROPERTIES CMAKE_CXX_FLAGS  "${CMAKE_CXX_FLAGS} -Wall --std=c++14 -fPIC" )
+		# set_target_properties(stenos_static PROPERTIES CMAKE_C_FLAGS  "${CMAKE_C_FLAGS} -Wall -fPIC" )
+	# endif()
+	# set_property(TARGET stenos_static PROPERTY POSITION_INDEPENDENT_CODE ON)
 
 	# Export target
 	target_include_directories(stenos_static  PUBLIC

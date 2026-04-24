@@ -277,6 +277,8 @@ static BaseTimeTraceDecompressBlock* from_type(stenosv_pixel_type type)
 	return ret;
 }
 
+
+
 stenosv_block_header stenosv_read_block_header_buffer(stenosv_payload buffer, uint64_t* full_block_size)
 {
 	stenosv_block_header ret;

@@ -296,6 +296,11 @@ Video decompression context structure
 typedef struct stenosv_decompress_s stenosv_decompress;
 
 /**
+Helper function, create a stenos_input from a buffer.
+*/
+STENOS_EXPORT stenos_input stenosv_input_from_payload(void* data, uint64_t size);
+
+/**
 Returns the block header for given payload.
 
 Passed buffer must point to the start of a compressed payload (or Group Of Pictures), but does not need to contain the full payload.
