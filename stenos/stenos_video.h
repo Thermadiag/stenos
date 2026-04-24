@@ -367,7 +367,17 @@ multi-channel images (like RGB ones).
 STENOS_EXPORT size_t stenosv_decompress_read_image(stenosv_decompress*, int pos, int inner_stride, void* out_image);
 
 
+/**
+Read an image at given position from a video decompression context.
 
+The image must have the pixel type and dimensions of the Group Of Pictures.
+Use stenosv_decompress_info() to retrieve these information.
+
+The inner stride is given in bytes. Unlike stenosv_decompress_read_image, 
+this function can reconstruct a multi-channel image where each channel
+has a different size.
+*/
+STENOS_EXPORT size_t stenosv_decompress_read_image_bytes(stenosv_decompress*, int pos, int inner_stride_bytes, void* out_image);
 
 
 /*************************************************************************

@@ -419,6 +419,20 @@ size_t stenosv_decompress_read_image(stenosv_decompress* ctx, int pos, int inner
 	}
 }
 
+size_t stenosv_decompress_read_image_bytes(stenosv_decompress* ctx, int pos, int inner_stride_bytes, void* out_image)
+{
+	try {
+		if (pos < 0 || pos >= (int)ctx->dec->header().count)
+			return STENOS_ERROR_INVALID_PARAMETER;
+		if (ctx->dec->read_bytes(out_image, (size_t)inner_stride_bytes))
+			return 0;
+		return STENOS_ERROR_INVALID_INPUT;
+	}
+	catch (...) {
+		return STENOS_ERROR_ALLOC;
+	}
+}
+
 STENOS_ALWAYS_INLINE static void max_value(double& dst, double v)
 {
 	if (v > dst)
