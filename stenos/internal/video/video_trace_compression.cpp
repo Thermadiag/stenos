@@ -1,7 +1,7 @@
 #include <memory>
 
 #include "../../stenos_video.h"
-#include "TimeTraceCompressFast.h"
+#include "TimeTraceCompress.h"
 
 using namespace stenos;
 

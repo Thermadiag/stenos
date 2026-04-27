@@ -43,188 +43,22 @@
 namespace stenos
 {
 
-	namespace detail
+	struct task_t
 	{
-		// TaskBuffer used to allocate tasks
-		struct TaskBuffer
+		std::function<void()> fun;
+		std::atomic<int>* sentinel = nullptr;
+
+		void call() noexcept
 		{
-			TaskBuffer* next = nullptr; // next in linked list
-			size_t size = 0;	    // data size
-			void* data() noexcept { return this + 1; }
-		};
-
-		// Thread safe allocation/deallocation of buffers for task allocation
-		struct TaskAllocation
-		{
-
-			std::atomic<TaskBuffer*> first{ nullptr };
-
-			~TaskAllocation() noexcept
-			{
-				// Free all buffers
-				while (TaskBuffer* b = pop())
-					free(b);
+			try {
+				fun();
 			}
-
-			TaskBuffer* pop() noexcept
-			{
-				// Extract a buffer from the list
-				auto f = first.load(std::memory_order_relaxed);
-				while (f && !first.compare_exchange_strong(f, f->next))
-					;
-				return f;
+			catch (...) {
 			}
-
-			void* allocate(size_t s) noexcept
-			{
-				// Extract (and free) buffers until we find one of the right size.
-				// This might clear the list. Since the thread pool only uses 3
-				// different types of task within stenos, The list will quickly
-				// only contain buffers of the right size.
-				while (TaskBuffer* b = pop()) {
-					if (b->size >= s)
-						return b->data();
-					free(b);
-				}
-
-				// Allocate
-				TaskBuffer* res = (TaskBuffer*)malloc(s + sizeof(TaskBuffer));
-				if (res)
-					new (res) TaskBuffer{ nullptr, s };
-				return res->data();
-			}
-
-			void deallocate(void* p) noexcept
-			{
-				// Insert the buffer in the list
-				TaskBuffer* b = (TaskBuffer*)((uint8_t*)p - sizeof(TaskBuffer));
-				auto f = first.load(std::memory_order_relaxed);
-				b->next = f;
-				while (!first.compare_exchange_strong(f, b)) {
-					b->next = f;
-				}
-			}
-
-			static STENOS_ALWAYS_INLINE TaskAllocation& instance()
-			{
-				static TaskAllocation alloc;
-				return alloc;
-			}
-		};
-
-		static inline void* allocate_task(size_t s)
-		{
-			return TaskAllocation::instance().allocate(s);
+			if (sentinel)
+				sentinel->fetch_sub(1,std::memory_order_relaxed);
 		}
-		static inline void deallocate_task(void* p)
-		{
-			TaskAllocation::instance().deallocate(p);
-		}
-
-		// Base task class
-		struct BaseTask
-		{
-			BaseTask* left = nullptr;
-			BaseTask* right = nullptr;
-			std::atomic<bool>* sentinel = nullptr;
-			virtual ~BaseTask() noexcept {}
-			virtual void apply() noexcept {};
-
-			void insert(BaseTask* l, BaseTask* r) noexcept
-			{
-				this->left = l;
-				this->right = r;
-				l->right = r->left = this;
-			}
-			void remove() noexcept
-			{
-				this->left->right = this->right;
-				this->right->left = this->left;
-			}
-		};
-
-		// Concrete task
-		template<class T>
-		struct Task : public BaseTask
-		{
-			T task;
-			Task(T&& u)
-			  : task(std::forward<T>(u))
-			{
-			}
-			virtual void apply() noexcept
-			{
-				try {
-					task();
-				}
-				catch (...) {
-				}
-				if (sentinel)
-					sentinel->store(true);
-			};
-		};
-
-		// List of tasks
-		class TaskList
-		{
-			BaseTask end;
-
-		public:
-			TaskList() noexcept { end.left = end.right = &end; }
-
-			~TaskList() noexcept
-			{
-				auto* t = end.right;
-				while (t != &end) {
-					auto* next = t->right;
-					destroy_task(t);
-					t = next;
-				}
-			}
-
-			template<class U>
-			static BaseTask* make_task(U&& u) noexcept
-			{
-				try {
-					Task<U>* t = (Task<U>*)allocate_task(sizeof(Task<U>));
-					return new (t) Task<U>(std::forward<U>(u));
-				}
-				catch (...) {
-					return nullptr;
-				}
-			}
-
-			static void destroy_task(BaseTask* t) noexcept
-			{
-				t->~BaseTask();
-				deallocate_task(t);
-			}
-
-			void push_back(BaseTask* t) noexcept { t->insert(end.left, &end); }
-
-			void push_back(TaskList* lst) noexcept
-			{
-				if (!lst->empty()) {
-					lst->end.right->left = end.left;
-					lst->end.left->right = &end;
-
-					end.left->right = lst->end.right;
-					end.left = lst->end.left;
-
-					lst->end.right = lst->end.left = &lst->end;
-				}
-			}
-
-			BaseTask* pop_front() noexcept
-			{
-				auto r = end.right;
-				r->remove();
-				return r;
-			}
-
-			bool empty() const noexcept { return &end == end.right; }
-		};
-	}
+	};
 
 	/// @brief Minimalist thread pool class.
 	/// Used to launch compression/decompression jobs using
@@ -237,7 +71,7 @@ namespace stenos
 		std::mutex mutex;
 		std::condition_variable condition;
 		std::condition_variable wait_condition;
-		detail::TaskList list;
+		std::queue<task_t> list;
 		std::vector<std::thread> threads;
 		bool finish = false;
 		bool waiting = false;
@@ -256,12 +90,12 @@ namespace stenos
 				if STENOS_UNLIKELY (this->finish)
 					break;
 
-				auto r = list.pop_front();
+				auto r = list.front();
+				list.pop();
 				++processing;
 				lock.unlock();
 
-				r->apply();
-				list.destroy_task(r);
+				r.call();
 			}
 		}
 
@@ -289,7 +123,7 @@ namespace stenos
 				threads[i].join();
 		}
 
-		void wait(std::atomic<bool>* sentinel = nullptr) noexcept
+		void wait(std::atomic<int>* sentinel = nullptr) noexcept
 		{
 			std::unique_lock<std::mutex> lock(mutex);
 			waiting = true;
@@ -297,24 +131,27 @@ namespace stenos
 				if (!sentinel)
 					return (this->processing == 0) && this->list.empty();
 				else
-					return sentinel->load(std::memory_order_relaxed);
+					return sentinel->load(std::memory_order_relaxed) == 0;
 			});
 			waiting = false;
 		}
 
 		template<class U>
-		bool push(U&& u, std::atomic<bool>* sentinel = nullptr) noexcept
+		bool push(U&& u, std::atomic<int>* sentinel = nullptr) noexcept
 		{
-			auto t = list.make_task(std::forward<U>(u));
-			if (t) {
-				t->sentinel = sentinel;
-				if (sentinel)
-					sentinel->store(false);
+			try {
+				task_t t;
+				t.fun = std::forward<U>(u);
+				t.sentinel = sentinel;
 				std::lock_guard<std::mutex> lock(mutex);
-				list.push_back(t);
+				list.emplace(std::move(t));
+				condition.notify_one();
+				return true;
 			}
-			condition.notify_one();
-			return t;
+			catch (...) {
+
+				return false;
+			}
 		}
 
 		template<class U>
@@ -346,7 +183,7 @@ namespace stenos
 				block_count = count / block_size + (count % block_size ? 1 : 0);
 			}
 
-			std::atomic<bool> sentinel;
+			std::atomic<int> sentinel{ block_count };
 			for (int i = 0; i < block_count; ++i) {
 				bool r = push(
 				  [&, i]() {
@@ -354,8 +191,7 @@ namespace stenos
 					  int last = (i == block_count - 1) ? end : first + block_size;
 					  for (; first < last; first += step)
 						  u(first);
-				  },
-				  i == block_count - 1 ? &sentinel : nullptr);
+				  },&sentinel );
 				if (!r) {
 					wait();
 					return false;
