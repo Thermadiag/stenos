@@ -1158,6 +1158,10 @@ namespace stenos
 			size_t partial_pixels = 0;
 			for (size_t i = 0; i < count; ++i) {
 				auto& c = coords[i];
+				if STENOS_UNLIKELY (c.x > d_header.width || c.y > d_header.height) {
+					close();
+					return {};
+				}
 				unsigned pos = c.x + c.y * d_header.width;
 				ranges[i] = { d_poss[pos].first, d_poss[pos].first + d_poss[pos].second };
 				d_partial_poss[i] = { partial_pixels, d_poss[pos].second };
