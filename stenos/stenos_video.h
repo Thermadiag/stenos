@@ -300,8 +300,9 @@ if opt_full_block_size is not null, it will be set to the full payload size.
 Returns an invalid block header on error (stenosv_block_header::version == 0).
 */
 STENOS_EXPORT stenosv_block_header stenosv_read_block_header_buffer(stenosv_payload buffer, uint64_t* opt_full_block_size);
+STENOS_EXPORT stenosv_block_header stenosv_read_block_header_buffer2(void* data, uint64_t size, uint64_t* full_block_size);
 
-/**
+  /**
 Returns the block header for given payload.
 
 Passed buffer must point to the start of a compressed payload (or Group Of Pictures), but does not need to contain the full payload.
@@ -362,7 +363,7 @@ Use stenosv_decompress_info() to retrieve these information.
 An inner pixel stride different than 1 can be passed in order to reconstruct
 multi-channel images (like RGB ones).
 */
-STENOS_EXPORT size_t stenosv_decompress_read_image(stenosv_decompress*, int pos, int inner_stride, void* out_image);
+STENOS_EXPORT size_t stenosv_decompress_read_image(stenosv_decompress*, uint64_t pos, int inner_stride, void* out_image);
 
 /**
 Read an image at given position from a video decompression context.
@@ -374,7 +375,7 @@ The inner stride is given in bytes. Unlike stenosv_decompress_read_image,
 this function can reconstruct a multi-channel image where each channel
 has a different size.
 */
-STENOS_EXPORT size_t stenosv_decompress_read_image_bytes(stenosv_decompress*, int pos, int inner_stride_bytes, void* out_image);
+STENOS_EXPORT size_t stenosv_decompress_read_image_bytes(stenosv_decompress*, uint64_t pos, int inner_stride_bytes, void* out_image);
 
 /*************************************************************************
 Time trace extraction API

@@ -950,7 +950,8 @@ namespace stenos
 		virtual bool open(stenos_input* in, bool read_data) = 0;
 		virtual void close() = 0;
 
-		virtual bool seek(std::int64_t time) = 0;
+		virtual bool seek(int64_t time) = 0;
+		virtual bool seek_pos(uint64_t pos) = 0;
 		virtual bool read(void* img, size_t inner_stride) = 0;
 		virtual bool read_bytes(void* img, size_t inner_bytes) = 0;
 	};
@@ -1314,23 +1315,18 @@ namespace stenos
 			return open_skip_size_partial(in, coords, count, lock);
 		}
 
-		bool seek(int64_t time)
+		virtual bool seek_pos(uint64_t pos)
 		{
-			if (d_times.empty())
+			if (pos < 0 || pos >= (size_t)d_times.size()) 
 				return false;
-
-			if (d_trace_pos.empty())
-				d_trace_pos.resize(d_header.width * d_header.height, 0);
-
-			auto pos = std::lower_bound(d_times.begin(), d_times.end(), time);
-			if (pos == d_times.end())
-				--pos;
-			time = *pos;
-			d_pos = pos - d_times.begin();
+			
+			d_pos = pos;
+			auto time = d_times[pos];
 
 			size_t size = d_header.width * d_header.height;
+			if (d_trace_pos.empty())
+				d_trace_pos.resize(size, 0);
 
-			// #pragma omp parallel for num_threads(d_threads)
 			get_pool().loop_for(d_threads, 0, (int)size, 1, [&](auto _i) {
 				size_t i = (size_t)_i;
 				const size_t tr_size = d_poss[i].second;
@@ -1343,6 +1339,17 @@ namespace stenos
 					--d_trace_pos[i];
 			});
 			return true;
+		}
+
+		virtual bool seek(int64_t time)
+		{
+			if (d_times.empty())
+				return false;
+
+			auto pos = std::lower_bound(d_times.begin(), d_times.end(), time);
+			if (pos == d_times.end())
+				--pos;
+			return seek_pos((uint64_t)(pos - d_times.begin()));
 		}
 
 		virtual bool read(void* img, size_t inner_stride = 1)

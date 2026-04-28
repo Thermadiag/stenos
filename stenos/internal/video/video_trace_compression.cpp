@@ -281,7 +281,13 @@ static BaseTimeTraceDecompressBlock* from_type(stenosv_pixel_type type)
 }
 
 
-
+stenosv_block_header stenosv_read_block_header_buffer2(void *data, uint64_t size, uint64_t* full_block_size)
+{
+	stenosv_payload p;
+	p.data = data;
+	p.size = size;
+	return stenosv_read_block_header_buffer(p, full_block_size);
+}
 stenosv_block_header stenosv_read_block_header_buffer(stenosv_payload buffer, uint64_t* full_block_size)
 {
 	stenosv_block_header ret;
@@ -428,10 +434,12 @@ int64_t* stenosv_decompress_get_timestamps(stenosv_decompress* ctx)
 	return (int64_t*)ctx->dec->times().data();
 }
 
-size_t stenosv_decompress_read_image(stenosv_decompress* ctx, int pos, int inner_stride, void* out_image)
+size_t stenosv_decompress_read_image(stenosv_decompress* ctx, uint64_t pos, int inner_stride, void* out_image)
 {
 	try {
 		if (pos < 0 || pos >= (int)ctx->dec->header().count)
+			return STENOS_ERROR_INVALID_PARAMETER;
+		if (!ctx->dec->seek_pos(pos))
 			return STENOS_ERROR_INVALID_PARAMETER;
 		if (ctx->dec->read(out_image, (size_t)inner_stride))
 			return 0;
@@ -442,10 +450,12 @@ size_t stenosv_decompress_read_image(stenosv_decompress* ctx, int pos, int inner
 	}
 }
 
-size_t stenosv_decompress_read_image_bytes(stenosv_decompress* ctx, int pos, int inner_stride_bytes, void* out_image)
+size_t stenosv_decompress_read_image_bytes(stenosv_decompress* ctx, uint64_t pos, int inner_stride_bytes, void* out_image)
 {
 	try {
 		if (pos < 0 || pos >= (int)ctx->dec->header().count)
+			return STENOS_ERROR_INVALID_PARAMETER;
+		if (!ctx->dec->seek_pos(pos))
 			return STENOS_ERROR_INVALID_PARAMETER;
 		if (ctx->dec->read_bytes(out_image, (size_t)inner_stride_bytes))
 			return 0;
