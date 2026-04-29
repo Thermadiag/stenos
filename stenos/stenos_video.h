@@ -237,7 +237,6 @@ Set the compression level from 0 (no compression) to 9 (maximum compression)
 */
 STENOS_EXPORT void stenosv_compress_set_clevel(stenosv_compress*, int level);
 
-/* STENOS_EXPORT void stenosv_compress_set_max_time(stenosv_compress*, uint64_t max_nanoseconds);*/
 
 /**
 Set the maximum error per pixel (default to 0).
@@ -245,6 +244,10 @@ Set the maximum error per pixel (default to 0).
 This enables lossy compression with bounded error.
 */
 STENOS_EXPORT void stenosv_compress_set_max_error(stenosv_compress*, double error);
+
+/**
+Getters
+*/
 
 STENOS_EXPORT int stenosv_compress_clevel(stenosv_compress*);
 STENOS_EXPORT double stenosv_compress_error(stenosv_compress*);
@@ -267,6 +270,21 @@ This function might returns and error code on failure.
 */
 STENOS_EXPORT size_t stenosv_compress_add_image(stenosv_compress*, void* img, int64_t timestamp);
 
+/**
+Add an image to the video compressor.
+
+Input image must be of the same pixel type and dimensions as values passed to stenosv_compress_make().
+The timestamp is in arbitrary unit, but must be monotonic.
+
+Returns 0 if the compressor is waiting for more images, 1 if the compressor finished its Group Of pictures.
+In this case, stenosv_compress_payload() must be called to retrieve the compressed payload, and next call
+to stenosv_compress_add_image() will automatically start a new Group Of Pictures.
+
+Unlike stenosv_compress_add_image(), this function takes an extra inner stride parameter given in bytes.
+This is usefull when using a compound pixel type.
+
+This function might returns and error code on failure.
+*/
 STENOS_EXPORT size_t stenosv_compress_add_image_bytes(stenosv_compress*, void* img, int inner_stride_bytes, int64_t timestamp);
 
 /**
