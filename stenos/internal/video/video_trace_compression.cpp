@@ -132,9 +132,40 @@ void stenosv_compress_set_clevel(stenosv_compress* ctx, int level)
 		level = 9;
 	ctx->compress->set_compression_level(level);
 }
+
+void stenosv_compress_set_max_time(stenosv_compress* ctx, uint64_t max_nanoseconds)
+{
+	ctx->compress->set_max_time(max_nanoseconds);
+}
+
 void stenosv_compress_set_max_error(stenosv_compress* ctx, double error)
 {
 	ctx->compress->set_error(error);
+}
+
+int stenosv_compress_clevel(stenosv_compress* ctx)
+{
+	return ctx->compress->compression_level();
+}
+double stenosv_compress_error(stenosv_compress* ctx)
+{
+	return ctx->compress->error();
+}
+int stenosv_compress_gop(stenosv_compress* ctx)
+{
+	return ctx->compress->max_GOP();
+}
+int stenosv_compress_device(stenosv_compress* ctx)
+{
+	return ctx->compress->device();
+}
+int stenosv_compress_threads(stenosv_compress* ctx)
+{
+	return ctx->compress->threads();
+}
+uint64_t stenosv_compress_max_time(stenosv_compress* ctx)
+{
+	return ctx->compress->max_time();
 }
 
 size_t stenosv_compress_add_image(stenosv_compress* ctx, void* img, int64_t timestamp)

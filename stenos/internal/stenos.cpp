@@ -884,7 +884,7 @@ size_t stenos_compress_generic(stenos_context* opts, const void* _src, size_t by
 	stenos::write_uint64_7(dst, bytes);
 	dst += 7;
 
-	if (opts->custom_blocksize_shift != STENOS_NO_BLOCK_SHIFT) {
+	if (opts->shift == 255) {
 		// Write custom superblock size
 		if STENOS_UNLIKELY (dst + 4 > dst_end)
 			return STENOS_ERROR_DST_OVERFLOW;

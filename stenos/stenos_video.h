@@ -237,12 +237,21 @@ Set the compression level from 0 (no compression) to 9 (maximum compression)
 */
 STENOS_EXPORT void stenosv_compress_set_clevel(stenosv_compress*, int level);
 
+/* STENOS_EXPORT void stenosv_compress_set_max_time(stenosv_compress*, uint64_t max_nanoseconds);*/
+
 /**
 Set the maximum error per pixel (default to 0).
 
 This enables lossy compression with bounded error.
 */
 STENOS_EXPORT void stenosv_compress_set_max_error(stenosv_compress*, double error);
+
+STENOS_EXPORT int stenosv_compress_clevel(stenosv_compress*);
+STENOS_EXPORT double stenosv_compress_error(stenosv_compress*);
+STENOS_EXPORT int stenosv_compress_gop(stenosv_compress*);
+STENOS_EXPORT int stenosv_compress_device(stenosv_compress*);
+STENOS_EXPORT int stenosv_compress_threads(stenosv_compress*);
+STENOS_EXPORT uint64_t stenosv_compress_max_time(stenosv_compress*);
 
 /**
 Add an image to the video compressor.

@@ -101,8 +101,7 @@ namespace stenos
 			out.insert(out.size(), (char*)&v, 8);
 		}
 
-		static inline uint64_t
-		write_compressed_buffer(stenos_context* ctx, int level, int threads, std::string& out, const void* data, size_t bytesoftype, size_t bytes, size_t idx_delta_to = 0)
+		static inline uint64_t write_compressed_buffer(stenos_context* ctx, std::string& out, const void* data, size_t bytesoftype, size_t bytes)
 		{
 			std::vector<char> tmp(stenos_bound(bytes));
 			size_t r = stenos_compress_generic(ctx, data, bytesoftype, bytes, tmp.data(), tmp.size());
@@ -111,12 +110,6 @@ namespace stenos
 
 			if (stenos_has_error(r))
 				return r;
-			// stenos_destroy_context(ctx);
-
-			// std::vector<char> dst(bytes);
-			// size_t ere = stenos_decompress(tmp.data(), bytesoftype, r, dst.data(), dst.size());
-			// if (stenos_has_error(ere) || memcmp(dst.data(), data, bytes) != 0)
-			//	bool stop = true;
 
 			return r + 8;
 		}
@@ -180,22 +173,6 @@ namespace stenos
 		unsigned short index;
 	};
 
-	template<class T>
-	struct StorePixel
-	{
-		T value;
-		unsigned short index;
-		unsigned char pos;
-	};
-
-	struct FileTimeTraceHeader
-	{
-		unsigned short version = STENOS_VIDEO_TRACE_VERSION;
-		unsigned short width = 0;
-		unsigned short height = 0;
-		size_t count = 0;
-	};
-
 #pragma pack()
 
 	class BaseTimeTraceCompress
@@ -213,8 +190,13 @@ namespace stenos
 		virtual void set_compression_level(int level) noexcept = 0;
 		virtual int compression_level() const noexcept = 0;
 
+		virtual void set_max_time(uint64_t target) noexcept = 0;
+		virtual uint64_t max_time() const noexcept = 0;
+
 		virtual size_t max_GOP() const noexcept = 0;
 		virtual void set_max_GOP(size_t gop) = 0;
+
+		virtual int device() const noexcept = 0;
 
 		virtual size_t width() const noexcept = 0;
 		virtual size_t height() const noexcept = 0;
@@ -253,6 +235,8 @@ namespace stenos
 		size_t d_max_gop{ 0 };
 		size_t d_max_point_count{ 0 };
 		double d_error{ 0 };
+		int d_device = -1;
+		uint64_t d_max_time = 0;
 		unsigned short d_pos{ 0 };
 
 		int d_threads{ 1 };
@@ -425,8 +409,31 @@ namespace stenos
 			});
 		}
 
+		void set_context_max_time(stenos::timer & timer, uint64_t & remaining_ns, uint64_t shift)
+		{
+			if (d_max_time) {
+				auto elapsed_ns = timer.tock();
+				uint64_t max_time = 1;
+				if (elapsed_ns < remaining_ns)
+					max_time = remaining_ns - elapsed_ns;
+				max_time = max_time < (1 << shift) ? 1 : max_time >> shift;
+				//printf("mtime: %f\n", max_time * 1e-9);
+				stenos_set_max_nanoseconds(d_ctx, max_time);
+			}
+			else
+				stenos_set_max_nanoseconds(d_ctx, 0);
+		}
+
 		std::string finish_internal()
 		{
+			stenos::timer timer;
+			if (d_max_time)
+				timer.tick();
+
+			auto remaining_ns = d_max_time;
+			
+			set_context_max_time(timer, remaining_ns, 2);
+
 			if (d_pos == 0)
 				return std::string();
 
@@ -459,16 +466,12 @@ namespace stenos
 
 			out.insert(out.size(), (char*)&h, sizeof(h));
 
-			/*auto r =*/compress_detail::write_compressed_buffer(d_ctx, level, d_threads, out, d_times.data(), 8, d_times.size() * 8);
-			// printf("times: %i to %i (%f)\n", (int)d_times.size() * 8, (int)r, (double)(d_times.size() * 8) / r);
+			/*auto r =*/compress_detail::write_compressed_buffer(d_ctx, out, d_times.data(), 8, d_times.size() * 8);
 
 			size_t total_pixels = 0;
 			size_t size = d_height * d_width;
 
 			std::vector<unsigned short> cnts_pix(size);
-
-			// printf("counts: %i to %i (%f)\n", (int)cnts_pix.size() * 2, (int)r, (double)(cnts_pix.size() * 2) / r);
-
 			std::vector<PixelType> pixels;
 			if (!d_error || d_level < 4) {
 				// Directly take the decimated points
@@ -561,13 +564,18 @@ namespace stenos
 				}
 			}
 
+			set_context_max_time(timer, remaining_ns, 2);
+
 			// write number of points for each pixel trace
-			/*r = */ compress_detail::write_compressed_buffer(d_ctx, level, d_threads, out, cnts_pix.data(), sizeof(unsigned short), cnts_pix.size() * sizeof(unsigned short));
+			/*r = */ compress_detail::write_compressed_buffer(d_ctx, out, cnts_pix.data(), sizeof(unsigned short), cnts_pix.size() * sizeof(unsigned short));
 
 			// write total number of pixels
 			compress_detail::write_uint64(out, pixels.size() * sizeof(PixelType));
+
+			set_context_max_time(timer, remaining_ns, 0);
+
 			// write compressed pixels
-			/*r =*/compress_detail::write_compressed_buffer(d_ctx, level, d_threads, out, pixels.data(), sizeof(PixelType), pixels.size() * sizeof(PixelType));
+			/*r =*/compress_detail::write_compressed_buffer(d_ctx, out, pixels.data(), sizeof(PixelType), pixels.size() * sizeof(PixelType));
 
 			d_pos = 0;
 
@@ -595,6 +603,7 @@ namespace stenos
 
 		TimeTraceCompressFast(size_t width, size_t height, double error, size_t GOP, int threads, int device_id = -1)
 		{
+			d_device = device_id;
 #ifdef STENOS_OPENCL
 			if (device_id >= 0) {
 				d_openCL.reset(new TimeTraceCompressCL<T>((unsigned)device_id, width, height, error, GOP));
@@ -629,7 +638,17 @@ namespace stenos
 		int threads() const noexcept { return d_threads; }
 
 		double error() const noexcept { return d_error; }
-		void set_error(double error) noexcept { d_error = error; }
+		void set_error(double error) noexcept
+		{
+			d_error = error;
+#ifdef STENOS_OPENCL
+			if (d_openCL)
+				d_openCL->set_error(error);
+#endif
+		}
+
+		void set_max_time(uint64_t time_ns) noexcept { d_max_time = time_ns; }
+		uint64_t max_time() const noexcept { return d_max_time; }
 
 		void set_compression_level(int level) noexcept
 		{
@@ -637,6 +656,8 @@ namespace stenos
 			stenos_set_level(d_ctx, level);
 		}
 		int compression_level() const noexcept { return d_level; }
+
+		int device() const noexcept { return d_device; }
 
 		size_t max_GOP() const noexcept { return d_max_gop; }
 		void set_max_GOP(size_t gop)
@@ -797,142 +818,6 @@ namespace stenos
 		}
 
 		std::string add_image(const T* _img, int64_t time) { return add_image_bytes(_img, sizeof(T), time); }
-	};
-
-	template<class T>
-	class TimeTraceCompressFile
-	{
-		size_t d_count{ 0 };
-		size_t d_width{ 0 };
-		size_t d_height{ 0 };
-		size_t d_max_gop{ 0 };
-		int d_threads{ 1 };
-		int d_level{ 1 };
-		double d_error{ 0 };
-		std::string d_filename;
-		std::ofstream d_out;
-		std::unique_ptr<TimeTraceCompressFast<T>> d_encoder;
-
-	public:
-		TimeTraceCompressFile() = default;
-		~TimeTraceCompressFile() noexcept { close(); }
-
-		void close() noexcept
-		{
-			if (d_encoder) {
-
-				FileTimeTraceHeader h;
-				memset(&h, 0, sizeof(h));
-				h.version = STENOS_VIDEO_TRACE_VERSION;
-				h.count = d_count;
-				h.width = (unsigned short)d_width;
-				h.height = (unsigned short)d_height;
-
-				try {
-					auto str = d_encoder->finish();
-					if (str.size())
-						d_out.write(str.data(), str.size());
-
-					d_out.seekp(0);
-					d_out.write((char*)&h, sizeof(h));
-				}
-				catch (...) {
-				}
-			}
-
-			d_encoder.reset();
-			d_width = d_height = 0;
-			d_error = 0;
-			d_count = 0;
-			d_filename.clear();
-			d_out.close();
-		}
-
-		bool open(const char* outfile, size_t width, size_t height, double error)
-		{
-			close();
-
-			if (width == 0 || height == 0 || error < 0)
-				return false;
-
-			d_encoder.reset(new TimeTraceCompressFast<T>(width, height, error));
-			d_out.open(outfile, std::ios::out | std::ios::binary);
-			if (!d_out) {
-				close();
-				return false;
-			}
-
-			d_width = width;
-			d_height = height;
-			d_error = error;
-			d_count = 0;
-			d_filename = outfile;
-			d_encoder->set_max_GOP(d_max_gop);
-			d_encoder->set_compression_level(d_level);
-			d_encoder->set_threads(d_threads);
-
-			FileTimeTraceHeader h;
-			memset(&h, 0, sizeof(h));
-			// write an invalid (null) header
-			d_out.write((char*)&h, sizeof(h));
-
-			return true;
-		}
-
-		bool is_open() const noexcept { return d_encoder.get() != nullptr; }
-
-		void set_threads(int threads) noexcept
-		{
-			d_threads = threads;
-			if (d_encoder)
-				d_encoder->set_threads(threads);
-		}
-		int threads() const noexcept { return d_threads; }
-
-		double error() const noexcept { return d_error; }
-		void set_error(double error) noexcept
-		{
-			d_error = error;
-			if (d_encoder)
-				d_encoder->set_error(error);
-		}
-
-		void set_compression_level(int level) noexcept
-		{
-			d_level = level;
-			if (d_encoder)
-				d_encoder->set_compression_level(level);
-		}
-		int compression_level() const noexcept { return d_level; }
-
-		size_t max_GOP() const noexcept { return d_max_gop; }
-		void set_max_GOP(size_t gop)
-		{
-			d_max_gop = gop;
-			if (d_encoder)
-				d_encoder->set_max_GOP(gop);
-		}
-		void set_max_memory(size_t bytes)
-		{
-			size_t frames = bytes / (d_width * d_height * sizeof(typename TimeTraceCompressFast<T>::PixelType));
-			if (frames < 4)
-				frames = 4;
-			set_max_GOP(frames);
-		}
-
-		bool add_image(const T* img, int64_t time, bool key_frame = false)
-		{
-			if (!is_open())
-				return false;
-
-			auto str = d_encoder->add_image(img, time, key_frame);
-			if (!str.empty())
-				d_out.write(str.data(), str.size());
-
-			++d_count;
-
-			return true;
-		}
 	};
 
 	class BaseTimeTraceDecompressBlock
@@ -1317,9 +1202,9 @@ namespace stenos
 
 		virtual bool seek_pos(uint64_t pos)
 		{
-			if (pos < 0 || pos >= (size_t)d_times.size()) 
+			if (pos < 0 || pos >= (size_t)d_times.size())
 				return false;
-			
+
 			d_pos = pos;
 			auto time = d_times[pos];
 

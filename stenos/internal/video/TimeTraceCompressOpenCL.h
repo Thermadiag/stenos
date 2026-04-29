@@ -76,7 +76,6 @@ namespace stenos
 					found = i;
 				}
 			}
-			
 		}
 		return found;
 	}
@@ -95,7 +94,7 @@ namespace stenos
 		std::string error;
 	};
 
-	// Returns all opencl 
+	// Returns all opencl
 	static inline TimeTraceContext* getContext(int device)
 	{
 		static std::deque<TimeTraceContext> inst;
@@ -120,8 +119,6 @@ namespace stenos
 			c.error = c.program.getBuildInfo<CL_PROGRAM_BUILD_LOG>(c.device);
 		return &c;
 	}*/
-
-
 
 #pragma pack(1)
 	// Pixel value and temporal position, similar to the one in TimeTraceCompressionFast.h
@@ -252,11 +249,9 @@ namespace stenos
 			return d_trace.data() + w * d_gop * 2 + (h - start_line) * d_width * d_gop * 2;
 		}
 
-
 	public:
 		static_assert(std::is_arithmetic<T>::value, "invalid pixel type");
 
-		
 		TimeTraceCompressCL(int device_idx, size_t width, size_t height, double error, size_t GOP)
 		{
 			if (device_idx < 0 || device_idx >= (int)getSupportedGPUs().size())
@@ -269,8 +264,8 @@ namespace stenos
 
 			d_program = cl::Program(d_context, sources);
 			if (d_program.build(d_device) != CL_SUCCESS) {
-				//RIR_LOG_ERROR("error building opencl kernel: ", d_program.getBuildInfo<CL_PROGRAM_BUILD_LOG>(d_device));
-				//std::cout << d_program.getBuildInfo<CL_PROGRAM_BUILD_LOG>(d_device) << std::endl;
+				// RIR_LOG_ERROR("error building opencl kernel: ", d_program.getBuildInfo<CL_PROGRAM_BUILD_LOG>(d_device));
+				// std::cout << d_program.getBuildInfo<CL_PROGRAM_BUILD_LOG>(d_device) << std::endl;
 				return;
 			}
 
@@ -306,7 +301,7 @@ namespace stenos
 				d_trace.resize(d_gop * 2 * d_width * retrieve_line_count);
 			}
 			catch (...) {
-				//RIR_LOG_ERROR("error while initializing opencl context and buffers");
+				// RIR_LOG_ERROR("error while initializing opencl context and buffers");
 				d_width = d_height = 0;
 			}
 		}
@@ -319,6 +314,9 @@ namespace stenos
 		size_t width() const noexcept { return d_width; }
 		size_t height() const noexcept { return d_height; }
 		bool is_valid() const noexcept { return d_width > 0; }
+
+		void set_error(double error) noexcept { d_error = error; }
+		double error() const noexcept { return d_error; }
 
 		void finish_block()
 		{
