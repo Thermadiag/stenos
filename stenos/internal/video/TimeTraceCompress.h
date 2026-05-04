@@ -473,7 +473,7 @@ namespace stenos
 
 			std::vector<unsigned short> cnts_pix(size);
 			std::vector<PixelType> pixels;
-			if (!d_error || d_level < 4) {
+			if (!d_error || d_level < 3) {
 				// Directly take the decimated points
 #ifdef STENOS_OPENCL
 				if (d_openCL) {
@@ -482,6 +482,7 @@ namespace stenos
 					for (size_t i = 0; i < size; ++i) {
 						cnts_pix[i] = (uint16_t)d_openCL->retrieve_decimated_pixels(i, (std::vector<CLPixelType<T>>&)pixels);
 						total_pixels += cnts_pix[i];
+
 					}
 					// auto el = t.tock();
 					// printf("%f\n", (el * 1e-6));
@@ -534,7 +535,8 @@ namespace stenos
 					auto r_raw = stenos_private_assess_compressibility(raw.data(), sizeof(PixelType), raw.size() * sizeof(PixelType), dst.data());
 					auto r_dec = stenos_private_assess_compressibility(dec.data(), sizeof(PixelType), dec_size * sizeof(PixelType), dst.data());
 
-					if (r_dec < r_raw) {
+					if ( r_dec < r_raw) {
+						//printf("%f\n", (double)dec_size / (double)raw.size());
 						// Use decimated points
 						pixels.insert(pixels.end(), dec.data(), dec.data() + dec_size);
 						for (size_t x = 0; x < d_width; ++x) {

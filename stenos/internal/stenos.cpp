@@ -1231,18 +1231,26 @@ size_t stenos_decompress_generic(stenos_context* opts, const void* _src, size_t 
 
 size_t stenos_private_assess_compressibility(const void* src, size_t bytesoftype, size_t bytes, void* _buffer)
 {
+	thread_local auto ctx = ZSTD_createCCtx();
+	ZSTD_CCtx_setParameter(ctx, ZSTD_c_compressionLevel, 1);
+
 	auto* buffer = (char*)_buffer;
 	auto* buffer2 = buffer + bytes;
 
 	stenos::shuffle(bytesoftype, bytes, (const uint8_t*)src, (uint8_t*)buffer);
 
-	auto r1 = ZSTD_compress(buffer2, bytes, buffer, bytes, 1);
-	if (ZSTD_isError(r1))
+	auto r1 = stenos::lz4_guess_size(buffer, bytes, 0);
+	if (stenos::has_error(r1))
+	//auto r1 = ZSTD_compressCCtx(ctx, buffer2, bytes, buffer, bytes, 1);
+	//if (ZSTD_isError(r1))
 		r1 = bytes;
 
 	stenos::delta(buffer, buffer2, bytes);
-	auto r2 = ZSTD_compress(buffer, bytes, buffer2, bytes, 1);
-	if (ZSTD_isError(r2))
+
+	auto r2 = stenos::lz4_guess_size(buffer2, bytes, 0);
+	if (stenos::has_error(r2))
+	//auto r2 = ZSTD_compressCCtx(ctx, buffer, bytes, buffer2, bytes, 1);
+	//if (ZSTD_isError(r2))
 		r2 = bytes;
 
 	return (std::min(r1, r2));

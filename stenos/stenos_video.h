@@ -400,7 +400,7 @@ Use stenosv_decompress_info() to retrieve these information.
 
 The inner stride is given in bytes. Unlike stenosv_decompress_read_image,
 this function can reconstruct a multi-channel image where each channel
-has a different size.
+has a different size (compound pixel type).
 */
 STENOS_EXPORT size_t stenosv_decompress_read_image_bytes(stenosv_decompress*, uint64_t pos, int inner_stride_bytes, void* out_image);
 
