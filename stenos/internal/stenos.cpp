@@ -952,7 +952,36 @@ size_t stenos_compress_generic(stenos_context* opts, const void* _src, size_t by
 		std::atomic<size_t> memcpy_size{ 0 };
 
 		// Parallel compression using a thread pool
-		for (int i = 0; i < thread_count; ++i) {
+		if (!stenos::pool->loop_for(thread_count, 0, thread_count, 1, [&](int i) {
+			    size_t idx = (size_t)i;
+			    // Get input pointer
+			    const uint8_t* in = src + idx * opts->superblock_size;
+
+			    if (raw_memcpy) {
+				    // Direct memcpy
+				    size_t in_size = (size_t)(src_end - in) < opts->superblock_size ? (size_t)(src_end - in) : opts->superblock_size;
+				    uint8_t* out = dst + idx * (opts->superblock_size + 4);
+				    stenos::compress_memcpy(in, in_size, out, dst_end - out);
+				    memcpy_size.fetch_add(in_size);
+			    }
+			    else {
+				    // Retrieve a compression buffer
+				    auto* buffer = opts->thread_buffers[idx];
+				    if (!buffer)
+					    buffer = opts->thread_buffers[idx] = stenos::CBuffer::make(opts->superblock_size + 4); // Add 4 for the superblock header
+				    if (buffer) {
+					    // Compress with computed level
+					    size_t in_size = (size_t)(src_end - in) < opts->superblock_size ? (size_t)(src_end - in) : opts->superblock_size;
+					    buffer->dst_size = stenos::compress_generic_superblock(
+					      opts, in, bytesoftype, in_size, buffer->bytes, opts->superblock_size + 4, opts->tmp_buffers1[idx], opts->tmp_buffers2[idx]);
+					    if (opts->t.nanoseconds)
+						    opts->t.processed_bytes.fetch_add(in_size);
+				    }
+			    }
+		    }))
+			return STENOS_ERROR_ALLOC;
+
+		/* for (int i = 0; i < thread_count; ++i) {
 			if (!stenos::pool->push([&, i]() {
 				    size_t idx = (size_t)i;
 				    // Get input pointer
@@ -982,7 +1011,7 @@ size_t stenos_compress_generic(stenos_context* opts, const void* _src, size_t by
 			    }))
 				return STENOS_ERROR_ALLOC;
 		}
-		stenos::pool->wait();
+		stenos::pool->wait();*/
 
 		if (raw_memcpy) {
 			src += memcpy_size.load();
@@ -1009,7 +1038,18 @@ size_t stenos_compress_generic(stenos_context* opts, const void* _src, size_t by
 			}
 
 			// copy to destination in parallel
-			for (int i = 0; i < thread_count; ++i) {
+			if(!stenos::pool->loop_for(thread_count, 0, thread_count, 1, [&](auto i) {
+				if ((uint8_t*)opts->thread_buffers[i]->dst + opts->thread_buffers[i]->dst_size > dst_end) {
+					res_code = STENOS_ERROR_DST_OVERFLOW;
+				}
+				else {
+					memcpy(opts->thread_buffers[i]->dst, opts->thread_buffers[i]->bytes, opts->thread_buffers[i]->dst_size);
+				}
+			}))
+				return STENOS_ERROR_ALLOC;
+
+			
+			/* for (int i = 0; i < thread_count; ++i) {
 				if (!stenos::pool->push([&, i]() {
 					    if ((uint8_t*)opts->thread_buffers[i]->dst + opts->thread_buffers[i]->dst_size > dst_end) {
 						    res_code = STENOS_ERROR_DST_OVERFLOW;
@@ -1020,7 +1060,7 @@ size_t stenos_compress_generic(stenos_context* opts, const void* _src, size_t by
 				    }))
 					return STENOS_ERROR_ALLOC;
 			}
-			stenos::pool->wait();
+			stenos::pool->wait();*/
 
 			if STENOS_UNLIKELY (res_code)
 				goto end;
@@ -1204,14 +1244,21 @@ size_t stenos_decompress_generic(stenos_context* opts, const void* _src, size_t 
 		}
 
 		// Parallel decompress using a thread pool
-		for (int i = 0; i < thread_count; ++i) {
+
+		if(!stenos::pool->loop_for(thread_count, 0, thread_count, 1, [&](auto i) {
+			Block& bl = blocks[(size_t)i];
+			bl.ret = stenos::decompress_generic_superblock(opts, bl.code, bl.src, bytesoftype, bl.csize, bl.dst, bl.dsize, opts->thread_buffers[(size_t)i]);
+		    }))
+			return STENOS_ERROR_ALLOC;
+
+		/* for (int i = 0; i < thread_count; ++i) {
 			if (!stenos::pool->push([&, i]() {
 				    Block& bl = blocks[(size_t)i];
 				    bl.ret = stenos::decompress_generic_superblock(opts, bl.code, bl.src, bytesoftype, bl.csize, bl.dst, bl.dsize, opts->thread_buffers[(size_t)i]);
 			    }))
 				return STENOS_ERROR_ALLOC;
 		}
-		stenos::pool->wait();
+		stenos::pool->wait();*/
 
 		// Check results
 		for (int i = 0; i < thread_count; ++i) {
