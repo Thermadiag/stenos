@@ -56,7 +56,7 @@ namespace stenos
 			catch (...) {
 			}
 			if (sentinel)
-				sentinel->fetch_sub(1,std::memory_order_relaxed);
+				sentinel->fetch_sub(1, std::memory_order_relaxed);
 		}
 	};
 
@@ -183,18 +183,28 @@ namespace stenos
 				block_count = count / block_size + (count % block_size ? 1 : 0);
 			}
 
-			std::atomic<int> sentinel{ block_count };
+			std::atomic<int> sentinel{ block_count-1 };
 			for (int i = 0; i < block_count; ++i) {
-				bool r = push(
-				  [&, i]() {
-					  int first = start + i * block_size;
-					  int last = (i == block_count - 1) ? end : first + block_size;
-					  for (; first < last; first += step)
-						  u(first);
-				  },&sentinel );
-				if (!r) {
-					wait();
-					return false;
+				auto fun = [&, i]() {
+					int first = start + i * block_size;
+					int last = (i == block_count - 1) ? end : first + block_size;
+					for (; first < last; first += step)
+						u(first);
+				};
+				if (i == block_count - 1) {
+					try {
+						fun();
+					}
+					catch (...) {
+						wait();
+						return false;
+					}
+				}
+				else {
+					if (!push(fun, &sentinel)) {
+						wait();
+						return false;
+					}
 				}
 			}
 			wait(&sentinel);
@@ -202,8 +212,6 @@ namespace stenos
 		}
 	};
 
-
-	
 	static inline stenos::tiny_pool& get_pool()
 	{
 		// Create static thread pool

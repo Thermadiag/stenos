@@ -7,7 +7,7 @@ project(stenos
     HOMEPAGE_URL "https://github.com/Thermadiag/stenos"
     LANGUAGES C CXX
 )
-
+ 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 include(GNUInstallDirs)
@@ -152,7 +152,8 @@ target_link_libraries(stenos_obj PUBLIC libzstd_static)
 target_include_directories(stenos_obj PUBLIC ${ZSTD_INCLUDE_DIR})
 
 if(STENOS_WITH_OPENCL)
-	target_link_libraries(stenos_obj PRIVATE OpenCL::OpenCL OpenCL::HeadersCpp)
+	#target_link_libraries(stenos_obj PRIVATE OpenCL::OpenCL OpenCL::HeadersCpp)
+	target_link_libraries(stenos_obj PRIVATE OpenCL::OpenCL)
 	target_compile_definitions(stenos_obj PRIVATE -DSTENOS_OPENCL)
 endif()
 
