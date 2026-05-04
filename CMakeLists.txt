@@ -7,7 +7,7 @@ project(stenos
     HOMEPAGE_URL "https://github.com/Thermadiag/stenos"
     LANGUAGES C CXX
 )
-
+ 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 include(GNUInstallDirs)
