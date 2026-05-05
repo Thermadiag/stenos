@@ -151,7 +151,7 @@ double stenosv_compress_error(stenosv_compress* ctx)
 }
 int stenosv_compress_gop(stenosv_compress* ctx)
 {
-	return ctx->compress->max_GOP();
+	return (int)ctx->compress->max_GOP();
 }
 int stenosv_compress_device(stenosv_compress* ctx)
 {
@@ -574,19 +574,19 @@ stenosv_bytestream* stenosv_bytestream_open(stenos_input input)
 					break; // Pixel type mismatch
 				if (h.width != ret->width || h.height != ret->height)
 					break; // Dimension mismatch
-				if (input.seek(sizeof(h) + 8, SEEK_CUR, input.opaque) < 0)
-					break;
 			}
 			else if (h.version == 0)
 				return nullptr;
 
 			// Read timestamps;
 			std::vector<int64_t> times;
+			if (input.seek(sizeof(h) + 8, SEEK_CUR, input.opaque) < 0)
+				break;
 			if (!stenos::compress_detail::read_compressed_vector(1, &input, times, (size_t)h.count * 8))
 				break;
 
 			ret->times.insert(ret->times.end(), times.begin(), times.end());
-			ret->blocks.push_back(Block{ pos, times.size() - h.count, h.count });
+			ret->blocks.push_back(Block{ pos, ret->times.size() - h.count, h.count });
 
 			if (ret->bytes == 0) {
 				ret->width = (int)h.width;
@@ -595,11 +595,15 @@ stenosv_bytestream* stenosv_bytestream_open(stenos_input input)
 				ret->input = input;
 			}
 			ret->bytes += full_size;
+
+			input.seek(pos + (int64_t)full_size, SEEK_SET, input.opaque);
 		}
 	}
 	catch (...) {
 		return nullptr;
 	}
+	if (ret->times.size() == 0)
+		return nullptr;
 	return ret.release();
 }
 
@@ -668,6 +672,11 @@ size_t stenosv_bytestream_read(stenosv_bytestream* ctx, uint64_t pos, void* img)
 	if (!ctx->current->dec) {
 		// Create decompressor
 		PosStream s;
+		s.pos = 0;
+		s.start = ctx->current->pos;
+		s.input = ctx->input;
+		if(ctx->input.seek(s.start, SEEK_SET, ctx->input.opaque) < 0)
+			return STENOS_ERROR_INVALID_IO;
 		stenos_input in;
 		in.opaque = &s;
 		in.read = read_stream_pos;
@@ -1029,11 +1038,8 @@ size_t stenosv_bytestream_extract_time_trace(stenosv_bytestream* input, int64_t*
 		std::atomic<size_t> err{ 0 };
 		std::atomic<size_t> ret{ 0 };
 
-		std::unique_lock<std::mutex> lock;
-		stenos_lock slock;
-		slock.opaque = &lock;
-		slock.lock = lock_mutex;
-		slock.unlock = unlock_mutex;
+		std::mutex mutex;
+		
 
 		stenos::get_pool().loop_for(threads, 0, (int)input->blocks.size(), 1, [&](auto i) {
 			if (err.load())
@@ -1042,7 +1048,7 @@ size_t stenosv_bytestream_extract_time_trace(stenosv_bytestream* input, int64_t*
 			size_t idx = (size_t)i;
 
 			auto start_t = times[input->blocks[idx].start_frame];
-			auto last_t = times[input->blocks[idx].start_frame + input->blocks[idx].count];
+			auto last_t = times[input->blocks[idx].start_frame + input->blocks[idx].count -1];
 
 			if (last_t < time_bounds.first || start_t > time_bounds.second)
 				return;
@@ -1050,6 +1056,8 @@ size_t stenosv_bytestream_extract_time_trace(stenosv_bytestream* input, int64_t*
 			PosStream p;
 			p.pos = 0;
 			p.start = input->blocks[idx].pos;
+			p.input = input->input;
+			
 			stenos_input stream;
 			stream.opaque = &p;
 			stream.read = read_stream_pos;
@@ -1064,6 +1072,16 @@ size_t stenosv_bytestream_extract_time_trace(stenosv_bytestream* input, int64_t*
 			r.var_values = out_trace->var_values ? (out_trace->var_values + input->blocks[idx].start_frame) : nullptr;
 			r.min_pos = out_trace->min_pos ? (out_trace->min_pos + input->blocks[idx].start_frame) : nullptr;
 			r.max_pos = out_trace->max_pos ? (out_trace->max_pos + input->blocks[idx].start_frame) : nullptr;
+
+			// Seek to the correct location after locking the mutex
+			std::unique_lock<std::mutex> lock(mutex);
+			input->input.seek(p.start, SEEK_SET, input->input.opaque);
+
+			stenos_lock slock;
+			slock.opaque = &lock;
+			slock.lock = lock_mutex;
+			slock.unlock = unlock_mutex;
+
 			auto er = stenosv_extract_time_trace(&stream, &q, &r, &slock);
 			if (stenos_has_error(er))
 				err.store(er);

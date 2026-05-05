@@ -19,12 +19,14 @@ static BS::light_thread_pool pool(12);
 static int64_t read_stream(char* dst, int64_t size, void* opaque)
 {
 	std::istream* iss = static_cast<std::istream*>(opaque);
+	iss->clear();
 	iss->read(dst, size);
 	return iss->gcount();
 }
 static int64_t seek_stream(int64_t pos, int whence, void* opaque)
 {
 	std::istream* iss = static_cast<std::istream*>(opaque);
+	iss->clear();
 	if (whence == STENOS_SEEK_SET) {
 		if (pos < 0)
 			return STENOS_ERROR_INVALID_IO;
@@ -39,7 +41,8 @@ static int64_t seek_stream(int64_t pos, int whence, void* opaque)
 }
 static int64_t tell_stream(void* opaque)
 {
-	return static_cast<std::istream*>(opaque)->tellg();
+	std::istream* iss = static_cast<std::istream*>(opaque);
+	return iss->tellg();
 }
 
 static void lock_mutex(void* m)
@@ -138,6 +141,79 @@ void test_codec(int width, int height, int GOP, double error, int threads, int d
 	}
 	STENOS_TEST(pos == frames);
 
+
+
+	{
+		// Test bytestream
+		std::istringstream fin2(fout.str(), std::ios::binary);
+		STENOS_TEST(fin2);
+		in.opaque = &fin2;
+
+		auto bytestream = stenosv_bytestream_open(in);
+		STENOS_TEST(bytestream);
+		STENOS_TEST(stenosv_bytestream_bytes( bytestream) == fout.str().size());
+		STENOS_TEST(stenosv_bytestream_height( bytestream) == height);
+		STENOS_TEST(stenosv_bytestream_width(bytestream) == width);
+		STENOS_TEST(stenosv_bytestream_pixel_type(bytestream) == pixel_type);
+		STENOS_TEST(stenosv_bytestream_count(bytestream) == frames);
+
+		for (size_t i = 0; i < frames; ++i) {
+			auto r = stenosv_bytestream_read(bytestream, i, image.data());
+			STENOS_TEST(!stenos_has_error(r));
+			T expected = (T)pattern(i);
+			for (auto p : image) {
+				STENOS_TEST(compare(p, expected, error));
+			}
+		}
+		for (int64_t idx = (int64_t)frames - 1; idx >= 0; --idx) {
+			size_t i = (size_t)idx;
+			auto r = stenosv_bytestream_read(bytestream, i, image.data());
+			STENOS_TEST(!stenos_has_error(r));
+			T expected = (T)pattern(i);
+			for (auto p : image) {
+				STENOS_TEST(compare(p, expected, error));
+			}
+		}
+
+		{
+			// Extract time trace on bytestream
+			stenosv_trace_query q;
+			stenosv_init_trace_query(&q);
+			q.components = StenosTraceAll;
+			q.threads = threads;
+			stenosv_coordinate c{ 0, 0 };
+			q.pixels = &c;
+			q.pixel_count = 1;
+
+			std::vector<int64_t> timestamps(frames);
+			std::vector<double> max(frames), min(frames), mean(frames), var(frames);
+			std::vector<stenosv_coordinate> min_pos(frames), max_pos(frames);
+
+			stenosv_trace_result tr;
+			tr.timestamps = timestamps.data();
+			tr.min_values = min.data() ;
+			tr.max_values = max.data() ;
+			tr.mean_values = mean.data() ;
+			tr.var_values = var.data() ;
+			tr.min_pos = min_pos.data() ;
+			tr.max_pos = max_pos.data() ;
+
+			auto r = stenosv_bytestream_extract_time_trace(bytestream, NULL, NULL, &q, &tr);
+			STENOS_TEST(!stenos_has_error(r));
+
+			for (size_t i = 0; i < frames; ++i) {
+				STENOS_TEST(timestamps[i] == (int64_t)i);
+				double expected = (double)(T)pattern(i);
+				STENOS_TEST(compare(min[i], expected, error));
+				STENOS_TEST(compare(max[i], expected, error));
+				STENOS_TEST(compare(mean[i], expected, error));
+				STENOS_TEST(compare(var[i], 0., error));
+			}
+		}
+
+		stenosv_bytestream_destroy(bytestream);
+	}
+
 	std::istringstream fin2(fout.str(), std::ios::binary);
 	STENOS_TEST(fin2);
 	in.opaque = &fin2;
@@ -157,6 +233,7 @@ void test_codec(int width, int height, int GOP, double error, int threads, int d
 
 		std::vector<int64_t> timestamps(frames);
 		std::vector<double> max(frames), min(frames), mean(frames), var(frames);
+		std::vector<stenosv_coordinate> min_pos(frames), max_pos(frames);
 
 		while (true) {
 
@@ -177,6 +254,8 @@ void test_codec(int width, int height, int GOP, double error, int threads, int d
 			tr.max_values = max.data() + pos;
 			tr.mean_values = mean.data() + pos;
 			tr.var_values = var.data() + pos;
+			tr.min_pos = min_pos.data() + pos;
+			tr.max_pos = max_pos.data() + pos;
 
 			auto r = stenosv_extract_time_trace(&in, &q, &tr, nullptr);
 			STENOS_TEST(!stenos_has_error(r));
@@ -209,6 +288,7 @@ void test_codec(int width, int height, int GOP, double error, int threads, int d
 
 		std::vector<int64_t> timestamps(frames);
 		std::vector<double> max(frames), min(frames), mean(frames), var(frames);
+		std::vector<stenosv_coordinate> min_pos(frames), max_pos(frames);
 
 		std::istringstream fin3(fout.str(), std::ios::binary);
 		STENOS_TEST(fin3);
@@ -236,6 +316,8 @@ void test_codec(int width, int height, int GOP, double error, int threads, int d
 				tr.max_values = max.data() + blocks[i].second;
 				tr.mean_values = mean.data() + blocks[i].second;
 				tr.var_values = var.data() + blocks[i].second;
+				tr.min_pos = min_pos.data() + blocks[i].second;
+				tr.max_pos = max_pos.data() + blocks[i].second;
 
 				auto r = stenosv_extract_time_trace(&in, &q, &tr, &slock);
 				STENOS_TEST(!stenos_has_error(r));

@@ -416,7 +416,7 @@ namespace stenos
 				uint64_t max_time = 1;
 				if (elapsed_ns < remaining_ns)
 					max_time = remaining_ns - elapsed_ns;
-				max_time = max_time < (1 << shift) ? 1 : max_time >> shift;
+				max_time = max_time < (1ull << shift) ? 1ull : max_time >> shift;
 				//printf("mtime: %f\n", max_time * 1e-9);
 				stenos_set_max_nanoseconds(d_ctx, max_time);
 			}

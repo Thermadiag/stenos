@@ -146,7 +146,7 @@ typedef enum
 	StenosTraceVar = 8,
 	StenosTraceMinPos = 16,
 	StenosTraceMaxPos = 32,
-	StenosTraceAll = 64
+	StenosTraceAll = 63
 } stenosv_trace_component;
 
 /**
