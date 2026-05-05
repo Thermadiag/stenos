@@ -212,10 +212,10 @@ namespace stenos
 		}
 	};
 
-	static inline stenos::tiny_pool& get_pool()
+	static inline tiny_pool& get_pool()
 	{
 		// Create static thread pool
-		static stenos::tiny_pool pool(std::thread::hardware_concurrency() * 2u);
+		static tiny_pool pool(std::thread::hardware_concurrency() * 2u);
 		return pool;
 	}
 

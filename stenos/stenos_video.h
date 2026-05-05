@@ -144,7 +144,9 @@ typedef enum
 	StenosTraceMax = 2,
 	StenosTraceMean = 4,
 	StenosTraceVar = 8,
-	StenosTraceAll = 15
+	StenosTraceMinPos = 16,
+	StenosTraceMaxPos = 32,
+	StenosTraceAll = 64
 } stenosv_trace_component;
 
 /**
@@ -178,6 +180,8 @@ typedef struct stenosv_trace_result
 	double* min_values;
 	double* mean_values;
 	double* var_values;
+	stenosv_coordinate* min_pos;
+	stenosv_coordinate* max_pos;
 } stenosv_trace_result;
 
 
@@ -313,10 +317,7 @@ Video decompression context structure
 */
 typedef struct stenosv_decompress_s stenosv_decompress;
 
-/**
-Helper function, create a stenos_input from a buffer.
-*/
-STENOS_EXPORT stenos_input stenosv_input_from_payload(void* data, uint64_t size);
+
 
 /**
 Returns the block header for given payload.
@@ -404,6 +405,74 @@ has a different size (compound pixel type).
 */
 STENOS_EXPORT size_t stenosv_decompress_read_image_bytes(stenosv_decompress*, uint64_t pos, int inner_stride_bytes, void* out_image);
 
+
+/*************************************************************************
+Bytestream API
+*************************************************************************/
+
+/**
+Bytestream  structure.
+A bytestream is a compressed video made of concatenated compressed chunks (or GOP).
+The compressed GOP are made with the stenosv_compress structure.
+*/
+typedef struct stenosv_bytestream_s stenosv_bytestream;
+
+/**
+Open a bytestream from an input stream.
+
+The stream must point to the start of a valid bytestream.
+Returns a null pointer on error.
+
+This function will read all consecutive valid compressed GOP until end of stream or invalid block encountered.
+*/
+stenosv_bytestream* stenosv_bytestream_open(stenos_input input);
+
+/**
+Destroy a bytestream object created with stenosv_bytestream_open().
+*/
+void stenosv_bytestream_destroy(stenosv_bytestream*);
+
+/**
+Returns the image width of the bytestream.
+*/
+int stenosv_bytestream_width(stenosv_bytestream*);
+/**
+Returns the image height of the bytestream.
+*/
+int stenosv_bytestream_height(stenosv_bytestream*);
+/**
+Returns the number of threads used to decompress images from the bytestream.
+*/
+int stenosv_bytestream_threads(stenosv_bytestream*);
+/**
+Returns the image pixel type of the bytestream.
+*/
+stenosv_pixel_type stenosv_bytestream_pixel_type(stenosv_bytestream*);
+/**
+Returns the total number of images this bytestream contains.
+*/
+size_t stenosv_bytestream_count(stenosv_bytestream*);
+
+/**
+Returns all image timestamps fo the bytestream.
+*/
+int64_t* stenosv_bytestream_times(stenosv_bytestream*);
+/**
+Returns the total size in bytes of the bytestream.
+*/
+uint64_t stenosv_bytestream_bytes(stenosv_bytestream*);
+
+/**
+Set the number of threads used to decompress images from the bytestream.
+*/
+void stenosv_bytestream_set_threads(stenosv_bytestream*, int threads);
+
+/**
+Read an image from the bytestream.
+*/
+size_t stenosv_bytestream_read(stenosv_bytestream* stream, uint64_t pos, void* img);
+
+
 /*************************************************************************
 Time trace extraction API
 *************************************************************************/
@@ -435,16 +504,19 @@ The query parameter specifies:
 	- The Pixels to consider (stenosv_trace_query::pixels and stenosv_trace_query::pixel_count).
 
 The out_trace object will hold extracted features. Its member arrays must point to valid memory addresses, at least for extracted components.
-For instance, if query->components contains StenosTraceMax, out_trace->max_values must be valid and point to a meory area of at least the GOP size.
+For instance, if query->components contains StenosTraceMax, out_trace->max_values must be valid and point to a memory area of at least the GOP size.
 Note that the query->timestamps must ALWAYS be valid.
 
 This function can be called from multiple threads using the same input stream.
 For that, a valid lock object must be passed and this object must be in the locked state.
 
 Returns the GOP size on success, an error code on failure.
-
 */
 STENOS_EXPORT size_t stenosv_extract_time_trace(stenos_input* input, stenosv_trace_query* query, stenosv_trace_result* out_trace, stenos_lock* opt_lock);
+
+/**
+*/
+STENOS_EXPORT size_t stenosv_bytestream_extract_time_trace(stenosv_bytestream* input, int64_t* start_time, int64_t* end_time, stenosv_trace_query* query, stenosv_trace_result* out_trace);
 
 #ifdef __cplusplus
 } // end extern "C"

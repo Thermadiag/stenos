@@ -1206,6 +1206,8 @@ namespace stenos
 		{
 			if (pos < 0 || pos >= (size_t)d_times.size())
 				return false;
+			if (pos == d_pos)
+				return true;
 
 			d_pos = pos;
 			auto time = d_times[pos];
