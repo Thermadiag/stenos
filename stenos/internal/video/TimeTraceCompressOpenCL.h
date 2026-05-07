@@ -13,7 +13,7 @@
 #include <vector>
 #include <memory>
 #include "../../bits.hpp"
-#include <CL/opencl.hpp>
+#include "CL/opencl.hpp"
 
 // Load the kernel at compile time to avoid shipping an additional file
 static const char* kernel_code =
