@@ -82,6 +82,7 @@ Stenos error codes
 #define STENOS_ERROR_ZSTD_INTERNAL ((size_t)(-8))
 #define STENOS_ERROR_INVALID_PARAMETER ((size_t)(-9))
 #define STENOS_ERROR_INVALID_IO ((size_t)(-10))
+#define STENOS_ERROR_INVALID_FILENAME ((size_t)(-11))
 #define STENOS_LAST_ERROR_CODE ((size_t)(-100))
 
 #ifdef __cplusplus

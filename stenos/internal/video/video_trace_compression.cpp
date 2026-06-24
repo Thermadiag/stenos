@@ -54,6 +54,30 @@ int stenosv_default_gpu_device()
 	}
 }
 
+size_t stenosv_sizeof_pixel_type(stenosv_pixel_type type)
+{
+	switch(type) {
+		case StenosInt8:
+		case StenosUInt8:
+			return 1;
+		case StenosInt16:
+		case StenosUInt16:
+			return 2;
+		case StenosInt32:
+		case StenosUInt32:
+			return 4;
+		case StenosInt64:
+		case StenosUInt64:
+			return 8;
+		case StenosFloat32:
+			return 4;
+		case StenosFloat64:
+			return 8;
+		default:
+			return 0;
+	}
+}
+
 struct stenosv_compress_s
 {
 	std::unique_ptr<BaseTimeTraceCompress> compress;
@@ -437,6 +461,48 @@ stenosv_decompress* stenosv_decompress_make_stream(stenos_input* read, int threa
 		ret = nullptr;
 	}
 	return ret;
+}
+
+size_t stenosv_extract_timestamps(stenos_input* input, int64_t * timestamps, size_t count)
+{
+	int threads = 1;
+
+	stenosv_decompress* ret = nullptr;
+	stenosv_block_header h = stenosv_read_block_header_stream(read, nullptr);
+	if (h.version == 0)
+		return ret;
+
+	stenosv_pixel_type ptype = (stenosv_pixel_type)h.pixel_type;
+
+	try {
+		std::unique_ptr<BaseTimeTraceDecompressBlock> dec(from_type(ptype));
+		if (dec) {
+			ret = new stenosv_decompress();
+			ret->dec = std::move(dec);
+			ret->pixel_type = ptype;
+			ret->input = *read;
+			ret->dec->set_threads(threads);
+			bool ok = ret->dec->open(&ret->input, false);
+			if(!ok) {
+				delete ret;
+				return STENOS_ERROR_INVALID_INPUT;
+			}
+
+			const auto & times = ret->dec->times();
+			if(count < times.size()) {
+				delete ret;
+				return STENOS_ERROR_INVALID_PARAMETER
+			}
+			memcpy(timestamps, times.data(), times.size() * sizeof(int64_t));
+			delete ret;
+			return times.size();
+		}
+	}
+	catch (...) {
+		if (ret)
+			delete ret;
+	}
+	return STENOS_ERROR_INVALID_INPUT;
 }
 
 void stenosv_decompress_set_threads(stenosv_decompress* ctx, int threads)

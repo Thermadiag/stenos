@@ -196,6 +196,9 @@ Video compression context structure
 */
 typedef struct stenosv_compress_s stenosv_compress;
 
+
+STENOS_EXPORT size_t stenosv_sizeof_pixel_type(stenosv_pixel_type type);
+
 /**
 Returns the array of compatible GPU devices for video time trace compression.
 count is set to the number of compatible gpu devices.
@@ -366,6 +369,13 @@ The passed threads will also be used to read images with stenosv_decompress_read
 Returns a null pointer on error.
 */
 STENOS_EXPORT stenosv_decompress* stenosv_decompress_make_stream(stenos_input* input, int threads);
+
+/**
+Read the next compressed block and only extract its timestamps without decompressing the full block.
+On success, return the number fo read timestamps, and place the stream position to the end of the block.
+Returns an error code on error, the number of images on success.
+ */
+STENOS_EXPORT size_t stenosv_extract_timestamps(stenos_input* input, int64_t * timestamps, size_t count);
 
 /**
 Destroy/deallocate video decompression context.
