@@ -334,18 +334,19 @@ namespace stenos
 			return a < b;
 		}
 
-		void advance_min_max(PixelData& d, bool key)
+		void advance_min_max(PixelData& d, double error2, bool key)
 		{
-			const FloatType error2 = (FloatType)d_error * (FloatType)2.00001;
+			
 			const auto val = d.last_pixels[d.pos];
-
-			// compute slope
-			FloatType s = slope((FloatType)d.last_pixels[0].value, (FloatType)val.value, (FloatType)(time(val) - time(d.last_pixels[0])));
 
 			// check points before
 			FloatType error_max = std::numeric_limits<FloatType>::infinity();
-			if (d_error != 0 && !key) // if d_error is 0, it is more efficient to just NOT try to remove points
+			if (d_error != 0 && !key) { // if d_error is 0, it is more efficient to just NOT try to remove points
+				// compute slope
+				FloatType s = slope((FloatType)d.last_pixels[0].value, (FloatType)val.value, (FloatType)(time(val) - time(d.last_pixels[0])));
+
 				error_max = check_candidate_min_max(d.last_pixels, d.pos, s, error2);
+			}
 
 			if (error_max > error2) {
 				// stop here
@@ -368,6 +369,8 @@ namespace stenos
 			if (!key_pixels.empty())
 				size = key_pixels.size();
 
+			const FloatType error2 = (FloatType)d_error * (FloatType)2.00001;
+
 			// #pragma omp parallel for num_threads(d_threads)
 			get_pool().loop_for(d_threads, 0, (int)size, 1, [&](auto p) {
 				size_t pix = (size_t)p;
@@ -388,7 +391,7 @@ namespace stenos
 				}
 
 				for (; d.pos != d.last_pixels.size(); ++d.pos) {
-					advance_min_max(d, false);
+					advance_min_max(d, error2 ,false);
 					if (d.pos >= d.last_pixels.size() - 1) {
 						// we reach the end
 						if (d.candidate != MaxSpace) {
@@ -788,6 +791,8 @@ namespace stenos
 				return std::string();
 			}
 
+			const FloatType error2 = (FloatType)d_error * (FloatType)2.00001;
+
 			// #pragma omp parallel for num_threads(d_threads)
 			get_pool().loop_for(d_threads, 0, (int)size, 1, [&](auto p) {
 				size_t pix = (size_t)p;
@@ -800,7 +805,7 @@ namespace stenos
 					memcpy(&val, c_img + pix * inner_bytes, sizeof(T));
 
 				d.last_pixels.push_back(PixelType{ val, d_pos });
-				advance_min_max(d, false);
+				advance_min_max(d, error2 ,false);
 				d.pos++;
 			});
 			++d_pos;

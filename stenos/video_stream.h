@@ -5,25 +5,27 @@
 #include <cstdint>
 #include <fstream>
 #include <vector>
+#include <limits>
+#include <utility>
 
 #include "stenos_video.h"
 
 namespace stenos
 {
-    struct bitstream_parameters
-    {
-        unsigned mode = 0; //NotOpen
-        int pixel_type = -1; // default value in read-only mode (retrieve from file)
-        unsigned maxGOP = 50;
-        unsigned width = 0; // default value in read-only mode (retrieve from file)
-        unsigned height = 0; // default value in read-only mode (retrieve from file)
-        unsigned level = 1;
-        unsigned threads = 1;
-        int device = stenosv_default_gpu_device();
-        double error = 0;
-    }
+	struct stream_parameters
+	{
+		unsigned mode = 0;   // NotOpen
+		int pixel_type = -1; // default value in read-only mode (retrieve from file)
+		unsigned maxGOP = 50;
+		unsigned width = 0;  // default value in read-only mode (retrieve from file)
+		unsigned height = 0; // default value in read-only mode (retrieve from file)
+		unsigned level = 1;
+		unsigned threads = 1;
+		int device = -1; // stenosv_default_gpu_device();
+		double error = 0;
+	};
 
-    class video_bitstream
+    class video_stream
     {
     public:
         using time_type = int64_t;
@@ -41,30 +43,36 @@ namespace stenos
             WriteOnly,  // Write only mode, truncate file
             ReadWrite,  // Read and write mode, append to existing file
             ReadWriteTrunc // Read and write mode, truncate file
-        }
+        };
 
-        video_bitstream();
-        video_bitstream(const char * filename, const bitstream_parameters & params);
-        ~video_bitstream() noexcept;
+        video_stream();
+        video_stream(const char * filename, const stream_parameters & params);
+        ~video_stream() noexcept;
 
-        bool open(const char * filename, const bitstream_parameters & params);
+        bool open(const char * filename, const stream_parameters & params);
         void close() noexcept;
 
         bool is_open() const noexcept;
-        auto paremeters() const noexcept -> bitstream_parameters;
+        auto paremeters() const noexcept -> stream_parameters;
         auto last_error() const noexcept -> error_type;
         auto count() const noexcept -> size_type;
         auto time(size_t pos) const noexcept -> time_type;
+	    bool has_time(time_type) const noexcept;
+	    bool has_times(time_type* start, time_type* end) const noexcept;
         auto timestamps() const noexcept -> std::vector<time_type>;
 
         bool add_images(const void * imgs, const int64_t * timestamps, size_t image_count);
 
-        bool read_image(void * img, size_t pos);
-        bool read_image_time(void * img, time_type time);
+        bool read_image(size_t pos, void* img);
+	    bool read_image_time(time_type time, void* img);
 
-        auto extract_time_trace(const stenosv_trace_query & query, time_type first_time = invalid_time, time_type last_time = invalid_time) -> time_trace;
+        auto extract_time_trace(const stenosv_trace_query& query, stenosv_trace_result& out, time_type first_time = invalid_time, time_type last_time = invalid_time) -> size_t;
 
     private:
+	    void closeNoLock();
+	    void resetError();
+	    bool readImageNoLock(size_t pos, void* img);
+
         class PrivateData;
         PrivateData * d_data;
     };

@@ -54,6 +54,7 @@ int stenosv_default_gpu_device()
 	}
 }
 
+
 size_t stenosv_sizeof_pixel_type(stenosv_pixel_type type)
 {
 	switch(type) {
@@ -163,6 +164,19 @@ void stenosv_compress_set_max_time(stenosv_compress* ctx, uint64_t max_nanosecon
 void stenosv_compress_set_max_error(stenosv_compress* ctx, double error)
 {
 	ctx->compress->set_error(error);
+}
+
+stenosv_pixel_type stenosv_compress_pixel_type(stenosv_compress* ctx)
+{
+	return ctx->pixel_type;
+}
+int stenosv_compress_width(stenosv_compress* ctx)
+{
+	return ctx->compress->width();
+}
+int stenosv_compress_height(stenosv_compress* ctx)
+{
+	return ctx->compress->height();
 }
 
 int stenosv_compress_clevel(stenosv_compress* ctx)
@@ -468,9 +482,9 @@ size_t stenosv_extract_timestamps(stenos_input* input, int64_t * timestamps, siz
 	int threads = 1;
 
 	stenosv_decompress* ret = nullptr;
-	stenosv_block_header h = stenosv_read_block_header_stream(read, nullptr);
+	stenosv_block_header h = stenosv_read_block_header_stream(input, nullptr);
 	if (h.version == 0)
-		return ret;
+		return STENOS_ERROR_INVALID_INPUT;
 
 	stenosv_pixel_type ptype = (stenosv_pixel_type)h.pixel_type;
 
@@ -480,7 +494,7 @@ size_t stenosv_extract_timestamps(stenos_input* input, int64_t * timestamps, siz
 			ret = new stenosv_decompress();
 			ret->dec = std::move(dec);
 			ret->pixel_type = ptype;
-			ret->input = *read;
+			ret->input = *input;
 			ret->dec->set_threads(threads);
 			bool ok = ret->dec->open(&ret->input, false);
 			if(!ok) {
@@ -491,11 +505,12 @@ size_t stenosv_extract_timestamps(stenos_input* input, int64_t * timestamps, siz
 			const auto & times = ret->dec->times();
 			if(count < times.size()) {
 				delete ret;
-				return STENOS_ERROR_INVALID_PARAMETER
+				return STENOS_ERROR_INVALID_PARAMETER;
 			}
 			memcpy(timestamps, times.data(), times.size() * sizeof(int64_t));
+			size_t im_count = times.size();
 			delete ret;
-			return times.size();
+			return im_count;
 		}
 	}
 	catch (...) {

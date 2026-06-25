@@ -256,6 +256,9 @@ STENOS_EXPORT void stenosv_compress_set_max_error(stenosv_compress*, double erro
 Getters
 */
 
+STENOS_EXPORT stenosv_pixel_type stenosv_compress_pixel_type(stenosv_compress*);
+STENOS_EXPORT int stenosv_compress_width(stenosv_compress*);
+STENOS_EXPORT int stenosv_compress_height(stenosv_compress*);
 STENOS_EXPORT int stenosv_compress_clevel(stenosv_compress*);
 STENOS_EXPORT double stenosv_compress_error(stenosv_compress*);
 STENOS_EXPORT int stenosv_compress_gop(stenosv_compress*);
