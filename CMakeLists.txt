@@ -177,7 +177,7 @@ if(STENOS_WIDE_TABLE)
 endif()
 
 
-
+if (NOT TARGET stenos)
 if(STENOS_BUILD_SHARED)
 
 	# Define stenos target
@@ -199,8 +199,9 @@ if(STENOS_BUILD_SHARED)
 	install(EXPORT stenos DESTINATION ${STENOS_CMAKEDIR})
 	
 endif()
+endif()
 
-
+if (NOT TARGET stenos_static)
 if(STENOS_BUILD_STATIC)
 
 	# Define stenos_static target
@@ -231,7 +232,7 @@ if(STENOS_BUILD_STATIC)
 	install(EXPORT stenos_static DESTINATION ${STENOS_STATIC_CMAKEDIR})
 	
 endif()
-
+endif()
 
 # add tests
 enable_testing()

@@ -146,7 +146,7 @@ namespace stenos
 		if (params.mode == ReadOnly || params.mode == ReadWrite) {
 			// Get file size
 			d_data->file.seekg(0, std::ios::end);
-			auto size = d_data->file.tellg();
+			uint64_t size = (uint64_t)d_data->file.tellg();
 			d_data->file.seekg(0);
 			if (size) {
 				// Read blocks
@@ -170,12 +170,13 @@ namespace stenos
 					}
 
 					for (size_t i = 0; i < s; ++i) {
-						d_data->timestamps.push_back({ times[i], pos });
+						d_data->timestamps.push_back({ times[i], pos, i });
 					}
 				}
 
 				// Check end of file
-				if (d_data->file.tellg() != size) {
+				uint64_t at_end = (uint64_t)d_data->file.tellg();
+				if (at_end < size) {
 					closeNoLock();
 					RETURN_ERROR(STENOS_ERROR_INVALID_INPUT, false);
 				}
@@ -415,6 +416,7 @@ namespace stenos
 			timestamps += payload.im_count;
 			file_pos = (uint64_t)d_data->file.tellp();
 		}
+		d_data->file.flush();
 
 		d_data->sort_times();
 

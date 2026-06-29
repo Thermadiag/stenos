@@ -127,12 +127,12 @@ namespace stenos
 		{
 			std::unique_lock<std::mutex> lock(mutex);
 			waiting = true;
-			wait_condition.wait(lock, [&] {
+			while(!wait_condition.wait_for(lock, std::chrono::milliseconds(10), [&] {
 				if (!sentinel)
 					return (this->processing == 0) && this->list.empty();
 				else
 					return sentinel->load(std::memory_order_relaxed) == 0;
-			});
+			}));
 			waiting = false;
 		}
 

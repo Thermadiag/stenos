@@ -13,6 +13,7 @@
 #include <atomic>
 #include <thread>
 #include <cmath>
+#include <iostream>
 
 #include "../../bits.hpp"
 #include "../../timer.hpp"
@@ -202,6 +203,7 @@ namespace stenos
 		virtual size_t height() const noexcept = 0;
 
 		virtual const std::vector<int64_t>& times() const noexcept = 0;
+		virtual uint64_t current_pos() const noexcept = 0;
 
 		virtual std::string add_frame(const void* img, std::int64_t time) = 0;
 		virtual std::string add_frame_bytes(const void* img, int inner_stride_bytes, std::int64_t time) = 0;
@@ -365,6 +367,9 @@ namespace stenos
 
 		void insert_key_frame(const std::vector<size_t>& key_pixels = std::vector<size_t>())
 		{
+			if(!d_error)
+				return; // no decimation
+
 			size_t size = d_width * d_height;
 			if (!key_pixels.empty())
 				size = key_pixels.size();
@@ -441,7 +446,7 @@ namespace stenos
 				return std::string();
 
 #ifdef STENOS_OPENCL
-			if (d_openCL)
+			if (d_openCL && d_error)
 				d_openCL->finish_block();
 			else
 #endif
@@ -476,10 +481,11 @@ namespace stenos
 
 			std::vector<unsigned short> cnts_pix(size);
 			std::vector<PixelType> pixels;
-			if (!d_error || d_level < 3) {
+			if (!d_error) {
+				
 				// Directly take the decimated points
-#ifdef STENOS_OPENCL
-				if (d_openCL) {
+/*#ifdef STENOS_OPENCL
+				if (d_openCL && d_error) {
 					// stenos::timer t;
 					// t.tick();
 					for (size_t i = 0; i < size; ++i) {
@@ -491,12 +497,14 @@ namespace stenos
 					// printf("%f\n", (el * 1e-6));
 				}
 				else
-#endif
+#endif*/
 				{
 					for (size_t i = 0; i < size; ++i) {
-						cnts_pix[i] = (uint16_t)d_data[i].points.size();
-						total_pixels += d_data[i].points.size();
-						pixels.insert(pixels.end(), d_data[i].points.begin(), d_data[i].points.end());
+						cnts_pix[i] = (uint16_t)d_data[i].last_pixels.size();
+						total_pixels += d_data[i].last_pixels.size();
+						if(d_pos != d_max_gop)
+							pixels.insert(pixels.end(), d_data[i].last_pixels.begin(), d_data[i].last_pixels.end());
+							//pixels.insert(pixels.end(), d_data[i].points.begin(), d_data[i].points.end());
 					}
 				}
 			}
@@ -510,7 +518,7 @@ namespace stenos
 					size_t dec_size = 0;
 
 #ifdef STENOS_OPENCL
-					if (d_openCL) {
+					if (d_openCL && d_error) {
 						raw.clear();
 						dec.clear();
 					}
@@ -518,7 +526,7 @@ namespace stenos
 
 					for (size_t x = 0; x < d_width; ++x) {
 #ifdef STENOS_OPENCL
-						if (d_openCL) {
+						if (d_openCL && d_error) {
 							size_t i = x + y * d_width;
 							dec_size += d_openCL->retrieve_decimated_pixels(i, (std::vector<CLPixelType<T>>&)dec);
 							d_openCL->retrieve_raw_pixels(i, (std::vector<CLPixelType<T>>&)raw);
@@ -545,7 +553,7 @@ namespace stenos
 						for (size_t x = 0; x < d_width; ++x) {
 							size_t i = x + y * d_width;
 #ifdef STENOS_OPENCL
-							if (d_openCL) {
+							if (d_openCL && d_error) {
 								cnts_pix[i] = (uint16_t)d_openCL->decimated_pixel_count(i);
 								total_pixels += cnts_pix[i];
 							}
@@ -575,13 +583,27 @@ namespace stenos
 			/*r = */ compress_detail::write_compressed_buffer(d_ctx, out, cnts_pix.data(), sizeof(unsigned short), cnts_pix.size() * sizeof(unsigned short));
 
 			// write total number of pixels
-			compress_detail::write_uint64(out, pixels.size() * sizeof(PixelType));
+			uint64_t pix_count = pixels.size();
+			if (!d_error && d_pos == d_max_gop)
+				pix_count = d_buffer.size();
+
+			compress_detail::write_uint64(out, pix_count * sizeof(PixelType));
 
 			set_context_max_time(timer, remaining_ns, 0);
 
-			// write compressed pixels
-			/*r =*/compress_detail::write_compressed_buffer(d_ctx, out, pixels.data(), sizeof(PixelType), pixels.size() * sizeof(PixelType));
-
+			auto st = std::chrono::system_clock::now();
+			if (!d_error && d_pos == d_max_gop) {
+				// Directly use the internal buffer as it contains all pixels in the right order (no decimation)
+				compress_detail::write_compressed_buffer(d_ctx, out, d_buffer.data(), sizeof(PixelType), d_buffer.size() * sizeof(PixelType));
+			}
+			else
+				// write compressed pixels
+				compress_detail::write_compressed_buffer(d_ctx, out, pixels.data(), sizeof(PixelType), pixels.size() * sizeof(PixelType));
+			
+			//TEST
+			auto el = std::chrono::system_clock::now() -st;
+			std::cout << "Compressing " << d_pos << " images took " << std::chrono::duration_cast<std::chrono::milliseconds>(el).count() / 1000. << " seconds" << std::endl;
+			
 			d_pos = 0;
 
 			// Write block size
@@ -610,7 +632,7 @@ namespace stenos
 		{
 			d_device = device_id;
 #ifdef STENOS_OPENCL
-			if (device_id >= 0) {
+			if (device_id >= 0 && error) {
 				d_openCL.reset(new TimeTraceCompressCL<T>((unsigned)device_id, width, height, error, GOP));
 				if (d_openCL->is_valid()) {
 					d_max_gop = GOP;
@@ -647,7 +669,7 @@ namespace stenos
 		{
 			d_error = error;
 #ifdef STENOS_OPENCL
-			if (d_openCL)
+			if (d_openCL && error)
 				d_openCL->set_error(error);
 #endif
 		}
@@ -668,7 +690,7 @@ namespace stenos
 		void set_max_GOP(size_t gop)
 		{
 #ifdef STENOS_OPENCL
-			if (d_openCL)
+			if (d_openCL && d_error)
 				return;
 #endif
 			if (d_pos || gop < 4) {
@@ -711,6 +733,8 @@ namespace stenos
 
 		virtual const std::vector<int64_t>& times() const noexcept { return d_times; }
 
+		virtual uint64_t current_pos() const noexcept {return d_pos;}
+
 		virtual std::string add_frame(const void* img, std::int64_t time) { return this->add_image(static_cast<const T*>(img), time); }
 
 		virtual std::string add_frame_bytes(const void* img, int inner_stride_bytes, std::int64_t time) { return this->add_image_bytes(img, (size_t)inner_stride_bytes, time); }
@@ -732,7 +756,7 @@ namespace stenos
 
 #ifdef STENOS_OPENCL
 
-			if (d_openCL) {
+			if (d_openCL && d_error) {
 				bool has_finish = false;
 				if (is_aligned && inner == 1)
 					has_finish = d_openCL->add_image(static_cast<const T*>(_img), time);
@@ -782,8 +806,9 @@ namespace stenos
 					d.points.shrink_to_fit();
 					d.last_pixels.shrink_to_fit();
 
-					d.points.push_back(PixelType{ val, d_pos });
-					d.last_pixels.push_back(d.points.back());
+					if(d_error) // decimation enabled
+						d.points.push_back(PixelType{ val, d_pos });
+					d.last_pixels.push_back(PixelType{ val, d_pos });
 					d.pos = 1;
 					d.start = 0;
 				});
@@ -805,7 +830,8 @@ namespace stenos
 					memcpy(&val, c_img + pix * inner_bytes, sizeof(T));
 
 				d.last_pixels.push_back(PixelType{ val, d_pos });
-				advance_min_max(d, error2 ,false);
+				if(d_error) // decimation enabled
+					advance_min_max(d, error2 ,false);
 				d.pos++;
 			});
 			++d_pos;

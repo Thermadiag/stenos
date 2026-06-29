@@ -208,7 +208,7 @@ size_t stenosv_compress_add_image(stenosv_compress* ctx, void* img, int64_t time
 {
 	try {
 		const auto& times = ctx->compress->times();
-		if (!times.empty() && timestamp <= times.back())
+		if (!times.empty() && ctx->compress->current_pos() > 0 && timestamp <= times.back())
 			return STENOS_ERROR_INVALID_PARAMETER;
 
 		ctx->payload.clear();
