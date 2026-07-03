@@ -7,6 +7,7 @@
 #include <vector>
 #include <limits>
 #include <utility>
+#include <atomic>
 
 #include "stenos_video.h"
 
@@ -56,6 +57,7 @@ namespace stenos
         auto paremeters() const noexcept -> stream_parameters;
         auto last_error() const noexcept -> error_type;
         auto count() const noexcept -> size_type;
+        auto block_count() const noexcept -> size_type;
         auto time(size_t pos) const noexcept -> time_type;
 	    bool has_time(time_type) const noexcept;
 	    bool has_times(time_type* start, time_type* end) const noexcept;
@@ -66,7 +68,7 @@ namespace stenos
         bool read_image(size_t pos, void* img);
 	    bool read_image_time(time_type time, void* img);
 
-        auto extract_time_trace(const stenosv_trace_query& query, stenosv_trace_result& out, time_type first_time = invalid_time, time_type last_time = invalid_time) -> size_t;
+        auto extract_time_trace(const stenosv_trace_query& query, stenosv_trace_result& out, time_type first_time = invalid_time, time_type last_time = invalid_time, std::atomic<size_t> * progress = nullptr) -> size_t;
 
     private:
 	    void closeNoLock();

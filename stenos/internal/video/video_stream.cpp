@@ -4,6 +4,7 @@
 #include <mutex>
 #include <atomic>
 #include <algorithm>
+#include <iostream>
 
 namespace stenos
 {
@@ -254,6 +255,21 @@ namespace stenos
 		std::lock_guard<lock_type> lock(d_data->lock);
 		return d_data->timestamps.size();
 	}
+	auto video_stream::block_count() const noexcept -> size_type
+	{
+		std::lock_guard<lock_type> lock(d_data->lock);
+		if(d_data->timestamps.empty())
+			return 0;
+		size_type ret = 1;
+		auto last_pos = d_data->timestamps[0].file_block_pos;
+		for(size_t i = 1; i < d_data->timestamps.size(); ++i) {
+			if(d_data->timestamps[i].file_block_pos != last_pos) {
+				last_pos = d_data->timestamps[i].file_block_pos;
+				++ret;
+			}
+		}
+		return ret;
+	}
 	auto video_stream::time(size_t pos) const noexcept -> time_type
 	{
 		std::lock_guard<lock_type> lock(d_data->lock);
@@ -483,7 +499,7 @@ namespace stenos
 		static_cast<std::unique_lock<std::mutex>*>(opaque)->unlock();
 	}
 
-	size_t video_stream::extract_time_trace(const stenosv_trace_query& query, stenosv_trace_result& out, time_type first_time, time_type last_time)
+	size_t video_stream::extract_time_trace(const stenosv_trace_query& query, stenosv_trace_result& out, time_type first_time, time_type last_time, std::atomic<size_t> * progress )
 	{
 		struct Block
 		{
@@ -570,6 +586,12 @@ namespace stenos
 					err.store(er);
 				else
 					ret += er;
+
+				if(progress)
+					if(stenos_has_error(progress->fetch_add(1))) {
+						err.store(STENOS_ERROR_UNDEFINED);
+					} 
+
 			});
 
 			if (auto error = err.load())
