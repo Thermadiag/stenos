@@ -1,4 +1,5 @@
 cmake_minimum_required(VERSION 3.16)
+
 include(FetchContent)
 
 project(stenos
@@ -8,8 +9,7 @@ project(stenos
     LANGUAGES C CXX
 )
  
-set(CMAKE_CXX_STANDARD 17)
-set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
 include(GNUInstallDirs)
 
 # Check AVX2 support
@@ -18,28 +18,36 @@ find_package(AVX2)
 
 # project options
 option(STENOS_WIDE_TABLE "Enable wide table support for RLE encoding/decoding" OFF)
-option(STENOS_BUILD_ZSTD "Fetch and build zstd internally" OFF)
+option(STENOS_BUILD_ZSTD "Fetch and build zstd internally" ON)
 option(STENOS_BUILD_TESTS "Build tests" OFF)
 option(STENOS_BUILD_BENCHS "Build benchmarks" OFF)
 option(STENOS_NO_WARNINGS "Treat warnings as errors" OFF)
 option(STENOS_WITH_OPENCL "Use OpenCL implementation of the video compressor" OFF)
 option(STENOS_BUILD_SHARED "Build shared library" ON)
 option(STENOS_BUILD_STATIC "Build static library" ON)
+option(STENOS_NATIVE_ARCH "Optimize for the build machine CPU; binaries may not be portable" ON)
 
-if(STENOS_BUILD_BENCHS OR STENOS_BUILD_BENCHS)
-	# benchmarks and tests require stenos static
-	set(STENOS_BUILD_STATIC ON)
+if((STENOS_BUILD_TESTS OR STENOS_BUILD_BENCHS) AND NOT STENOS_BUILD_STATIC)
+    message(FATAL_ERROR
+        "STENOS_BUILD_TESTS and STENOS_BUILD_BENCHS require STENOS_BUILD_STATIC"
+    )
 endif()
 
 # create source file list
-file(GLOB StenosSources
-     "stenos/*.h"
-	 "stenos/*.hpp"
-	 "stenos/internal/*.h"
-	 "stenos/internal/*.hpp"
-     "stenos/internal/*.cpp" 
-	 "stenos/internal/video/*.h"
-     "stenos/internal/video/*.cpp" 
+# file(GLOB StenosSources
+     # "stenos/*.h"
+	 # "stenos/*.hpp"
+	 # "stenos/internal/*.h"
+	 # "stenos/internal/*.hpp"
+     # "stenos/internal/*.cpp" 
+	 # "stenos/internal/video/*.h"
+     # "stenos/internal/video/*.cpp" 
+# )
+
+file(GLOB_RECURSE StenosSources CONFIGURE_DEPENDS
+    "${CMAKE_CURRENT_SOURCE_DIR}/stenos/*.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/stenos/*.h"
+    "${CMAKE_CURRENT_SOURCE_DIR}/stenos/*.hpp"
 )
 
 
@@ -54,74 +62,163 @@ configure_file(stenos_config.h.in ${CMAKE_BINARY_DIR}/stenos_config.h @ONLY)
 
 
 # Add zstd
+# if(NOT STENOS_BUILD_ZSTD)
+	# message(STATUS "Try to find package ZSTD")
+# endif()
+# if((NOT zstd_FOUND) OR (NOT ZSTD_LIB_DIR) OR (NOT ${ZSTD_LIB_DIR}))
+	# message(STATUS "Building ZSTD from sources")
+	# cmake_policy(SET CMP0114 NEW)
+	# cmake_policy(SET CMP0135 NEW)
+	# if(CMAKE_VERSION VERSION_GREATER_EQUAL "3.30.0")
+		# cmake_policy(SET CMP0169 OLD)
+	# endif()
+
+	# set(ZSTD_INSTALL_DIR ${CMAKE_BINARY_DIR}/3rd-party-install)
+	# set(ZSTD_MINIMUM_VERSION 1.5.5)
+
+	# # we are statically building from ZSTD
+	# set(ZSTD_BUILD_SHARED OFF CACHE INTERNAL "" FORCE)
+	# set(ZSTD_LEGACY_SUPPORT OFF CACHE INTERNAL "" FORCE)
+	# set(ZSTD_BUILD_PROGRAMS OFF CACHE INTERNAL "" FORCE)
+	# set(ZSTD_BUILD_CONTRIB OFF CACHE INTERNAL "" FORCE)
+	# set(ZSTD_BUILD_TESTS OFF CACHE INTERNAL "" FORCE)
+	# set(ZSTD_MULTITHREAD_SUPPORT ON CACHE INTERNAL "" FORCE)
+	# set(CMAKE_POLICY_VERSION_MINIMUM "3.5" CACHE INTERNAL "" FORCE)
+	# FetchContent_Declare(
+		# zstd
+		# GIT_REPOSITORY "https://github.com/facebook/zstd.git"
+		# GIT_TAG release#v${ZSTD_MINIMUM_VERSION}
+		# OVERRIDE_FIND_PACKAGE
+		# SOURCE_SUBDIR build/cmake
+	# )
+	# FetchContent_GetProperties(zstd)
+
+	# if(NOT zstd_POPULATED)
+		# FetchContent_Populate(zstd)
+		# message(STATUS "zstd_SOURCE_DIR: ${zstd_SOURCE_DIR}")
+		# add_subdirectory(${zstd_SOURCE_DIR}/build/cmake ${zstd_BINARY_DIR} EXCLUDE_FROM_ALL)
+	# endif()
+	# set(ZSTD_INCLUDE_DIR ${zstd_SOURCE_DIR}/lib CACHE INTERNAL "")
+# else()
+# message(STATUS "Using system ZSTD :${ZSTD_LIB_DIR} and ${ZSTD_INCLUDE_DIR}")
+# endif()
+
 if(NOT STENOS_BUILD_ZSTD)
-	message(STATUS "Try to find package ZSTD")
+    find_package(zstd CONFIG QUIET)
 endif()
-if((NOT zstd_FOUND) OR (NOT ZSTD_LIB_DIR) OR (NOT ${ZSTD_LIB_DIR}))
-	message(STATUS "Building ZSTD from sources")
-	cmake_policy(SET CMP0114 NEW)
-	cmake_policy(SET CMP0135 NEW)
-	if(CMAKE_VERSION VERSION_GREATER_EQUAL "3.30.0")
-		cmake_policy(SET CMP0169 OLD)
-	endif()
 
-	set(ZSTD_INSTALL_DIR ${CMAKE_BINARY_DIR}/3rd-party-install)
-	set(ZSTD_MINIMUM_VERSION 1.5.5)
-
-	# we are statically building from ZSTD
-	set(ZSTD_BUILD_SHARED OFF CACHE INTERNAL "" FORCE)
-	set(ZSTD_LEGACY_SUPPORT OFF CACHE INTERNAL "" FORCE)
-	set(ZSTD_BUILD_PROGRAMS OFF CACHE INTERNAL "" FORCE)
-	set(ZSTD_BUILD_CONTRIB OFF CACHE INTERNAL "" FORCE)
-	set(ZSTD_BUILD_TESTS OFF CACHE INTERNAL "" FORCE)
-	set(ZSTD_MULTITHREAD_SUPPORT ON CACHE INTERNAL "" FORCE)
-	set(CMAKE_POLICY_VERSION_MINIMUM "3.5" CACHE INTERNAL "" FORCE)
-	FetchContent_Declare(
-		zstd
-		GIT_REPOSITORY "https://github.com/facebook/zstd.git"
-		GIT_TAG release#v${ZSTD_MINIMUM_VERSION}
-		OVERRIDE_FIND_PACKAGE
-		SOURCE_SUBDIR build/cmake
-	)
-	FetchContent_GetProperties(zstd)
-
-	if(NOT zstd_POPULATED)
-		FetchContent_Populate(zstd)
-		message(STATUS "zstd_SOURCE_DIR: ${zstd_SOURCE_DIR}")
-		add_subdirectory(${zstd_SOURCE_DIR}/build/cmake ${zstd_BINARY_DIR} EXCLUDE_FROM_ALL)
-	endif()
-	set(ZSTD_INCLUDE_DIR ${zstd_SOURCE_DIR}/lib CACHE INTERNAL "")
+if(TARGET zstd::libzstd_static)
+    set(STENOS_ZSTD_TARGET zstd::libzstd_static)
+elseif(TARGET libzstd_static)
+    set(STENOS_ZSTD_TARGET libzstd_static)
 else()
-message(STATUS "Using system ZSTD :${ZSTD_LIB_DIR} and ${ZSTD_INCLUDE_DIR}")
+    message(STATUS "Fetching zstd")
+
+    set(ZSTD_BUILD_SHARED OFF CACHE BOOL "" FORCE)
+    set(ZSTD_BUILD_STATIC ON CACHE BOOL "" FORCE)
+    set(ZSTD_BUILD_PROGRAMS OFF CACHE BOOL "" FORCE)
+    set(ZSTD_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+
+    FetchContent_Declare(
+        zstd
+        GIT_REPOSITORY https://github.com/facebook/zstd.git
+        GIT_TAG v1.5.7
+        GIT_SHALLOW TRUE
+        SOURCE_SUBDIR build/cmake
+    )
+
+    FetchContent_MakeAvailable(zstd)
+
+    set(STENOS_ZSTD_TARGET libzstd_static)
 endif()
+
+
+# if(STENOS_WITH_OPENCL)
+
+	# find_package(OpenCL QUIET GLOBAL)
+	
+	# if(NOT OpenCL_FOUND)
+		# # build a minimal version of OpenCL
+		# set (OPENCL_SDK_BUILD_UTILITY_LIBRARIES OFF CACHE INTERNAL "")
+		# set (OPENCL_SDK_BUILD_CLINFO  OFF CACHE INTERNAL "")
+		# include(FetchContent)
+		# FetchContent_Declare(
+			# OpenCL
+			# GIT_REPOSITORY https://github.com/KhronosGroup/OpenCL-SDK.git
+			# GIT_TAG main
+			# OVERRIDE_FIND_PACKAGE
+		# )
+
+		# message(STATUS "fetching OpenCL")
+		# find_package(OpenCL REQUIRED GLOBAL)
+
+	# endif()
+	
+	# if(NOT TARGET OpenCL::HeadersCpp)
+	
+		# message(STATUS "fetching OpenCL::HeadersCpp")
+		# FetchContent_Declare(
+			# opencl_headers
+			# GIT_REPOSITORY https://github.com/KhronosGroup/OpenCL-Headers.git
+			# GIT_TAG        main
+			# OVERRIDE_FIND_PACKAGE
+		# )
+
+		# FetchContent_MakeAvailable(opencl_headers)
+
+		# if(NOT TARGET OpenCL::Headers)
+			# message(FATAL_ERROR "OpenCL-Headers did not create OpenCL::Headers")
+		# endif()
+
+		# set(BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+		# set(BUILD_DOCS OFF CACHE BOOL "" FORCE)
+		# set(OPENCL_CLHPP_BUILD_TESTING OFF CACHE BOOL "" FORCE)
+
+		# FetchContent_Declare(
+			# opencl_clhpp
+			# GIT_REPOSITORY https://github.com/KhronosGroup/OpenCL-CLHPP.git
+			# GIT_TAG        main
+			# OVERRIDE_FIND_PACKAGE
+		# )
+		
+		# FetchContent_MakeAvailable(opencl_clhpp)
+
+		# if(NOT TARGET OpenCL::HeadersCpp)
+			# message(FATAL_ERROR
+				# "OpenCL-CLHPP did not create OpenCL::HeadersCpp\n"
+				# "Source directory: ${opencl_clhpp_SOURCE_DIR}"
+			# )
+		# endif()
+		
+	# endif()
+# endif()
 
 if(STENOS_WITH_OPENCL)
-	find_package(OpenCL QUIET GLOBAL)
-	if(NOT OpenCL_FOUND)
-		# build a minimal version of OpenCL
-		set (OPENCL_SDK_BUILD_UTILITY_LIBRARIES OFF CACHE INTERNAL "")
-		set (OPENCL_SDK_BUILD_CLINFO  OFF CACHE INTERNAL "")
-		include(FetchContent)
-		FetchContent_Declare(
-			OpenCL
-			GIT_REPOSITORY https://github.com/KhronosGroup/OpenCL-SDK.git
-			GIT_TAG main
-			OVERRIDE_FIND_PACKAGE
-		)
+    find_package(OpenCL QUIET)
 
-		# Fetch C++ headers
-		FetchContent_Declare(
-			OpenCLHeadersCpp
-			GIT_REPOSITORY https://github.com/KhronosGroup/OpenCL-CLHPP.git
-			GIT_TAG        main
-			OVERRIDE_FIND_PACKAGE
-		)
-		FetchContent_MakeAvailable(OpenCLHeadersCpp)
+    if(NOT TARGET OpenCL::OpenCL OR NOT TARGET OpenCL::HeadersCpp)
+        set(OPENCL_SDK_BUILD_SAMPLES OFF CACHE BOOL "" FORCE)
+        set(OPENCL_SDK_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+        set(OPENCL_SDK_BUILD_CLINFO OFF CACHE BOOL "" FORCE)
+        set(OPENCL_SDK_BUILD_UTILITY_LIBRARIES OFF CACHE BOOL "" FORCE)
 
-		message(STATUS "fetching OpenCL")
-		find_package(OpenCL OpenCLHeadersCpp REQUIRED GLOBAL)
-		#find_package(OpenCL-CLHPP REQUIRED GLOBAL)
-	endif()
+        FetchContent_Declare(
+            OpenCL
+            GIT_REPOSITORY https://github.com/KhronosGroup/OpenCL-SDK.git
+            GIT_TAG v2025.07.22
+            GIT_SHALLOW TRUE
+        )
+
+        FetchContent_MakeAvailable(OpenCL)
+    endif()
+
+    if(NOT TARGET OpenCL::OpenCL)
+        message(FATAL_ERROR "OpenCL::OpenCL is unavailable")
+    endif()
+
+    if(NOT TARGET OpenCL::HeadersCpp)
+        message(FATAL_ERROR "OpenCL::HeadersCpp is unavailable")
+    endif()
 endif()
 
 
@@ -130,6 +227,8 @@ endif()
 # Create target corresponding to compiled objects
 add_library(stenos_obj OBJECT ${StenosSources})
 
+target_compile_features(stenos_obj PRIVATE cxx_std_17)
+
 # Add linker options
 if (WIN32 AND CMAKE_CXX_COMPILER_ID MATCHES "GNU")
 	# mingw
@@ -137,12 +236,12 @@ if (WIN32 AND CMAKE_CXX_COMPILER_ID MATCHES "GNU")
 endif()
 
 if(WIN32)
-	target_compile_definitions(stenos_obj PRIVATE -D_CRT_SECURE_NO_WARNINGS)
+	target_compile_definitions(stenos_obj PRIVATE _CRT_SECURE_NO_WARNINGS)
 endif()
 
 # Treat warnings as errors
 if(STENOS_NO_WARNINGS)
-	if(MSVC OR CMAKE_CXX_COMPILER_ID MATCHES "MSVC")
+	if(MSVC)
 		target_compile_options(stenos_obj PRIVATE  /WX /W3 )
 	elseif(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
 		target_compile_options(stenos_obj PRIVATE -Werror -Wall -Wno-c++98-compat -Wno-c++98-compat-pedantic)
@@ -150,7 +249,7 @@ if(STENOS_NO_WARNINGS)
 		target_compile_options(stenos_obj PRIVATE -Werror -Wall)
 	endif()
 endif()
-target_compile_definitions(stenos_obj PRIVATE -DSTENOS_BUILD_SHARED_LIBRARY)
+target_compile_definitions(stenos_obj PRIVATE STENOS_BUILD_SHARED_LIBRARY)
 
 # Shared libraries need PIC
 set_property(TARGET stenos_obj PROPERTY POSITION_INDEPENDENT_CODE 1)
@@ -158,12 +257,13 @@ set_target_properties(stenos_obj PROPERTIES INSTALL_RPATH "$ORIGIN")
 target_include_directories(stenos_obj PRIVATE ${CMAKE_BINARY_DIR})
 
 # Link 
-target_link_libraries(stenos_obj PUBLIC libzstd_static)
-target_include_directories(stenos_obj PUBLIC ${ZSTD_INCLUDE_DIR})
+target_link_libraries(stenos_obj PRIVATE ${STENOS_ZSTD_TARGET})
+#target_link_libraries(stenos_obj PRIVATE libzstd_static)
+#target_include_directories(stenos_obj PUBLIC ${ZSTD_INCLUDE_DIR})
 
 if(STENOS_WITH_OPENCL)
 	target_link_libraries(stenos_obj PRIVATE OpenCL::OpenCL OpenCL::HeadersCpp)
-	target_compile_definitions(stenos_obj PRIVATE -DSTENOS_OPENCL)
+	target_compile_definitions(stenos_obj PRIVATE STENOS_OPENCL)
 endif()
 
 # Add sse/avx flags
@@ -174,7 +274,11 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "MSVC")
 	endif()
 else()
 	#FIXME: need to be generalised for machines with incorrect binutil installed
-	target_compile_options(stenos_obj PRIVATE -march=native)
+	if(STENOS_NATIVE_ARCH)
+		if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+			target_compile_options(stenos_obj PRIVATE -march=native)
+		endif()
+	endif()
 	if (NOT ${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
 		target_compile_options(stenos_obj PRIVATE -mno-avx512f)
 	endif()
@@ -182,7 +286,7 @@ endif()
 
 # Wide table support
 if(STENOS_WIDE_TABLE)
-	target_compile_options(stenos_obj PRIVATE -DSTENOS_WIDE_TABLE)
+	target_compile_options(stenos_obj PRIVATE STENOS_WIDE_TABLE)
 endif()
 
 
@@ -192,8 +296,7 @@ if(STENOS_BUILD_SHARED)
 	# Define stenos target
 	add_library(stenos SHARED $<TARGET_OBJECTS:stenos_obj> )
 	
-	target_link_libraries(stenos PRIVATE libzstd_static)
-	target_link_directories(stenos PRIVATE ${ZSTD_LIB_DIR})
+	target_link_libraries(stenos PRIVATE ${STENOS_ZSTD_TARGET})
 	
 	if(STENOS_WITH_OPENCL)
 		target_link_libraries(stenos PRIVATE OpenCL::OpenCL OpenCL::HeadersCpp)
@@ -216,21 +319,15 @@ if(STENOS_BUILD_STATIC)
 	# Define stenos_static target
 	add_library(stenos_static STATIC $<TARGET_OBJECTS:stenos_obj> )
 	
-	target_compile_definitions(stenos_static PUBLIC -DSTENOS_STATIC)
-	target_link_libraries(stenos_static PRIVATE libzstd_static)
-	target_link_directories(stenos_static PRIVATE ${ZSTD_LIB_DIR})
+	target_compile_definitions(stenos_static PUBLIC STENOS_STATIC)
+	#target_link_libraries(stenos_static PRIVATE libzstd_static)
+	#target_link_directories(stenos_static PRIVATE ${ZSTD_LIB_DIR})
+	target_link_libraries(stenos_static PUBLIC ${STENOS_ZSTD_TARGET})
 	
 	if(STENOS_WITH_OPENCL)
-		target_link_libraries(stenos_static PRIVATE OpenCL::OpenCL OpenCL::HeadersCpp)
+		target_link_libraries(stenos_static PUBLIC OpenCL::OpenCL OpenCL::HeadersCpp)
 	endif()
 	
-	# if (CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
-		# # correct link error ""relocation R_X86_64_32 against symbol..."
-		# set_target_properties(stenos_static PROPERTIES CMAKE_CXX_FLAGS  "${CMAKE_CXX_FLAGS} -Wall --std=c++14 -fPIC" )
-		# set_target_properties(stenos_static PROPERTIES CMAKE_C_FLAGS  "${CMAKE_C_FLAGS} -Wall -fPIC" )
-	# endif()
-	# set_property(TARGET stenos_static PROPERTY POSITION_INDEPENDENT_CODE ON)
-
 	# Export target
 	target_include_directories(stenos_static  PUBLIC
 						   "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>"
@@ -243,16 +340,18 @@ if(STENOS_BUILD_STATIC)
 endif()
 endif()
 
-# add tests
-enable_testing()
 
 # add tests
 if(STENOS_BUILD_TESTS)
+	include(CTest)
+    enable_testing()
 	add_subdirectory(tests)
 endif()
 
 # add benchmarks
 if(STENOS_BUILD_BENCHS)
+	include(CTest)
+    enable_testing()
 	add_subdirectory(benchs)
 endif()
 
@@ -263,22 +362,18 @@ file(GLOB StenosHeaders
 	 "stenos/*.hpp"
 )
 install(FILES ${StenosHeaders}
-		DESTINATION "${CMAKE_INSTALL_PREFIX}/include/stenos"
+		DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/stenos"
 		)
 
 # Configure and install stenos.pc
 configure_file(stenos.pc.in stenos.pc @ONLY)
 install(FILES ${CMAKE_CURRENT_BINARY_DIR}/stenos.pc
-			DESTINATION ${STENOS_INSTALL_DATAROOTDIR}/pkgconfig)
+			DESTINATION  "${CMAKE_INSTALL_LIBDIR}/pkgconfig")
 
 
 # Configure and install stenos_config.h
-configure_file(stenos_config.h.in stenos_config.h @ONLY)
-install(FILES ${CMAKE_CURRENT_BINARY_DIR}/stenos_config.h
-			DESTINATION "${CMAKE_INSTALL_PREFIX}/include/stenos")
-
-# Configure stenos_config.h and put in the stenos folder for FetchContent_Declare from other projects
-configure_file(stenos_config.h.in ${CMAKE_CURRENT_SOURCE_DIR}/stenos/stenos_config.h @ONLY)
+install(FILES ${CMAKE_BINARY_DIR}/stenos_config.h
+			DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/stenos")
 
 # Configure and install stenosConfig.cmake and stenosConfigVersion.cmake
 include(CMakePackageConfigHelpers)

@@ -162,7 +162,7 @@ namespace stenos
 					RETURN_ERROR(STENOS_ERROR_INVALID_INPUT, false);
 				}
 
-				while (d_data->file.tellg() < size) {
+				while ((uint64_t)d_data->file.tellg() < size) {
 					uint64_t pos = (uint64_t)d_data->file.tellg();
 					auto s = stenosv_extract_timestamps(&in, times.data(), times.size());
 					if (stenos_has_error(s)) {

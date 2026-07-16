@@ -172,11 +172,11 @@ stenosv_pixel_type stenosv_compress_pixel_type(stenosv_compress* ctx)
 }
 int stenosv_compress_width(stenosv_compress* ctx)
 {
-	return ctx->compress->width();
+	return (int)ctx->compress->width();
 }
 int stenosv_compress_height(stenosv_compress* ctx)
 {
-	return ctx->compress->height();
+	return (int)ctx->compress->height();
 }
 
 int stenosv_compress_clevel(stenosv_compress* ctx)
