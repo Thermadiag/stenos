@@ -108,6 +108,15 @@ if(STENOS_WITH_OPENCL)
 			GIT_TAG main
 			OVERRIDE_FIND_PACKAGE
 		)
+
+		# Fetch C++ headers
+		FetchContent_Declare(
+			OpenCLHeadersCpp
+			GIT_REPOSITORY https://github.com/KhronosGroup/OpenCL-CLHPP.git
+			GIT_TAG        main
+			OVERRIDE_FIND_PACKAGE
+		)
+
 		message(STATUS "fetching OpenCL")
 		find_package(OpenCL REQUIRED GLOBAL)
 		#find_package(OpenCL-CLHPP REQUIRED GLOBAL)
@@ -152,8 +161,7 @@ target_link_libraries(stenos_obj PUBLIC libzstd_static)
 target_include_directories(stenos_obj PUBLIC ${ZSTD_INCLUDE_DIR})
 
 if(STENOS_WITH_OPENCL)
-	#target_link_libraries(stenos_obj PRIVATE OpenCL::OpenCL OpenCL::HeadersCpp)
-	target_link_libraries(stenos_obj PRIVATE OpenCL::OpenCL)
+	target_link_libraries(stenos_obj PRIVATE OpenCL::OpenCL OpenCL::HeadersCpp)
 	target_compile_definitions(stenos_obj PRIVATE -DSTENOS_OPENCL)
 endif()
 
@@ -187,7 +195,7 @@ if(STENOS_BUILD_SHARED)
 	target_link_directories(stenos PRIVATE ${ZSTD_LIB_DIR})
 	
 	if(STENOS_WITH_OPENCL)
-		target_link_libraries(stenos PRIVATE OpenCL::OpenCL)
+		target_link_libraries(stenos PRIVATE OpenCL::OpenCL OpenCL::HeadersCpp)
 	endif()
 
 	# Export target
@@ -212,7 +220,7 @@ if(STENOS_BUILD_STATIC)
 	target_link_directories(stenos_static PRIVATE ${ZSTD_LIB_DIR})
 	
 	if(STENOS_WITH_OPENCL)
-		target_link_libraries(stenos_static PRIVATE OpenCL::OpenCL)
+		target_link_libraries(stenos_static PRIVATE OpenCL::OpenCL OpenCL::HeadersCpp)
 	endif()
 	
 	# if (CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
