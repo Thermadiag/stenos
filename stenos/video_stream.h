@@ -1,5 +1,5 @@
-#ifndef STENOS_VIDEO_BITSTREAM_H
-#define STENOS_VIDEO_BITSTREAM_H
+#ifndef STENOS_VIDEO_STREAM_H
+#define STENOS_VIDEO_STREAM_H
 
 #include <type_traits>
 #include <cstdint>
@@ -26,7 +26,7 @@ namespace stenos
 		double error = 0;
 	};
 
-    class video_stream
+    class STENOS_EXPORT video_stream
     {
     public:
         using time_type = int64_t;
@@ -67,7 +67,7 @@ namespace stenos
 
         bool read_image(size_t pos, void* img);
 	    bool read_image_time(time_type time, void* img);
-
+         
         auto extract_time_trace(const stenosv_trace_query& query, stenosv_trace_result& out, time_type first_time = invalid_time, time_type last_time = invalid_time, std::atomic<size_t> * progress = nullptr) -> size_t;
 
     private:
