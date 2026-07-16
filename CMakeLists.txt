@@ -116,9 +116,10 @@ if(STENOS_WITH_OPENCL)
 			GIT_TAG        main
 			OVERRIDE_FIND_PACKAGE
 		)
+		FetchContent_MakeAvailable(OpenCLHeadersCpp)
 
 		message(STATUS "fetching OpenCL")
-		find_package(OpenCL REQUIRED GLOBAL)
+		find_package(OpenCL OpenCLHeadersCpp REQUIRED GLOBAL)
 		#find_package(OpenCL-CLHPP REQUIRED GLOBAL)
 	endif()
 endif()
