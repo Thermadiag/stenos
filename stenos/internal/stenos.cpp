@@ -114,7 +114,7 @@ struct stenos_context_s
 
 	size_t prepare(size_t bytesoftype, size_t bytes) noexcept
 	{
-		// Prepare the compresson of given number of bytes
+		// Prepare the compression of given number of bytes
 
 		if STENOS_UNLIKELY (bytesoftype == 0 || bytesoftype >= STENOS_MAX_BYTESOFTYPE)
 			return STENOS_ERROR_INVALID_BYTESOFTYPE;
@@ -238,6 +238,8 @@ struct stenos_context_s
 stenos_context* stenos_make_context()
 {
 	stenos_context* ctx = (stenos_context*)malloc(sizeof(stenos_context_s));
+	if (!ctx)
+		return nullptr;
 	return new (ctx) stenos_context_s();
 }
 
@@ -260,6 +262,8 @@ void stenos_reset_context(stenos_context* ctx)
 
 size_t stenos_set_level(stenos_context* ctx, int level)
 {
+	if (!ctx)
+		return STENOS_ERROR_INVALID_PARAMETER;
 	if (level > 9)
 		level = 9;
 	else if (level < 0)
@@ -270,7 +274,9 @@ size_t stenos_set_level(stenos_context* ctx, int level)
 
 size_t stenos_set_threads(stenos_context* ctx, int threads)
 {
-	static int max_threads = (int)std::thread::hardware_concurrency();
+	static int max_threads = std::max(1, (int)std::thread::hardware_concurrency());
+	if (!ctx)
+		return STENOS_ERROR_INVALID_PARAMETER;
 	ctx->threads = threads < 1 ? 1 : threads;
 	if (ctx->threads > max_threads)
 		ctx->threads = max_threads;
@@ -279,12 +285,16 @@ size_t stenos_set_threads(stenos_context* ctx, int threads)
 
 size_t stenos_set_max_nanoseconds(stenos_context* ctx, uint64_t nanoseconds)
 {
+	if (!ctx)
+		return STENOS_ERROR_INVALID_PARAMETER;
 	ctx->t.nanoseconds = nanoseconds;
 	return 0;
 }
 
 size_t stenos_set_block_size(stenos_context* ctx, size_t blocksize_shift)
 {
+	if (!ctx)
+		return STENOS_ERROR_INVALID_PARAMETER;
 	if (blocksize_shift >= 16 && blocksize_shift != STENOS_NO_BLOCK_SHIFT)
 		// Block shift of 16 or more is impossible.
 		// For the smallest BPP (1), that would mean
@@ -297,6 +307,8 @@ size_t stenos_set_block_size(stenos_context* ctx, size_t blocksize_shift)
 
 size_t stenos_memory_footprint(stenos_context* ctx)
 {
+	if (!ctx)
+		return STENOS_ERROR_INVALID_PARAMETER;
 	size_t res = sizeof(stenos_context);
 	res += ctx->thread_buffers.capacity() * sizeof(void*);
 	res += ctx->tmp_buffers1.capacity() * sizeof(void*);
@@ -437,7 +449,7 @@ namespace stenos
 		static const bool no_sse = true;
 #else
 		// Check SSE4.1 support
-		static const bool no_sse = ! stenos::cpu_features().HAS_SSE41;
+		static const bool no_sse = !stenos::cpu_features().HAS_SSE41;
 #endif
 
 		size_t result = 0;
@@ -740,7 +752,7 @@ namespace stenos
 					buffer = CBuffer::make(ctx->superblock_size + 4); // Add 4 for the superblock header
 				if STENOS_UNLIKELY (!buffer)
 					return STENOS_ERROR_ALLOC;
-				// Decomrpess to dst
+				// Decompress to dst
 				auto r = ZSTD_decompress(dst, dsize, src, csize);
 				if STENOS_UNLIKELY (ZSTD_isError(r) || r != dsize)
 					return STENOS_ERROR_INVALID_INPUT;
@@ -929,7 +941,7 @@ size_t stenos_compress_generic(stenos_context* opts, const void* _src, size_t by
 
 	const bool raw_memcpy = !opts->t.nanoseconds && opts->level == 0;	     // Check for direct memcpy (level 0)
 	const int threads = (int)std::min((size_t)opts->threads, super_block_count); // Compute number of threads
-	size_t res_code = 0;
+	std::atomic<size_t> res_code{ 0 };
 
 	if (!raw_memcpy) {
 		if STENOS_UNLIKELY (stenos::has_error(opts->ensure_has_buffers(threads)))
@@ -1038,17 +1050,16 @@ size_t stenos_compress_generic(stenos_context* opts, const void* _src, size_t by
 			}
 
 			// copy to destination in parallel
-			if(!stenos::pool->loop_for(thread_count, 0, thread_count, 1, [&](auto i) {
-				if ((uint8_t*)opts->thread_buffers[i]->dst + opts->thread_buffers[i]->dst_size > dst_end) {
-					res_code = STENOS_ERROR_DST_OVERFLOW;
-				}
-				else {
-					memcpy(opts->thread_buffers[i]->dst, opts->thread_buffers[i]->bytes, opts->thread_buffers[i]->dst_size);
-				}
-			}))
+			if (!stenos::pool->loop_for(thread_count, 0, thread_count, 1, [&](auto i) {
+				    if ((uint8_t*)opts->thread_buffers[i]->dst + opts->thread_buffers[i]->dst_size > dst_end) {
+					    res_code = STENOS_ERROR_DST_OVERFLOW;
+				    }
+				    else {
+					    memcpy(opts->thread_buffers[i]->dst, opts->thread_buffers[i]->bytes, opts->thread_buffers[i]->dst_size);
+				    }
+			    }))
 				return STENOS_ERROR_ALLOC;
 
-			
 			/* for (int i = 0; i < thread_count; ++i) {
 				if (!stenos::pool->push([&, i]() {
 					    if ((uint8_t*)opts->thread_buffers[i]->dst + opts->thread_buffers[i]->dst_size > dst_end) {
@@ -1245,9 +1256,9 @@ size_t stenos_decompress_generic(stenos_context* opts, const void* _src, size_t 
 
 		// Parallel decompress using a thread pool
 
-		if(!stenos::pool->loop_for(thread_count, 0, thread_count, 1, [&](auto i) {
-			Block& bl = blocks[(size_t)i];
-			bl.ret = stenos::decompress_generic_superblock(opts, bl.code, bl.src, bytesoftype, bl.csize, bl.dst, bl.dsize, opts->thread_buffers[(size_t)i]);
+		if (!stenos::pool->loop_for(thread_count, 0, thread_count, 1, [&](auto i) {
+			    Block& bl = blocks[(size_t)i];
+			    bl.ret = stenos::decompress_generic_superblock(opts, bl.code, bl.src, bytesoftype, bl.csize, bl.dst, bl.dsize, opts->thread_buffers[(size_t)i]);
 		    }))
 			return STENOS_ERROR_ALLOC;
 
@@ -1288,16 +1299,16 @@ size_t stenos_private_assess_compressibility(const void* src, size_t bytesoftype
 
 	auto r1 = stenos::lz4_guess_size(buffer, bytes, 0);
 	if (stenos::has_error(r1))
-	//auto r1 = ZSTD_compressCCtx(ctx, buffer2, bytes, buffer, bytes, 1);
-	//if (ZSTD_isError(r1))
+		// auto r1 = ZSTD_compressCCtx(ctx, buffer2, bytes, buffer, bytes, 1);
+		// if (ZSTD_isError(r1))
 		r1 = bytes;
 
 	stenos::delta(buffer, buffer2, bytes);
 
 	auto r2 = stenos::lz4_guess_size(buffer2, bytes, 0);
 	if (stenos::has_error(r2))
-	//auto r2 = ZSTD_compressCCtx(ctx, buffer, bytes, buffer2, bytes, 1);
-	//if (ZSTD_isError(r2))
+		// auto r2 = ZSTD_compressCCtx(ctx, buffer, bytes, buffer2, bytes, 1);
+		// if (ZSTD_isError(r2))
 		r2 = bytes;
 
 	return (std::min(r1, r2));

@@ -188,7 +188,7 @@ namespace stenos
 			return std::make_pair((double)0, "double");
 	}
 
-	/// @brief OpenCL implementation of the video time trace compresson algorithm.
+	/// @brief OpenCL implementation of the video time trace compression algorithm.
 	/// The CPU based implementation is available in TimeTraceCompressFast.h
 	template<class T>
 	class TimeTraceCompressCL

@@ -118,7 +118,7 @@ namespace stenos
 
 		static inline int clevel_for_remaining(TimeConstraint& t, size_t processed_bytes, size_t* target_rate = nullptr, unsigned shift = 0) noexcept
 		{
-			// Compute the best possible compressoin level for remaining bytes
+			// Compute the best possible compression level for remaining bytes
 			// based on the time constraint and the current compression rate
 
 			int clevel = 0;

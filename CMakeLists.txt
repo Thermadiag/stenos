@@ -1,5 +1,6 @@
 cmake_minimum_required(VERSION 3.16)
 
+# Avoid mixing MD/MT with msvc
 cmake_policy(SET CMP0091 NEW)
 
 set(
@@ -34,23 +35,14 @@ option(STENOS_BUILD_SHARED "Build shared library" ON)
 option(STENOS_BUILD_STATIC "Build static library" ON)
 option(STENOS_NATIVE_ARCH "Optimize for the build machine CPU; binaries may not be portable" ON)
 
+# tests and benchs require static build
 if((STENOS_BUILD_TESTS OR STENOS_BUILD_BENCHS) AND NOT STENOS_BUILD_STATIC)
     message(FATAL_ERROR
         "STENOS_BUILD_TESTS and STENOS_BUILD_BENCHS require STENOS_BUILD_STATIC"
     )
 endif()
 
-# create source file list
-# file(GLOB StenosSources
-     # "stenos/*.h"
-	 # "stenos/*.hpp"
-	 # "stenos/internal/*.h"
-	 # "stenos/internal/*.hpp"
-     # "stenos/internal/*.cpp" 
-	 # "stenos/internal/video/*.h"
-     # "stenos/internal/video/*.cpp" 
-# )
-
+# grab sources
 file(GLOB_RECURSE StenosSources CONFIGURE_DEPENDS
     "${CMAKE_CURRENT_SOURCE_DIR}/stenos/*.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/stenos/*.h"
@@ -69,47 +61,6 @@ configure_file(stenos_config.h.in ${CMAKE_BINARY_DIR}/stenos_config.h @ONLY)
 
 
 # Add zstd
-# if(NOT STENOS_BUILD_ZSTD)
-	# message(STATUS "Try to find package ZSTD")
-# endif()
-# if((NOT zstd_FOUND) OR (NOT ZSTD_LIB_DIR) OR (NOT ${ZSTD_LIB_DIR}))
-	# message(STATUS "Building ZSTD from sources")
-	# cmake_policy(SET CMP0114 NEW)
-	# cmake_policy(SET CMP0135 NEW)
-	# if(CMAKE_VERSION VERSION_GREATER_EQUAL "3.30.0")
-		# cmake_policy(SET CMP0169 OLD)
-	# endif()
-
-	# set(ZSTD_INSTALL_DIR ${CMAKE_BINARY_DIR}/3rd-party-install)
-	# set(ZSTD_MINIMUM_VERSION 1.5.5)
-
-	# # we are statically building from ZSTD
-	# set(ZSTD_BUILD_SHARED OFF CACHE INTERNAL "" FORCE)
-	# set(ZSTD_LEGACY_SUPPORT OFF CACHE INTERNAL "" FORCE)
-	# set(ZSTD_BUILD_PROGRAMS OFF CACHE INTERNAL "" FORCE)
-	# set(ZSTD_BUILD_CONTRIB OFF CACHE INTERNAL "" FORCE)
-	# set(ZSTD_BUILD_TESTS OFF CACHE INTERNAL "" FORCE)
-	# set(ZSTD_MULTITHREAD_SUPPORT ON CACHE INTERNAL "" FORCE)
-	# set(CMAKE_POLICY_VERSION_MINIMUM "3.5" CACHE INTERNAL "" FORCE)
-	# FetchContent_Declare(
-		# zstd
-		# GIT_REPOSITORY "https://github.com/facebook/zstd.git"
-		# GIT_TAG release#v${ZSTD_MINIMUM_VERSION}
-		# OVERRIDE_FIND_PACKAGE
-		# SOURCE_SUBDIR build/cmake
-	# )
-	# FetchContent_GetProperties(zstd)
-
-	# if(NOT zstd_POPULATED)
-		# FetchContent_Populate(zstd)
-		# message(STATUS "zstd_SOURCE_DIR: ${zstd_SOURCE_DIR}")
-		# add_subdirectory(${zstd_SOURCE_DIR}/build/cmake ${zstd_BINARY_DIR} EXCLUDE_FROM_ALL)
-	# endif()
-	# set(ZSTD_INCLUDE_DIR ${zstd_SOURCE_DIR}/lib CACHE INTERNAL "")
-# else()
-# message(STATUS "Using system ZSTD :${ZSTD_LIB_DIR} and ${ZSTD_INCLUDE_DIR}")
-# endif()
-
 if(NOT STENOS_BUILD_ZSTD)
     find_package(zstd CONFIG QUIET)
 endif()
@@ -140,66 +91,7 @@ else()
 endif()
 
 
-# if(STENOS_WITH_OPENCL)
-
-	# find_package(OpenCL QUIET GLOBAL)
-	
-	# if(NOT OpenCL_FOUND)
-		# # build a minimal version of OpenCL
-		# set (OPENCL_SDK_BUILD_UTILITY_LIBRARIES OFF CACHE INTERNAL "")
-		# set (OPENCL_SDK_BUILD_CLINFO  OFF CACHE INTERNAL "")
-		# include(FetchContent)
-		# FetchContent_Declare(
-			# OpenCL
-			# GIT_REPOSITORY https://github.com/KhronosGroup/OpenCL-SDK.git
-			# GIT_TAG main
-			# OVERRIDE_FIND_PACKAGE
-		# )
-
-		# message(STATUS "fetching OpenCL")
-		# find_package(OpenCL REQUIRED GLOBAL)
-
-	# endif()
-	
-	# if(NOT TARGET OpenCL::HeadersCpp)
-	
-		# message(STATUS "fetching OpenCL::HeadersCpp")
-		# FetchContent_Declare(
-			# opencl_headers
-			# GIT_REPOSITORY https://github.com/KhronosGroup/OpenCL-Headers.git
-			# GIT_TAG        main
-			# OVERRIDE_FIND_PACKAGE
-		# )
-
-		# FetchContent_MakeAvailable(opencl_headers)
-
-		# if(NOT TARGET OpenCL::Headers)
-			# message(FATAL_ERROR "OpenCL-Headers did not create OpenCL::Headers")
-		# endif()
-
-		# set(BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
-		# set(BUILD_DOCS OFF CACHE BOOL "" FORCE)
-		# set(OPENCL_CLHPP_BUILD_TESTING OFF CACHE BOOL "" FORCE)
-
-		# FetchContent_Declare(
-			# opencl_clhpp
-			# GIT_REPOSITORY https://github.com/KhronosGroup/OpenCL-CLHPP.git
-			# GIT_TAG        main
-			# OVERRIDE_FIND_PACKAGE
-		# )
-		
-		# FetchContent_MakeAvailable(opencl_clhpp)
-
-		# if(NOT TARGET OpenCL::HeadersCpp)
-			# message(FATAL_ERROR
-				# "OpenCL-CLHPP did not create OpenCL::HeadersCpp\n"
-				# "Source directory: ${opencl_clhpp_SOURCE_DIR}"
-			# )
-		# endif()
-		
-	# endif()
-# endif()
-
+# Add opencl
 if(STENOS_WITH_OPENCL)
     find_package(OpenCL QUIET)
 
@@ -265,8 +157,6 @@ target_include_directories(stenos_obj PRIVATE ${CMAKE_BINARY_DIR})
 
 # Link 
 target_link_libraries(stenos_obj PRIVATE ${STENOS_ZSTD_TARGET})
-#target_link_libraries(stenos_obj PRIVATE libzstd_static)
-#target_include_directories(stenos_obj PUBLIC ${ZSTD_INCLUDE_DIR})
 
 if(STENOS_WITH_OPENCL)
 	target_link_libraries(stenos_obj PRIVATE OpenCL::OpenCL OpenCL::HeadersCpp)
@@ -326,9 +216,8 @@ if(STENOS_BUILD_STATIC)
 	# Define stenos_static target
 	add_library(stenos_static STATIC $<TARGET_OBJECTS:stenos_obj> )
 	
+	# for static build we need to link dependencies as PUBLIC
 	target_compile_definitions(stenos_static PUBLIC STENOS_STATIC)
-	#target_link_libraries(stenos_static PRIVATE libzstd_static)
-	#target_link_directories(stenos_static PRIVATE ${ZSTD_LIB_DIR})
 	target_link_libraries(stenos_static PUBLIC ${STENOS_ZSTD_TARGET})
 	
 	if(STENOS_WITH_OPENCL)
