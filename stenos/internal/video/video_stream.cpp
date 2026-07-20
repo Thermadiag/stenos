@@ -146,7 +146,10 @@ namespace stenos
 
 		if (params.mode == ReadOnly || params.mode == ReadWrite) {
 			// Get file size
-			this->read_file_header(d_data->file);
+			if (!this->read_file_header(d_data->file)) {
+				closeNoLock();
+				RETURN_ERROR(STENOS_ERROR_INVALID_INPUT, false);
+			}
 			uint64_t start = (uint64_t)d_data->file.tellg();
 			d_data->file.seekg(0, std::ios::end);
 			uint64_t size = (uint64_t)d_data->file.tellg() - start;
@@ -221,7 +224,10 @@ namespace stenos
 			// Write custom header if any
 			uint64_t pos = d_data->file.tellp();
 			d_data->file.seekp(0);
-			this->write_file_header(d_data->file);
+			if (!this->write_file_header(d_data->file)) {
+				closeNoLock(); // empty file
+				RETURN_ERROR(STENOS_ERROR_INVALID_INPUT, false);
+			}
 			d_data->file.seekp(pos);
 		}
 
