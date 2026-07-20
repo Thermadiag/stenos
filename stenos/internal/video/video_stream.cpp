@@ -61,7 +61,7 @@ namespace stenos
 		return r;
 	}
 
-	using lock_type = std::mutex;
+	using lock_type = std::recursive_mutex;
 
 	struct ImagePos
 	{
@@ -160,7 +160,7 @@ namespace stenos
 				Stream str{ &d_data->file, nullptr };
 				auto in = make_input(&str);
 
-				auto h = read_block_header(&in); // stenosv_read_block_header_stream(&in, nullptr);
+				auto h = stenosv_read_block_header_stream(&in, nullptr);
 				if (h.version == 0) {
 					closeNoLock();
 					RETURN_ERROR(STENOS_ERROR_INVALID_INPUT, false);
@@ -261,7 +261,7 @@ namespace stenos
 		return d_data->params.mode != NotOpen;
 	}
 
-	auto video_stream::paremeters() const noexcept -> stream_parameters
+	auto video_stream::parameters() const noexcept -> stream_parameters
 	{
 		std::lock_guard<lock_type> lock(d_data->lock);
 		return d_data->params;
@@ -364,12 +364,11 @@ namespace stenos
 				}
 			}
 			if (!comp)
-				comp = stenosv_compress_make((stenosv_pixel_type)p.pixel_type, p.width, p.height, p.maxGOP, p.device);
+				comp = stenosv_compress_make((stenosv_pixel_type)p.pixel_type, p.width, p.height, p.error, p.maxGOP, p.device);
 			if (!comp)
 				return false;
 			stenosv_compress_set_threads(comp, (int)p.threads);
 			stenosv_compress_set_clevel(comp, (int)p.level);
-			stenosv_compress_set_max_error(comp, p.error);
 			return true;
 		}
 	};
@@ -530,7 +529,7 @@ namespace stenos
 
 		try {
 
-			std::unique_lock<std::mutex> lock(d_data->lock);
+			std::unique_lock<lock_type> lock(d_data->lock);
 
 			if (d_data->timestamps.empty())
 				return 0;

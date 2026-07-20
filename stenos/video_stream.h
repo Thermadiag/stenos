@@ -54,7 +54,7 @@ namespace stenos
         void close() noexcept;
 
         bool is_open() const noexcept;
-        auto paremeters() const noexcept -> stream_parameters;
+        auto parameters() const noexcept -> stream_parameters;
         auto last_error() const noexcept -> error_type;
         auto count() const noexcept -> size_type;
         auto block_count() const noexcept -> size_type;
@@ -73,7 +73,6 @@ namespace stenos
     protected:
 	    virtual bool write_file_header(std::ostream& out) { return true; }
 	    virtual bool read_file_header(std::istream& in) { return true; }
-	    virtual stenosv_block_header read_block_header(stenos_input* in) { return stenosv_read_block_header_stream(in, nullptr); } 
 
     private:
 	    void closeNoLock();

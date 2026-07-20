@@ -75,11 +75,10 @@ void test_codec(int width, int height, int GOP, double error, int threads, int d
 	STENOS_TEST(fout);
 
 	// Build codec context
-	auto codec = stenosv_compress_make(pixel_type, width, height, GOP, device);
+	auto codec = stenosv_compress_make(pixel_type, width, height,error, GOP, device);
 	STENOS_TEST(codec);
 	stenosv_compress_set_clevel(codec,9);
 	stenosv_compress_set_threads(codec,threads);
-	stenosv_compress_set_max_error(codec,error);
 
 	// Write frames images
 	for (size_t i = 0; i < frames; ++i) {

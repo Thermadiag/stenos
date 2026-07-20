@@ -30,7 +30,7 @@ option(STENOS_BUILD_ZSTD "Fetch and build zstd internally" ON)
 option(STENOS_BUILD_TESTS "Build tests" OFF)
 option(STENOS_BUILD_BENCHS "Build benchmarks" OFF)
 option(STENOS_NO_WARNINGS "Treat warnings as errors" OFF)
-option(STENOS_WITH_OPENCL "Use OpenCL implementation of the video compressor" OFF)
+option(STENOS_WITH_OPENCL "Use OpenCL implementation of the video compressor" ON)
 option(STENOS_BUILD_SHARED "Build shared library" ON)
 option(STENOS_BUILD_STATIC "Build static library" ON)
 option(STENOS_NATIVE_ARCH "Optimize for the build machine CPU; binaries may not be portable" ON)
@@ -93,6 +93,7 @@ endif()
 
 # Add opencl
 if(STENOS_WITH_OPENCL)
+    message(STATUS "Build stenos with OpenCL support")
     find_package(OpenCL QUIET)
 
     if(NOT TARGET OpenCL::OpenCL OR NOT TARGET OpenCL::HeadersCpp)
@@ -118,6 +119,8 @@ if(STENOS_WITH_OPENCL)
     if(NOT TARGET OpenCL::HeadersCpp)
         message(FATAL_ERROR "OpenCL::HeadersCpp is unavailable")
     endif()
+else()
+    message(STATUS "Build stenos WITHOUT OpenCL support")
 endif()
 
 
@@ -159,6 +162,7 @@ target_include_directories(stenos_obj PRIVATE ${CMAKE_BINARY_DIR})
 target_link_libraries(stenos_obj PRIVATE ${STENOS_ZSTD_TARGET})
 
 if(STENOS_WITH_OPENCL)
+    message(STATUS "Add OpenCL flags")
 	target_link_libraries(stenos_obj PRIVATE OpenCL::OpenCL OpenCL::HeadersCpp)
 	target_compile_definitions(stenos_obj PRIVATE STENOS_OPENCL)
 endif()
@@ -197,6 +201,7 @@ if(STENOS_BUILD_SHARED)
 	
 	if(STENOS_WITH_OPENCL)
 		target_link_libraries(stenos PRIVATE OpenCL::OpenCL OpenCL::HeadersCpp)
+	    target_compile_definitions(stenos PRIVATE STENOS_OPENCL)
 	endif()
 
 	# Export target
@@ -222,6 +227,7 @@ if(STENOS_BUILD_STATIC)
 	
 	if(STENOS_WITH_OPENCL)
 		target_link_libraries(stenos_static PUBLIC OpenCL::OpenCL OpenCL::HeadersCpp)
+        target_compile_definitions(stenos_static PRIVATE STENOS_OPENCL)
 	endif()
 	
 	# Export target

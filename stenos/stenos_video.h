@@ -268,6 +268,7 @@ STENOS_EXPORT int stenosv_default_gpu_device();
  * @param type Scalar sample format of every input image.
  * @param width Image width in pixels; must be positive.
  * @param height Image height in pixels; must be positive.
+ * @param error Maximum pixel error; must be positive.
  * @param GOP Maximum number of images per Group Of Pictures; must be positive.
  * @param device GPU index returned by stenosv_list_gpu_devices(), or -1 to use
  * the CPU implementation.
@@ -277,7 +278,7 @@ STENOS_EXPORT int stenosv_default_gpu_device();
  * One context may encode any number of consecutive GOPs with the same geometry
  * and pixel type. Destroy it with stenosv_compress_destroy().
  */
-STENOS_EXPORT stenosv_compress* stenosv_compress_make(stenosv_pixel_type type, int width, int height, int GOP, int device);
+STENOS_EXPORT stenosv_compress* stenosv_compress_make(stenosv_pixel_type type, int width, int height, double error, int GOP, int device);
 
 /**
  * @brief Destroy a compression context.
@@ -301,17 +302,6 @@ STENOS_EXPORT void stenosv_compress_set_threads(stenosv_compress* compressor, in
  * @param level Compression level from 0 (minimal/no compression) to 9 (maximum compression).
  */
 STENOS_EXPORT void stenosv_compress_set_clevel(stenosv_compress* compressor, int level);
-
-/**
- * @brief Configure the maximum permitted reconstruction error per scalar sample.
- * @param compressor Compression context.
- * @param error Non-negative absolute error bound. Zero requests lossless coding.
- *
- * In bounded-error mode, each reconstructed scalar sample is intended to differ
- * from its source value by no more than this value, subject to the semantics and
- * representable range of the selected pixel type.
- */
-STENOS_EXPORT void stenosv_compress_set_max_error(stenosv_compress* compressor, double error);
 
 /** @brief Return the compressor pixel type. */
 STENOS_EXPORT stenosv_pixel_type stenosv_compress_pixel_type(stenosv_compress* compressor);

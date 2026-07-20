@@ -86,7 +86,7 @@ struct stenosv_compress_s
 	std::string payload;
 };
 
-stenosv_compress* stenosv_compress_make(stenosv_pixel_type type, int width, int height, int GOP, int device)
+stenosv_compress* stenosv_compress_make(stenosv_pixel_type type, int width, int height, double error, int GOP, int device)
 {
 	stenosv_compress* ret = nullptr;
 
@@ -95,34 +95,34 @@ stenosv_compress* stenosv_compress_make(stenosv_pixel_type type, int width, int 
 		ret->pixel_type = type;
 		switch (type) {
 			case StenosInt8:
-				ret->compress.reset(new TimeTraceCompressFast<int8_t>((size_t)width, (size_t)height, 0., (size_t)GOP, 1, device));
+				ret->compress.reset(new TimeTraceCompressFast<int8_t>((size_t)width, (size_t)height, error, (size_t)GOP, 1, device));
 				break;
 			case StenosUInt8:
-				ret->compress.reset(new TimeTraceCompressFast<uint8_t>((size_t)width, (size_t)height, 0., (size_t)GOP, 1, device));
+				ret->compress.reset(new TimeTraceCompressFast<uint8_t>((size_t)width, (size_t)height, error, (size_t)GOP, 1, device));
 				break;
 			case StenosInt16:
-				ret->compress.reset(new TimeTraceCompressFast<int16_t>((size_t)width, (size_t)height, 0., (size_t)GOP, 1, device));
+				ret->compress.reset(new TimeTraceCompressFast<int16_t>((size_t)width, (size_t)height, error, (size_t)GOP, 1, device));
 				break;
 			case StenosUInt16:
-				ret->compress.reset(new TimeTraceCompressFast<uint16_t>((size_t)width, (size_t)height, 0., (size_t)GOP, 1, device));
+				ret->compress.reset(new TimeTraceCompressFast<uint16_t>((size_t)width, (size_t)height, error, (size_t)GOP, 1, device));
 				break;
 			case StenosInt32:
-				ret->compress.reset(new TimeTraceCompressFast<int32_t>((size_t)width, (size_t)height, 0., (size_t)GOP, 1, device));
+				ret->compress.reset(new TimeTraceCompressFast<int32_t>((size_t)width, (size_t)height, error, (size_t)GOP, 1, device));
 				break;
 			case StenosUInt32:
-				ret->compress.reset(new TimeTraceCompressFast<uint32_t>((size_t)width, (size_t)height, 0., (size_t)GOP, 1, device));
+				ret->compress.reset(new TimeTraceCompressFast<uint32_t>((size_t)width, (size_t)height, error, (size_t)GOP, 1, device));
 				break;
 			case StenosInt64:
-				ret->compress.reset(new TimeTraceCompressFast<int64_t>((size_t)width, (size_t)height, 0., (size_t)GOP, 1, device));
+				ret->compress.reset(new TimeTraceCompressFast<int64_t>((size_t)width, (size_t)height, error, (size_t)GOP, 1, device));
 				break;
 			case StenosUInt64:
-				ret->compress.reset(new TimeTraceCompressFast<uint64_t>((size_t)width, (size_t)height, 0., (size_t)GOP, 1, device));
+				ret->compress.reset(new TimeTraceCompressFast<uint64_t>((size_t)width, (size_t)height, error, (size_t)GOP, 1, device));
 				break;
 			case StenosFloat32:
-				ret->compress.reset(new TimeTraceCompressFast<float>((size_t)width, (size_t)height, 0., (size_t)GOP, 1, device));
+				ret->compress.reset(new TimeTraceCompressFast<float>((size_t)width, (size_t)height, error, (size_t)GOP, 1, device));
 				break;
 			case StenosFloat64:
-				ret->compress.reset(new TimeTraceCompressFast<double>((size_t)width, (size_t)height, 0., (size_t)GOP, 1, device));
+				ret->compress.reset(new TimeTraceCompressFast<double>((size_t)width, (size_t)height, error, (size_t)GOP, 1, device));
 				break;
 			default:
 				delete ret;
@@ -161,10 +161,6 @@ void stenosv_compress_set_max_time(stenosv_compress* ctx, uint64_t max_nanosecon
 	ctx->compress->set_max_time(max_nanoseconds);
 }
 
-void stenosv_compress_set_max_error(stenosv_compress* ctx, double error)
-{
-	ctx->compress->set_error(error);
-}
 
 stenosv_pixel_type stenosv_compress_pixel_type(stenosv_compress* ctx)
 {
@@ -208,8 +204,11 @@ size_t stenosv_compress_add_image(stenosv_compress* ctx, void* img, int64_t time
 {
 	try {
 		const auto& times = ctx->compress->times();
-		if (!times.empty() && ctx->compress->current_pos() > 0 && timestamp <= times.back())
-			return STENOS_ERROR_INVALID_PARAMETER;
+		if (!times.empty() && ctx->compress->current_pos() > 0 ){
+			auto last_time = times.back();
+			if(timestamp <= last_time)
+				return STENOS_ERROR_INVALID_PARAMETER;
+		} 
 
 		ctx->payload.clear();
 		ctx->payload = ctx->compress->add_frame(img, timestamp);
@@ -390,9 +389,20 @@ stenosv_block_header stenosv_read_block_header_stream(stenos_input* input, uint6
 		else
 			memcpy(&ret, tmp + 8, sizeof(ret));
 
-		if (ret.version == 0 || ret.version > STENOS_VIDEO_TRACE_VERSION || ret.pixel_type > StenosFloat64)
-			memset(&ret, 0, sizeof(ret));
-		else if (full_block_size)
+		if (ret.version == 0 || ret.version > STENOS_VIDEO_TRACE_VERSION || ret.pixel_type > StenosFloat64){
+
+			// Handle old format
+			if(ret.version == 0 && ret.pixel_type == 0 && ret.width && ret.height && ret.count){
+				ret.version = STENOS_VIDEO_TRACE_VERSION;
+				ret.pixel_type = StenosUInt16;
+			} 
+			else{ 
+				memset(&ret, 0, sizeof(ret));
+				return ret;
+			}	
+		}	
+		
+		if (full_block_size)
 			*full_block_size = read_LE_64(tmp) + 8;
 
 		input->seek(pos, SEEK_SET, input->opaque);

@@ -20,6 +20,7 @@
 #include "../../stenos_video.h"
 #include "../tiny_pool.h"
 
+
 #ifdef STENOS_OPENCL
 #include "TimeTraceCompressOpenCL.h"
 #endif
@@ -602,7 +603,7 @@ namespace stenos
 			
 			//TEST
 			auto el = std::chrono::system_clock::now() -st;
-			std::cout << "Compressing " << d_pos << " images took " << std::chrono::duration_cast<std::chrono::milliseconds>(el).count() / 1000. << " seconds" << std::endl;
+			//std::cout << "Compressing " << d_pos << " images took " << std::chrono::duration_cast<std::chrono::milliseconds>(el).count() / 1000. << " seconds" << std::endl;
 			
 			d_pos = 0;
 
@@ -912,6 +913,12 @@ namespace stenos
 				return false;
 			}
 
+			// Handle old format
+			if(d_header.version == 0 && d_header.pixel_type == 0 && d_header.width && d_header.height && d_header.count){
+				d_header.version = STENOS_VIDEO_TRACE_VERSION;
+				d_header.pixel_type = StenosUInt16;
+			} 
+
 			if (d_header.pixel_type != stenosv_to_pixel_type<T>())
 				return false;
 
@@ -1033,6 +1040,12 @@ namespace stenos
 				close();
 				return res;
 			}
+
+			// Handle old format
+			if(d_header.count && d_header.height && d_header.width && d_header.version == 0 && d_header.pixel_type == 0){
+				d_header.version = STENOS_VIDEO_TRACE_VERSION;
+				d_header.pixel_type = StenosUInt16;
+			} 
 
 			if (d_header.pixel_type != stenosv_to_pixel_type<T>()) {
 				close();
