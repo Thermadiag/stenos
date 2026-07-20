@@ -146,23 +146,24 @@ namespace stenos
 
 		if (params.mode == ReadOnly || params.mode == ReadWrite) {
 			// Get file size
+			this->read_file_header(d_data->file);
+			uint64_t start = (uint64_t)d_data->file.tellg();
 			d_data->file.seekg(0, std::ios::end);
-			uint64_t size = (uint64_t)d_data->file.tellg();
-			d_data->file.seekg(0);
+			uint64_t size = (uint64_t)d_data->file.tellg() - start;
+			d_data->file.seekg(start);
 			if (size) {
 				// Read blocks
 				std::vector<time_type> times(1000);
 				Stream str{ &d_data->file, nullptr };
 				auto in = make_input(&str);
 
-				uint64_t bs;
-				auto h = stenosv_read_block_header_stream(&in, &bs);
+				auto h = read_block_header(&in); // stenosv_read_block_header_stream(&in, nullptr);
 				if (h.version == 0) {
 					closeNoLock();
 					RETURN_ERROR(STENOS_ERROR_INVALID_INPUT, false);
 				}
 
-				while ((uint64_t)d_data->file.tellg() < size) {
+				while ((uint64_t)d_data->file.tellg() < size + start) {
 					uint64_t pos = (uint64_t)d_data->file.tellg();
 					auto s = stenosv_extract_timestamps(&in, times.data(), times.size());
 					if (stenos_has_error(s)) {
@@ -177,7 +178,7 @@ namespace stenos
 
 				// Check end of file
 				uint64_t at_end = (uint64_t)d_data->file.tellg();
-				if (at_end < size) {
+				if (at_end < size + start) {
 					closeNoLock();
 					RETURN_ERROR(STENOS_ERROR_INVALID_INPUT, false);
 				}
@@ -216,10 +217,23 @@ namespace stenos
 			RETURN_ERROR(STENOS_ERROR_INVALID_PARAMETER, false); // Invalid input parameters
 		}
 
+		if (d_data->params.mode & WriteOnly) {
+			// Write custom header if any
+			uint64_t pos = d_data->file.tellp();
+			d_data->file.seekp(0);
+			this->write_file_header(d_data->file);
+			d_data->file.seekp(pos);
+		}
+
 		return true;
 	}
 	void video_stream::closeNoLock()
 	{
+		if (d_data->params.mode & WriteOnly) {
+			// Write custom header if any
+			d_data->file.seekp(0);
+			this->write_file_header(d_data->file);
+		}
 		d_data->file.close();
 		d_data->timestamps.clear();
 		if (d_data->dec) {

@@ -418,8 +418,7 @@ STENOS_EXPORT stenosv_block_header stenosv_read_block_header_buffer2(void* data,
  * @param[out] opt_full_block_size Optional destination for the complete GOP size.
  * @return Parsed header, or an invalid header with version == 0 on failure.
  *
- * @note The resulting stream position is implementation-defined; callers that
- * require a particular position should save and restore it explicitly.
+ * @note The resulting stream position is the staring one.
  */
 STENOS_EXPORT stenosv_block_header stenosv_read_block_header_stream(stenos_input* input, uint64_t* opt_full_block_size);
 

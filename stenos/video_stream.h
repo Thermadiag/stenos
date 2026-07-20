@@ -48,7 +48,7 @@ namespace stenos
 
         video_stream();
         video_stream(const char * filename, const stream_parameters & params);
-        ~video_stream() noexcept;
+        virtual ~video_stream() noexcept;
 
         bool open(const char * filename, const stream_parameters & params);
         void close() noexcept;
@@ -69,6 +69,11 @@ namespace stenos
 	    bool read_image_time(time_type time, void* img);
          
         auto extract_time_trace(const stenosv_trace_query& query, stenosv_trace_result& out, time_type first_time = invalid_time, time_type last_time = invalid_time, std::atomic<size_t> * progress = nullptr) -> size_t;
+
+    protected:
+	    virtual void write_file_header(std::ostream & out) {}
+	    virtual void read_file_header(std::istream & in) {}
+	    virtual stenosv_block_header read_block_header(stenos_input* in) { return stenosv_read_block_header_stream(in, nullptr); } 
 
     private:
 	    void closeNoLock();
