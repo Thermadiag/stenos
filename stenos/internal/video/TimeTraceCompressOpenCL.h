@@ -50,7 +50,9 @@ namespace stenos
 					g.max_memory = d.getInfo<CL_DEVICE_MAX_MEM_ALLOC_SIZE>();
 					g.vendor_id = d.getInfo<CL_DEVICE_VENDOR_ID>();
 					g.device = d;
-					ret.push_back(std::move(g));
+					// For now ignore Intel devices as most of them produce buggy results
+					if (g.vendor_id != 0x8086)
+						ret.push_back(std::move(g));
 				}
 			}
 		}
