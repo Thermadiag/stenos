@@ -542,6 +542,7 @@ namespace stenos
 			// Write 16 values using a fixed bits width
 			{
 #define _U64(val) static_cast<uint64_t>(val)
+#define _U32(val) static_cast<uint32_t>(val)
 
 				switch (bits) {
 					case 1:
@@ -555,25 +556,26 @@ namespace stenos
 						dst[3] = v[12] | (v[13] << 2U) | (v[14] << 4U) | (v[15] << 6U);
 						break;
 					case 3:
-						write_LE_32(dst, (v[0] | (v[1] << 3U) | (v[2] << 6U) | (v[3] << 9U) | (v[4] << 12U) | (v[5] << 15U) | (v[6] << 18U) | (v[7] << 21U)));
-						write_LE_32(dst + 3, (v[8] | (v[9] << 3U) | (v[10] << 6U) | (v[11] << 9U) | (v[12] << 12U) | (v[13] << 15U) | (v[14] << 18U) | (v[15] << 21U)));
+						write_LE_32(dst, (_U32(v[0]) | (_U32(v[1]) << 3U) | (_U32(v[2]) << 6U) | (_U32(v[3]) << 9U) | (_U32(v[4]) << 12U) | (_U32(v[5]) << 15U) | (_U32(v[6]) << 18U) | (_U32(v[7]) << 21U)));
+						write_LE_32(dst + 3, (_U32(v[8]) | (_U32(v[9]) << 3U) | (_U32(v[10]) << 6U) | (_U32(v[11]) << 9U) | (_U32(v[12]) << 12U) | (_U32(v[13]) << 15U) | (_U32(v[14]) << 18U) | (_U32(v[15]) << 21U)));
 						break;
 					case 4:
-						write_LE_32(dst, (v[0] | (v[1] << 4U) | (v[2] << 8U) | (v[3] << 12U) | (v[4] << 16U) | (v[5] << 20U) | (v[6] << 24U) | (v[7] << 28U)));
-						write_LE_32(dst + 4, (v[8] | (v[9] << 4U) | (v[10] << 8U) | (v[11] << 12U) | (v[12] << 16U) | (v[13] << 20U) | (v[14] << 24U) | (v[15] << 28U)));
+						write_LE_32(dst, (_U32(v[0]) | (_U32(v[1]) << 4U) | (_U32(v[2]) << 8U) | (_U32(v[3]) << 12U) | (_U32(v[4]) << 16U) | (_U32(v[5]) << 20U) | (_U32(v[6]) << 24U) | (_U32(v[7]) << 28U)));
+						write_LE_32(dst + 4, (_U32(v[8]) | (_U32(v[9]) << 4U) | (_U32(v[10]) << 8U) | (_U32(v[11]) << 12U) | (_U32(v[12]) << 16U) | (_U32(v[13]) << 20U) | (_U32(v[14]) << 24U) | (_U32(v[15]) << 28U)));
 						break;
 					default:
 						write_LE_64(dst,
-							    v[0] | (v[1] << bits) | (v[2] << bits * 2) | (v[3] << bits * 3) | (_U64(v[4]) << bits * 4) | (_U64(v[5]) << bits * 5) |
+							    _U64(v[0]) | (_U64(v[1]) << bits) | (_U64(v[2]) << bits * 2) | (_U64(v[3]) << bits * 3) | (_U64(v[4]) << bits * 4) | (_U64(v[5]) << bits * 5) |
 							      (_U64(v[6]) << bits * 6) | (_U64(v[7]) << bits * 7));
 						write_LE_64(dst + bits,
-							    v[8] | (_U64(v[9]) << bits) | (_U64(v[10]) << bits * 2) | (_U64(v[11]) << bits * 3) | (_U64(v[12]) << bits * 4) |
+							    _U64(v[8]) | (_U64(v[9]) << bits) | (_U64(v[10]) << bits * 2) | (_U64(v[11]) << bits * 3) | (_U64(v[12]) << bits * 4) |
 							      (_U64(v[13]) << bits * 5) | (_U64(v[14]) << bits * 6) | (_U64(v[15]) << bits * 7));
 
 						break;
 				}
 
 #undef _U64
+#undef _U32
 			}
 
 			return dst + bits * 2;
@@ -1970,7 +1972,7 @@ namespace stenos
 			return src + size;
 		}
 
-		static STENOS_ALWAYS_INLINE const uint8_t* decolde_line_flat(uint8_t h,
+		static STENOS_ALWAYS_INLINE const uint8_t* decode_line_flat(uint8_t h,
 									     const uint8_t* STENOS_RESTRICT src,
 									     const uint8_t* STENOS_RESTRICT end,
 									     uint8_t* STENOS_RESTRICT dst,
@@ -2046,10 +2048,10 @@ namespace stenos
 				// check overflow
 				if STENOS_UNLIKELY (!src)
 					return nullptr;
-				src = decolde_line_flat(headers[i], src, end, dst, i, mins);
+				src = decode_line_flat(headers[i], src, end, dst, i, mins);
 				if STENOS_UNLIKELY (!src)
 					return nullptr;
-				src = decolde_line_flat(headers[i + 1], src, end, dst + 16, i + 1, mins);
+				src = decode_line_flat(headers[i + 1], src, end, dst + 16, i + 1, mins);
 			}
 			return src;
 		}
