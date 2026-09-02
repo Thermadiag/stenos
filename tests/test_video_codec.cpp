@@ -4,6 +4,7 @@
 #include <sstream>
 #include <mutex>
 #include <iostream>
+#include <cmath>
 
 #include "testing.hpp"
 #include "BS_thread_pool.hpp"
@@ -334,13 +335,107 @@ void test_codec(int width, int height, int GOP, double error, int threads, int d
 	}
 }
 
+#include <iostream>
+#include <cstddef>
+#include <vector>
+#include <stenos/stenos_video.h>
+
 int test_video_codec(int, char*[]) 
 {
+	////////////////////////////////
+	// Video compression
+	////////////////////////////////
+
+	// List available GPU and select the first one (if any)
 	int gpu_count = 0;
+	int select_GPU = -1; // Compression device
 	auto devices = stenosv_list_gpu_devices(&gpu_count);
 	for (int i = 0; i < gpu_count; ++i) {
 		auto& d = devices[i];
 		std::cout << d.name << " " << d.vendor_id << " " << d.compute_units << " " << d.max_memory << std::endl;
+		if(select_GPU == -1)
+			select_GPU = 0;
+	}
+
+	// Create synthetic images
+	using pixel_type = std::uint16_t;
+	using image_type = std::vector<pixel_type>;
+	using image_stack = std::vector<image_type>;
+	
+	size_t width = 640; //image width
+	size_t height = 512; // image height
+	double error = 0.; // maximum error
+	
+	// Create a stack of 100 images
+	image_stack images(100);
+	for(size_t i = 0; i < images.size(); ++i)
+		images[i] = image_type(width * height, (std::uint16_t)i);
+		
+	// Output bytestream
+	std::vector<char> compressed;
+		
+	// Build codec context with a GOP of 16 images
+	auto codec = stenosv_compress_make(StenosUInt16, width, height, error, 16, select_GPU);
+	stenosv_compress_set_clevel(codec,9); // Set the compression level, from 0 (no compression) to 9 (maximum compression)
+	stenosv_compress_set_threads(codec,4); // Set the number of threads
+
+	// Write frames images
+	for (size_t i = 0; i < images.size(); ++i) {
+		// Add image to context
+		auto r = stenosv_compress_add_image(codec, images[i].data(), (int64_t)i);
+		// Check fo error
+		if(stenos_has_error(r)) 
+			return -1;
+		if (r == 1) {
+			// A compressed output is available
+			auto buffer = stenosv_compress_payload(codec);
+			char * data = (char*)buffer.data;
+			compressed.insert(compressed.end(), data, data + buffer.size);
+		}
+		std::cout << "Finished image "<<i<<" compression" << std::endl;
+	}
+	// Finish compression and destroy codec context
+	stenosv_compress_stop(codec);
+	auto buffer = stenosv_compress_payload(codec);
+	char * data = (char*)buffer.data;
+	compressed.insert(compressed.end(), data, data + buffer.size);
+	stenosv_compress_destroy(codec);
+	
+	std::cout << std::endl << "Start video decompression"<<std::endl;
+	
+	
+	////////////////////////////////
+	// Video decompression
+	////////////////////////////////
+	
+	stenosv_payload bytes{compressed.data(), compressed.size()};
+	size_t im_count = 0;
+	while(true) {
+		// Create decompression context with 4 threads
+		auto decomp = stenosv_decompress_make_buffer(bytes, 4);
+		assert(decomp);
+		
+		uint64_t GOP_bytes = 0;
+		stenosv_block_header h = stenosv_read_block_header_buffer(bytes, &GOP_bytes);
+		assert(h.pixel_type == StenosUInt16);
+		assert(h.width == width);
+		assert(h.height == height);
+		assert(h.count <= 16);
+		
+		// Decompress images in this GOP
+		for(size_t i = 0; i < h.count; ++i, ++im_count) {
+			image_type img(width*height);
+			auto r = stenosv_decompress_read_image(decomp, i, 1, img.data());
+			assert(!stenos_has_error(r));
+			std::cout << "Image " << im_count <<" pixel: " << img[0] << std::endl;
+		}
+		
+		stenosv_decompress_destroy(decomp);
+		
+		bytes.data = (char*)bytes.data + GOP_bytes;
+		bytes.size -= GOP_bytes;
+		if(bytes.size == 0)
+			break;
 	}
 
 	

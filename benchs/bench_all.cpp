@@ -297,6 +297,7 @@ int bench_all(int, char** const)
 {
 	char* _STENOS_THREADS = getenv("STENOS_THREADS");
 	if (_STENOS_THREADS) {
+		std::cout << "Read STENOS_THREADS as " << _STENOS_THREADS << std::endl;
 		std::istringstream iss(_STENOS_THREADS);
 		iss >> STENOS_THREADS;
 		if (!iss)

@@ -151,7 +151,7 @@ int  main  (int , char** )
 Video compression
 -----------------
 
-Stenos library provides the [stenosv](docs/stenosv.md) video codec used to compress arithmetic videos with or without bounded losses.
+Stenos library provides the [Stenosv](docs/stenosv.md) video codec used to compress arithmetic videos with or without bounded losses.
 
 Build
 -----
