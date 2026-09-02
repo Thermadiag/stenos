@@ -164,6 +164,7 @@ The following cmake options are available:
 -	*STENOS_NO_WARNINGS*(OFF): treat warnings as errors
 -	*STENOS_BUILD_SHARED*(ON): build shared version of Stenos
 -	*STENOS_BUILD_STATIC*(ON): build static version of Stenos
+-	*STENOS_WITH_OPENCL*(ON): build with OpenCL support (only used by Stenosv video codec)
 
 If you link with the static version without using cmake, you must define STENOS_STATIC yourself.
 

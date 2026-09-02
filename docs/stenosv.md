@@ -11,13 +11,13 @@ Instead, Stenosv lossy compression is tuned to retain the best image visual qual
 For an independant Group Of Picture (GOP), Stenosv compression scheme follows these steps:
 -	The time trace of each pixel is extracted in order to have (width*height) temporal curves.
 -	Each time trace is then decimated based on provided maximum error. The decimation does not create non existing points, but only keeps enough points to keep the final curve withing the envelope [original_curve - maximum_error, original_curve + maximum_error].
--	Decimated time traces are stacked together and compressde using the stenos library.
+-	Decimated time traces are stacked together and compressed using the stenos library.
 
 Stenosv is implemented in such way that it does not wait for the full GOP to be available to start these steps. The decimation process is incrementally computed at each new image, and only the compression stage is applied at GOP boundary.
 
-Stenosv provides a GPU accelerated version using OpenCL to fasten the decimation stage. This acceleration makes real-time compression possible in some use-case, like WEST infrared videos (512*640 16 bits pixels at 50Hz).
+Stenosv provides a GPU accelerated version using OpenCL to fasten the decimation stage. This acceleration combined with incremental decimation makes real-time compression possible in some use-case, like WEST infrared videos (512*640 16 bits pixels at 50Hz).
 
-Use the build option *STENOS_WITH_OPENCL=ON* to enable OpenCL support.
+Use the build option `-DSTENOS_WITH_OPENCL=ON` (default) to enable OpenCL support.
 
 ## Usage
 
