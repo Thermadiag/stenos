@@ -101,6 +101,8 @@ if(STENOS_WITH_OPENCL)
         set(OPENCL_SDK_BUILD_TESTS OFF CACHE BOOL "" FORCE)
         set(OPENCL_SDK_BUILD_CLINFO OFF CACHE BOOL "" FORCE)
         set(OPENCL_SDK_BUILD_UTILITY_LIBRARIES OFF CACHE BOOL "" FORCE)
+        set(BUILD_EXAMPLES OFF CACHE BOOL "" FORCE) #for OpenCL-CLHPP
+        set(OPENCL_CLHPP_BUILD_TESTING OFF CACHE BOOL "" FORCE) #for OpenCL-CLHPP
 
         FetchContent_Declare(
             OpenCL
@@ -201,7 +203,8 @@ if(STENOS_BUILD_SHARED)
 	
 	if(STENOS_WITH_OPENCL)
 		target_link_libraries(stenos PRIVATE OpenCL::OpenCL OpenCL::HeadersCpp)
-	    target_compile_definitions(stenos PRIVATE STENOS_OPENCL)
+	    	target_compile_definitions(stenos PRIVATE STENOS_OPENCL)
+	    	
 	endif()
 
 	# Export target
