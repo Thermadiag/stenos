@@ -683,6 +683,18 @@ int test_cvector(int, char*[])
 
 	using namespace stenos;
 
+	{
+		cvector<int> v;
+		v.push_back(0);
+
+		//auto ref = v[0];
+		//const int& r = static_cast<const int&>(ref);
+		auto it = v.begin();
+		*it;
+
+		v.pop_back();
+	}
+
 	test_copy();
 	test_for_each();
 	test_serialize();

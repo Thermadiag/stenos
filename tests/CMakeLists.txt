@@ -8,7 +8,6 @@ enable_testing()
 create_test_sourcelist (Tests
 stenos_tests.cpp
   tests_comp_decomp.cpp
-  test_cvector.cpp
   test_video_codec.cpp
  )
 

@@ -148,12 +148,10 @@ int  main  (int , char** )
 
 ```
 
-
-Compressed vector
+Video compression
 -----------------
 
-Stenos library provides the C++ [stenos::cvector](docs/cvector.md) class providing a compressed vector container with a similar interface to std::vector. See this [documentation](docs/cvector.md) for more details.
-
+Stenos library provides the [stenosv](docs/stenosv.md) video codec used to compress arithmetic videos with or without bounded losses.
 
 Build
 -----

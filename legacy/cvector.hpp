@@ -28,6 +28,8 @@
 #include <type_traits>
 #include <memory>
 #include <atomic>
+#include <tuple>
+#include <utility>
 
 namespace stenos
 {
@@ -43,23 +45,36 @@ namespace stenos
 	/// memcpy(&new_place, &old_place, sizeof(T));
 	/// \endcode
 	///
-	///
 	template<class T>
 	struct is_relocatable
 	{
-		static constexpr bool value = std::is_trivially_copyable<T>::value && std::is_trivially_destructible<T>::value;
-	};
-
-	template<class T, class D>
-	struct is_relocatable<std::unique_ptr<T, D>> : std::true_type
-	{
-		// Specialization for std::unique_ptr
+		static constexpr bool value = std::is_trivially_copyable_v<T> && std::is_trivially_destructible_v<T>;
 	};
 
 	template<class T>
-	struct is_relocatable<std::atomic<T>> : is_relocatable<T>
+	constexpr bool is_relocatable_v = is_relocatable<T>::value;
+
+	// Specilizations for atomic, unique_ptr, shared_ptr and pair
+
+	template<class T>
+	struct is_relocatable<std::atomic<T>> : std::true_type
 	{
-		// Specialization for std::atomic
+	};
+	template<class T, class D>
+	struct is_relocatable<std::unique_ptr<T, D>> : std::bool_constant<is_relocatable_v<D> && is_relocatable_v<typename std::unique_ptr<T, D>::pointer>>
+	{
+	};
+	template<class T, class V>
+	struct is_relocatable<std::pair<T, V>> : std::bool_constant<is_relocatable<T>::value && is_relocatable<V>::value>
+	{
+	};
+	template<class T>
+	struct is_relocatable<std::allocator<T>> : std::true_type
+	{
+	};
+	template<class... Args>
+	struct is_relocatable<std::tuple<Args...>> : std::bool_constant<(is_relocatable_v<Args> && ...)>
+	{
 	};
 
 	namespace detail
@@ -68,20 +83,6 @@ namespace stenos
 		template<class Compress>
 		class RefWrapper;
 	}
-}
-namespace std
-{
-	///////////////////////////
-	// Completely illegal overload of std::move.
-	// That's currently the only way I found to use generic algorithms (like std::move(It, It, Dst) ) with cvector.
-	///////////////////////////
-
-	/* template<class Compress>
-	typename Compress::value_type move(stenos::detail::RefWrapper<Compress>& other) noexcept;
-	*/
-	// template<class Compress>
-	// typename Compress::value_type move(stenos::detail::RefWrapper<Compress>&& other) noexcept;
-
 }
 
 #include <algorithm>
@@ -101,107 +102,20 @@ namespace stenos
 	{
 		// Returns distance between 2 iterators, or 0 for non random access iterators
 		template<class Iter, class Cat>
-		auto iter_distance(const Iter&, const Iter&, Cat /*unused*/) noexcept -> size_t
+		STENOS_ALWAYS_INLINE auto iter_distance(const Iter&, const Iter&, Cat /*unused*/) noexcept -> size_t
 		{
 			return 0;
 		}
 		template<class Iter>
-		auto iter_distance(const Iter& first, const Iter& last, std::random_access_iterator_tag /*unused*/) noexcept -> size_t
+		STENOS_ALWAYS_INLINE auto iter_distance(const Iter& first, const Iter& last, std::random_access_iterator_tag /*unused*/) noexcept -> size_t
 		{
 			return (last > first) ? static_cast<size_t>(last - first) : 0;
 		}
-
-		// Equivalent to void_t
-		template<class T>
-		struct make_void
-		{
-			using type = void;
-		};
-
-		// Check if an allcoator has is_always_equal type
-		template<class T, class = void>
-		struct has_is_always_equal : std::false_type
-		{
-		};
-
-		template<class T>
-		struct has_is_always_equal<T, typename make_void<typename T::is_always_equal>::type> : std::true_type
-		{
-		};
-
-		/// Provide a is_always_equal type traits for allocators in case current compiler
-		/// std::allocator_traits::is_always_equal is not present.
-		template<class Alloc, bool HasIsAlwaysEqual = has_is_always_equal<Alloc>::value>
-		struct is_always_equal
-		{
-			using equal = typename std::allocator_traits<Alloc>::is_always_equal;
-			static constexpr bool value = equal::value;
-		};
-		template<class Alloc>
-		struct is_always_equal<Alloc, false>
-		{
-			static constexpr bool value = std::is_empty<Alloc>::value;
-		};
 	}
-
-	/// @brief Copy allocator for container copy constructor
-	template<class Allocator>
-	auto copy_allocator(const Allocator& alloc) noexcept(std::is_nothrow_copy_constructible<Allocator>::value) -> Allocator
-	{
-		return std::allocator_traits<Allocator>::select_on_container_copy_construction(alloc);
-	}
-
-	/// @brief Swap allocators for container.swap member
-	template<class Allocator>
-	void swap_allocator(Allocator& left,
-			    Allocator& right) noexcept(!std::allocator_traits<Allocator>::propagate_on_container_swap::value || std::allocator_traits<Allocator>::is_always_equal::value)
-	{
-		if STENOS_CONSTEXPR (std::allocator_traits<Allocator>::propagate_on_container_swap::value) {
-			std::swap(left, right);
-		}
-		else {
-			STENOS_ASSERT_DEBUG(left == right, "containers incompatible for swap");
-		}
-	}
-
-	/// @brief Assign allocator for container copy operator
-	template<class Allocator>
-	void assign_allocator(Allocator& left,
-			      const Allocator& right) noexcept(!std::allocator_traits<Allocator>::propagate_on_container_copy_assignment::value || std::is_nothrow_copy_assignable<Allocator>::value)
-	{
-		if STENOS_CONSTEXPR (std::allocator_traits<Allocator>::propagate_on_container_copy_assignment::value) {
-			left = right;
-		}
-	}
-
-	/// @brief Move allocator for container move assignment
-	template<class Allocator>
-	void move_allocator(Allocator& left,
-			    Allocator& right) noexcept(!std::allocator_traits<Allocator>::propagate_on_container_move_assignment::value || std::is_nothrow_move_assignable<Allocator>::value)
-	{
-		// (maybe) propagate on container move assignment
-		if STENOS_CONSTEXPR (std::allocator_traits<Allocator>::propagate_on_container_move_assignment::value) {
-			left = std::move(right);
-		}
-	}
-
-	// Returns whether an attempt to propagate allocators is necessary in copy assignment operations.
-	// Note that even when false_type, callers should call assign_allocator as we want to assign allocators even when equal.
-	template<class Allocator>
-	struct assign_alloc
-	{
-		static constexpr bool value = std::allocator_traits<Allocator>::propagate_on_container_copy_assignment::value && !detail::is_always_equal<Allocator>::value;
-	};
-
-	template<class Allocator>
-	struct move_alloc
-	{
-		static constexpr bool value = std::allocator_traits<Allocator>::propagate_on_container_move_assignment::type && !detail::is_always_equal<Allocator>::value;
-	};
 
 	/// @brief Returns the distance between first and last iterators for random access iterator category, 0 otherwise.
 	template<class Iter>
-	auto distance(const Iter& first, const Iter& last) noexcept -> size_t
+	STENOS_ALWAYS_INLINE auto distance(const Iter& first, const Iter& last) noexcept -> size_t
 	{
 		return detail::iter_distance(first, last, typename std::iterator_traits<Iter>::iterator_category());
 	}
@@ -256,7 +170,6 @@ namespace stenos
 		}
 		auto operator--() noexcept -> cvalue_iterator&
 		{
-			// TODO(VM213788): check decrement
 			--pos;
 			return *this;
 		}
@@ -405,30 +318,16 @@ namespace stenos
 			STENOS_ALWAYS_INLINE lock_type value() const noexcept { return d_lock.load(); }
 		};
 
-		template<class Ret>
-		struct ResultOf
-		{
-			template<class F, class... Args>
-			static STENOS_ALWAYS_INLINE bool apply(F&& f, Args... args)
-			{
-				return std::forward<F>(f)(std::forward<Args>(args)...);
-			}
-		};
-		template<>
-		struct ResultOf<void>
-		{
-			template<class F, class... Args>
-			static STENOS_ALWAYS_INLINE bool apply(F&& f, Args&&... args)
-			{
-				std::forward<F>(f)(std::forward<Args>(args)...);
-				return true;
-			}
-		};
 		template<class F, class... Args>
 		STENOS_ALWAYS_INLINE bool eval_functor(F&& f, Args&&... args)
 		{
 			using ret = decltype(f(std::declval<Args>()...));
-			return ResultOf<ret>::apply(std::forward<F>(f), std::forward<Args>(args)...);
+			if constexpr (std::is_convertible_v<ret, bool>)
+				return static_cast<bool>(f(std::forward<Args>(args)...));
+			else {
+				f(std::forward<Args>(args)...);
+				return true;
+			}
 		}
 
 		/// @brief Base class for RawBuffer to provide intrusive list features
@@ -627,8 +526,8 @@ namespace stenos
 		template<class T, unsigned block_size>
 		class TagPointer
 		{
-			volatile uintptr_t d_ptr = 0; // Not certain volatile is mandatory
-			STENOS_ALWAYS_INLINE uintptr_t load() const noexcept { return d_ptr; }
+			std::atomic<uintptr_t> d_ptr{ 0 }; // Not certain volatile is mandatory
+			STENOS_ALWAYS_INLINE uintptr_t load(std::memory_order o = std::memory_order_acquire) const noexcept { return d_ptr.load(o); }
 
 		public:
 			constexpr TagPointer() = default;
@@ -636,15 +535,28 @@ namespace stenos
 			  : d_ptr((uintptr_t)p | type)
 			{
 			}
-			STENOS_ALWAYS_INLINE RawBuffer<T, block_size>* raw() const noexcept { return (d_ptr & Compressed) ? nullptr : reinterpret_cast<RawBuffer<T, block_size>*>(d_ptr); }
-			STENOS_ALWAYS_INLINE char* compressed() const noexcept { return (d_ptr & Compressed) ? reinterpret_cast<char*>(d_ptr & ~1ull) : nullptr; }
+			STENOS_ALWAYS_INLINE RawBuffer<T, block_size>* raw() const noexcept
+			{
+				auto v = load();
+				return (v & Compressed) ? nullptr : reinterpret_cast<RawBuffer<T, block_size>*>(v);
+			}
+			STENOS_ALWAYS_INLINE char* compressed() const noexcept
+			{
+				auto v = load();
+				return (v & Compressed) ? reinterpret_cast<char*>(v & ~1ull) : nullptr;
+			}
 			STENOS_ALWAYS_INLINE char* find_compressed() const noexcept
 			{
-				return d_ptr ? ((d_ptr & Compressed) ? reinterpret_cast<char*>(d_ptr & ~1ull) : reinterpret_cast<RawBuffer<T, block_size>*>(d_ptr)->buffer) : nullptr;
+				auto v = load();
+				return v ? ((v & Compressed) ? reinterpret_cast<char*>(v & ~1ull) : reinterpret_cast<RawBuffer<T, block_size>*>(v)->buffer) : nullptr;
 			}
-			STENOS_ALWAYS_INLINE void set(void* p, BufferType type) noexcept { d_ptr = (uintptr_t)p | type; }
-			STENOS_ALWAYS_INLINE void swap(TagPointer& other) noexcept { std::swap(d_ptr, other.d_ptr); }
-			STENOS_ALWAYS_INLINE operator bool() const noexcept { return d_ptr != 0; }
+			STENOS_ALWAYS_INLINE void set(void* p, BufferType type) noexcept { d_ptr.store((uintptr_t)p | type, std::memory_order_release); }
+			STENOS_ALWAYS_INLINE void swap(TagPointer& other) noexcept
+			{
+				auto old = d_ptr.exchange(other.load());
+				other.d_ptr.store(old);
+			}
+			STENOS_ALWAYS_INLINE operator bool() const noexcept { return load() != 0; }
 		};
 
 		/// @brief Compressed buffer class
@@ -802,6 +714,8 @@ namespace stenos
 			STENOS_ALWAYS_INLINE operator const T&() const noexcept { return value; }
 		};
 
+		constexpr size_t invalid_status = (size_t)-1;
+
 		/// @brief Const value wrapper class for cvector and cvector::iterator
 		template<class Compressed>
 		class ConstRefWrapper : public BaseValue<ConstRefWrapper<Compressed>>
@@ -820,7 +734,7 @@ namespace stenos
 			STENOS_ALWAYS_INLINE auto _bucket() const noexcept -> const BucketType* { return &_c()->d_buckets[bucket]; }
 			STENOS_ALWAYS_INLINE auto _bucket() noexcept -> BucketType* { return &_c()->d_buckets[bucket]; }
 			STENOS_ALWAYS_INLINE auto _c() const noexcept -> Compressed* { return const_cast<Compressed*>(c); }
-			STENOS_ALWAYS_INLINE auto decompress_if_needed(size_t exclude = static_cast<size_t>(-1)) const
+			STENOS_ALWAYS_INLINE auto decompress_if_needed(size_t exclude = invalid_status) const
 			{
 				auto decompressed = this->_bucket()->load_decompressed();
 				if (!decompressed)
@@ -863,14 +777,20 @@ namespace stenos
 			{
 				_bucket()->ref();
 			}
-			STENOS_ALWAYS_INLINE ~ConstRefWrapper() noexcept { _bucket()->unref(); }
+			STENOS_ALWAYS_INLINE ~ConstRefWrapper() noexcept
+			{
+				if (c)
+					_bucket()->unref();
+			}
+
+			ConstRefWrapper& operator=(const ConstRefWrapper&) = delete;
+			ConstRefWrapper& operator=(ConstRefWrapper&&) = delete;
 
 			STENOS_ALWAYS_INLINE auto bucket_index() const noexcept -> size_t { return bucket; }
 			STENOS_ALWAYS_INLINE auto bucket_pos() const noexcept -> size_t { return bpos; }
 			STENOS_ALWAYS_INLINE auto vector_data() const noexcept -> const void* { return c; }
 
 			STENOS_ALWAYS_INLINE auto get() const -> const T& { return this->decompress_if_needed()->at(bpos); }
-
 			STENOS_ALWAYS_INLINE operator const T&() const { return get(); }
 		};
 
@@ -939,8 +859,8 @@ namespace stenos
 			STENOS_ALWAYS_INLINE auto operator=(const base_type& other) -> RefWrapper&
 			{
 				if STENOS_LIKELY (std::addressof(other) != this) {
-					auto raw_this = this->decompress_if_needed(other.bucket);
-					auto raw_other = other.decompress_if_needed(this->bucket);
+					auto raw_this = this->decompress_if_needed(this->c == other.c ? other.bucket : invalid_status);
+					auto raw_other = other.decompress_if_needed(this->c == other.c ? other.bucket : invalid_status);
 					raw_this->mark_dirty();
 					raw_this->at(this->bpos) = raw_other->at(other.bpos);
 				}
@@ -949,8 +869,8 @@ namespace stenos
 			STENOS_ALWAYS_INLINE auto operator=(RefWrapper&& other) -> RefWrapper&
 			{
 				if STENOS_LIKELY (std::addressof(other) != this) {
-					auto raw_this = this->decompress_if_needed(other.bucket);
-					auto raw_other = other.decompress_if_needed(this->bucket);
+					auto raw_this = this->decompress_if_needed(this->c == other.c ? other.bucket : invalid_status);
+					auto raw_other = other.decompress_if_needed(this->c == other.c ? this->bucket : invalid_status);
 					if (!std::is_trivially_move_assignable<T>::value)
 						raw_other->mark_dirty();
 					raw_this->mark_dirty();
@@ -1071,7 +991,6 @@ namespace stenos
 		{
 			using ref_type = typename Compressed::ref_type;
 			using const_ref_type = typename Compressed::const_ref_type;
-			static constexpr size_t invalid_status = (size_t)-1;
 
 			STENOS_ALWAYS_INLINE auto* as_ref() const { return reinterpret_cast<const_ref_type*>(data); }
 			STENOS_ALWAYS_INLINE bool is_valid() const { return as_ref()->bucket != invalid_status; }
@@ -1099,7 +1018,7 @@ namespace stenos
 			static constexpr size_t shift = Compressed::shift;
 
 			difference_type abspos;
-			mutable char data[sizeof(const_ref_type)];
+			alignas(const_ref_type) mutable char data[sizeof(const_ref_type)];
 
 			STENOS_ALWAYS_INLINE Compressed* c() const { return as_ref()->_c(); }
 
@@ -1374,6 +1293,17 @@ namespace stenos
 
 			static constexpr size_t block_bytes = block_size * sizeof(T);
 			static constexpr size_t dst_block_bytes = compress_bound(block_bytes);
+
+			struct RawUnlocker
+			{
+				CompressedVectorInternal* ctx = nullptr;
+				RawType* raw = nullptr;
+				~RawUnlocker() noexcept
+				{
+					if (ctx)
+						ctx->unlock(raw);
+				}
+			};
 
 			std::vector<BucketType, RebindAlloc<BucketType>> d_buckets; // compressed buckets
 			ContextType d_contexts;					    // decompression contexts
@@ -1667,7 +1597,7 @@ namespace stenos
 			/// @brief Unlock a decompression context
 			STENOS_ALWAYS_INLINE void unlock(RawType* raw) noexcept
 			{
-				if (raw->block_index != RawType::invalid_index)
+				if (raw && raw->block_index != RawType::invalid_index)
 					return d_buckets[raw->block_index].ref_count.unlock();
 			}
 
@@ -1675,13 +1605,14 @@ namespace stenos
 			/// In case of exception, decompress and destroy values, deallocate previous buffer, remove bucket, remove decompression context and rethrow.
 			auto allocate_buffer_for_compression(unsigned size, BucketType* bucket, size_t bucket_index, RawType* context) -> char*
 			{
-				char* buff = nullptr;
+				return RebindAlloc<char>(*this).allocate(size);
+				/* char* buff = nullptr;
 				try {
 					buff = RebindAlloc<char>(*this).allocate(size); //(char*)malloc(r);
 				}
 				catch (...) {
 					// unlock bucket
-					unlock(context);
+					//unlock(context);
 					// deallocate
 					if (bucket->data) {
 						// first destroy values
@@ -1706,6 +1637,7 @@ namespace stenos
 					throw;
 				}
 				return buff;
+				*/
 			}
 
 			/// @brief Returns a decompression context either by creating a new one, or by reusing an existing one
@@ -1752,66 +1684,59 @@ namespace stenos
 						return nullptr;
 					// Cannot find one: create a new one, might throw (fine)
 					RawType* raw = make_raw();
-
+					
 					// Insert the new context at the beginning
 					d_contexts.push_front(raw);
+					
 					// Return it
 					return raw;
 				}
 
 				RawType* found_raw = *found;
-				BucketType* found_bucket = (*found)->block_index == RawType::invalid_index ? nullptr : &d_buckets[(*found)->block_index];
-				size_t saved_index = (*found)->block_index;
 
-				// Compress context if dirty
-				if (found_raw->dirty) {
-					// find the corresponding PackBuffer, excluding front and back buckets
-					STENOS_ASSERT_DEBUG(found_bucket, "context must belong to an existing bucket");
+				{
+					RawUnlocker guard{ this, found_raw };
 
-					size_t r = compress(found_raw->storage);
+					BucketType* found_bucket = (*found)->block_index == RawType::invalid_index ? nullptr : &d_buckets[(*found)->block_index];
+					size_t saved_index = (*found)->block_index;
 
-					if (r != stenos_private_block_csize(found_raw->buffer)) {
-						// Free old memory, alloc new one
-						char* buff = allocate_buffer_for_compression((unsigned)r, found_bucket, saved_index, found_raw);
-						if (found_raw->buffer)
-							RebindAlloc<char>(*this).deallocate(found_raw->buffer, stenos_private_block_csize(found_raw->buffer));
-						found_raw->buffer = buff;
-					}
+					// Compress context if dirty
+					if (found_raw->dirty) {
+						// find the corresponding PackBuffer, excluding front and back buckets
+						STENOS_ASSERT_DEBUG(found_bucket, "context must belong to an existing bucket");
 
-					memcpy(found_raw->buffer, compression_buffer(), r);
+						size_t r = compress(found_raw->storage);
 
-					// Use this opportunity to free another context if possible
-					if (!start && d_contexts.size() > d_buckets.size() / 16) {
-						RawType* raw = find_free_context(exclude, &found);
-						if (raw)
-							erase_context(raw);
-					}
-				}
-
-				if (d_contexts.size() > 1 && found != d_contexts.begin()) {
-					// Move the context to index 0.
-					// This way, we maximize the chances to find at the tail the (possibly) oldest context that should be the first to be reused
-					d_contexts.erase(found_raw);
-
-					// Now that the found context is removed from the context list,
-					// use this occasion to keep looking for an additional decompression context to close
-					/* if (!start) {
-						auto it = d_contexts.end();
-						auto * to_free = find_free_context(exclude, &it);
-						if (to_free) {
-							erase_context(to_free);
+						if (r != stenos_private_block_csize(found_raw->buffer)) {
+							// Free old memory, alloc new one
+							char* buff = allocate_buffer_for_compression((unsigned)r, found_bucket, saved_index, found_raw);
+							if (found_raw->buffer)
+								RebindAlloc<char>(*this).deallocate(found_raw->buffer, stenos_private_block_csize(found_raw->buffer));
+							found_raw->buffer = buff;
 						}
-					}*/
 
-					d_contexts.push_front(found_raw);
+						memcpy(found_raw->buffer, compression_buffer(), r);
+
+						// Use this opportunity to free another context if possible
+						if (!start && d_contexts.size() > d_buckets.size() / 16) {
+							RawType* raw = find_free_context(exclude, &found);
+							if (raw)
+								erase_context(raw);
+						}
+					}
+
+					if (d_contexts.size() > 1 && found != d_contexts.begin()) {
+						// Move the context to index 0.
+						// This way, we maximize the chances to find at the tail the (possibly) oldest context that should be the first to be reused
+						d_contexts.erase(found_raw);
+						d_contexts.push_front(found_raw);
+					}
+
+					// Unlink
+					if (found_bucket)
+						found_bucket->data.set(found_raw->buffer, Compressed);
 				}
-
-				// Unlink
-				if (found_bucket)
-					found_bucket->data.set(found_raw->buffer, Compressed);
-
 				// Reset, unlock and return
-				unlock(found_raw);
 				found_raw->reset();
 				return found_raw;
 			}
@@ -1859,7 +1784,7 @@ namespace stenos
 
 			/// @brief Decompress given bucket.
 			/// If necessary, use an existing context or create a new one (which cannot be the exclude one)
-			auto decompress_bucket(size_t index, size_t exclude = static_cast<size_t>(-1)) -> RawType*
+			auto decompress_bucket(size_t index, size_t exclude = invalid_status) -> RawType*
 			{
 				auto decompressed = d_buckets[index].load_decompressed();
 				if (!decompressed) {
@@ -1868,15 +1793,15 @@ namespace stenos
 						return decompressed;
 
 					BucketType* pack = &d_buckets[index];
-					RawType* raw = make_or_find_free_context(exclude == static_cast<size_t>(-1) ? nullptr : d_buckets[exclude].load_decompressed());
+					RawType* raw = make_or_find_free_context(exclude == invalid_status ? nullptr : d_buckets[exclude].load_decompressed());
 					raw->block_index = index;
 
 					this->decompress(pack, raw->storage);
 					char* buffer = pack->data.find_compressed();
-					pack->data.set(raw, Raw);
 					raw->buffer = buffer;
 					raw->dirty = 0;
 					raw->size = block_size;
+					pack->data.set(raw, Raw);
 					decompressed = raw;
 				}
 				return decompressed;
@@ -2301,9 +2226,18 @@ namespace stenos
 					}
 					remaining -= to_process;
 					size_t en = pos + to_process;
-					for (size_t p = pos; p != en; ++p, ++res)
-						if (!eval_functor(std::forward<Functor>(fun), cur->at(p)))
-							return res;
+
+					try {
+						for (size_t p = pos; p != en; ++p, ++res)
+							if (!eval_functor(std::forward<Functor>(fun), cur->at(p))) {
+								cur->mark_dirty(this);
+								return res;
+							}
+					}
+					catch (...) {
+						cur->mark_dirty(this);
+						throw;
+					}
 					pos = 0;
 					++bindex;
 					cur->mark_dirty(this);
@@ -2365,9 +2299,17 @@ namespace stenos
 					}
 					difference_type low = bindex == first_bucket ? first_index : 0;
 					difference_type high = bindex == last_bucket ? last_index : static_cast<difference_type>(block_size - 1);
-					for (difference_type i = high; i >= low; --i, ++res)
-						if (!eval_functor(std::forward<Functor>(fun), cur->at((unsigned)i)))
-							return res;
+					try {
+						for (difference_type i = high; i >= low; --i, ++res)
+							if (!eval_functor(std::forward<Functor>(fun), cur->at((unsigned)i))) {
+								cur->mark_dirty(this);
+								return res;
+							}
+					}
+					catch (...) {
+						cur->mark_dirty(this);
+						throw;
+					}
 					cur->mark_dirty(this);
 				}
 
@@ -2399,6 +2341,7 @@ namespace stenos
 
 		using internal_type = detail::CompressedVectorInternal<T, Allocator, BlockSize, Level>;
 		using bucket_type = typename internal_type::BucketType;
+		using Traits = std::allocator_traits<Allocator>;
 		template<class U>
 		using RebindAlloc = typename std::allocator_traits<Allocator>::template rebind_alloc<U>;
 
@@ -2423,15 +2366,17 @@ namespace stenos
 		}
 		void destroy_internal(internal_type* data) noexcept
 		{
+			if (!data)
+				return;
 			data->~internal_type();
-			RebindAlloc<internal_type> a = get_allocator();
+			RebindAlloc<internal_type> a = allocator_ref();
 			a.deallocate(data, 1);
 		}
 
-		void make_data_if_null()
+		STENOS_ALWAYS_INLINE void make_data_if_null()
 		{
 			if (!d_data)
-				d_data = make_internal(get_allocator());
+				d_data = make_internal(allocator_ref());
 		}
 
 		/// @brief Returns the compressed buffer for given block.
@@ -2455,6 +2400,9 @@ namespace stenos
 			buf = bucket->data.find_compressed();
 			return { buf, stenos_private_block_csize(buf) };
 		}
+
+		STENOS_ALWAYS_INLINE auto allocator_ref() const noexcept -> const Allocator& { return static_cast<const Allocator&>(*this); }
+		STENOS_ALWAYS_INLINE auto allocator_ref() noexcept -> Allocator& { return static_cast<Allocator&>(*this); }
 
 	public:
 		static_assert(is_relocatable<T>::value, "cvector: given type must be relocatable based on stenos::is_relocatable type trait");
@@ -2501,7 +2449,13 @@ namespace stenos
 		  : Allocator(alloc)
 		  , d_data(make_internal(alloc))
 		{
-			resize(count, value);
+			try {
+				resize(count, value);
+			}
+			catch (...) {
+				destroy_internal(d_data);
+				throw;
+			}
 		}
 		/// @brief Constructs the container with count default-inserted instances of T. No copies are made.
 		/// @param count new cvector size
@@ -2510,12 +2464,18 @@ namespace stenos
 		  : Allocator(alloc)
 		  , d_data(make_internal(alloc))
 		{
-			resize(count);
+			try {
+				resize(count);
+			}
+			catch (...) {
+				destroy_internal(d_data);
+				throw;
+			}
 		}
 		/// @brief Copy constructor. Constructs the container with the copy of the contents of other.
 		/// @param other another container to be used as source to initialize the elements of the container with
 		cvector(const cvector& other)
-		  : cvector(other, copy_allocator(other.get_allocator()))
+		  : cvector(other, Traits::select_on_container_copy_construction(other.allocator_ref()))
 		{
 		}
 		/// @brief Constructs the container with the copy of the contents of other, using alloc as the allocator.
@@ -2526,15 +2486,21 @@ namespace stenos
 		  , d_data(nullptr)
 		{
 			if (other.size()) {
-				d_data = make_internal(alloc);
-				// calling push_back is faster than resize + copy
-				other.for_each(0, other.size(), [this](const T& v) { this->push_back(v); });
+				try {
+					d_data = make_internal(alloc);
+					// calling push_back is faster than resize + copy
+					other.for_each(0, other.size(), [this](const T& v) { this->push_back(v); });
+				}
+				catch (...) {
+					destroy_internal(d_data);
+					throw;
+				}
 			}
 		}
 		/// @brief Move constructor. Constructs the container with the contents of other using move semantics. Allocator is obtained by move-construction from the allocator belonging to other.
 		/// @param other another container to be used as source to initialize the elements of the container with
 		cvector(cvector&& other) noexcept(std::is_nothrow_move_constructible<Allocator>::value)
-		  : Allocator(std::move(other.get_allocator()))
+		  : Allocator(std::move(other.allocator_ref()))
 		  , d_data(other.d_data)
 		{
 			other.d_data = nullptr;
@@ -2547,11 +2513,18 @@ namespace stenos
 		  : Allocator(alloc)
 		  , d_data(make_internal(alloc))
 		{
-			if (alloc == other.get_allocator()) {
+			if (alloc == other.allocator_ref()) {
 				std::swap(d_data, other.d_data);
 			}
 			else {
-				other.for_each(0, other.size(), [this](T& v) { this->push_back(std::move(v)); });
+				try {
+					other.for_each(0, other.size(), [this](T& v) { this->push_back(std::move(v)); });
+				}
+				catch (...) {
+					destroy_internal(d_data);
+					throw;
+				}
+				other.clear();
 			}
 		}
 
@@ -2565,7 +2538,13 @@ namespace stenos
 		  : Allocator(alloc)
 		  , d_data(make_internal(alloc))
 		{
-			assign(first, last);
+			try {
+				assign(first, last);
+			}
+			catch (...) {
+				destroy_internal(d_data);
+				throw;
+			}
 		}
 
 		/// @brief Constructs the container with the contents of the initializer list \a init.
@@ -2577,18 +2556,45 @@ namespace stenos
 		}
 
 		/// @brief  Destructor
-		~cvector() noexcept
-		{
-			if (d_data)
-				destroy_internal(d_data);
-		}
+		~cvector() noexcept { destroy_internal(d_data); }
 
 		/// @brief Move assignment operator.
 		/// @param other another container to use as data source
 		/// @return reference to this
-		auto operator=(cvector&& other) noexcept(noexcept(std::declval<cvector&>().swap(std::declval<cvector&>()))) -> cvector&
+		auto operator=(cvector&& other) noexcept(Traits::propagate_on_container_move_assignment::value ? std::is_nothrow_move_assignable_v<Allocator> : Traits::is_always_equal::value)
+		  -> cvector&
 		{
-			this->swap(other);
+			if (this == std::addressof(other))
+				return *this;
+
+			if constexpr (Traits::propagate_on_container_move_assignment::value) {
+
+				// Reset this container
+				destroy_internal(d_data);
+				d_data = nullptr;
+
+				// Move allocator, might throw
+				allocator_ref() = std::move(other.allocator_ref());
+
+				d_data = other.d_data;
+				other.d_data = nullptr;
+			}
+			else {
+				if (allocator_ref() == other.allocator_ref()) {
+					destroy_internal(d_data);
+					d_data = other.d_data;
+					other.d_data = nullptr;
+				}
+				else {
+					destroy_internal(d_data);
+					d_data = nullptr;
+					if (other.size()) {
+						other.for_each(0, other.size(), [&](auto& v) { this->push_back(std::move(v)); });
+						other.clear();
+					}
+				}
+			}
+
 			return *this;
 		}
 
@@ -2597,36 +2603,30 @@ namespace stenos
 		/// @return reference to this
 		auto operator=(const cvector& other) -> cvector&
 		{
-			if (this != std::addressof(other)) {
+			if (this == std::addressof(other))
+				return *this;
 
-				if STENOS_CONSTEXPR (assign_alloc<Allocator>::value) {
-					if (get_allocator() != other.get_allocator()) {
-						destroy_internal(d_data);
-						d_data = nullptr;
-					}
-				}
-				assign_allocator(get_allocator(), other.get_allocator());
+			if constexpr (Traits::propagate_on_container_copy_assignment::value) {
+				if (allocator_ref() != other.allocator_ref()) {
+					cvector tmp(other, other.allocator_ref());
 
-				if (other.size() == 0)
-					clear();
-				else {
-					internal_type* tmp = make_internal(get_allocator());
-					try {
-						try {
-							other.for_each(0, other.size(), [tmp](const T& v) { tmp->push_back(v); });
-						}
-						catch (...) {
-							destroy_internal(tmp);
-							throw;
-						}
-						destroy_internal(d_data);
-						d_data = tmp;
-					}
-					catch (...) {
-						destroy_internal(tmp);
-					}
+					destroy_internal(d_data);
+					d_data = nullptr;
+
+					allocator_ref() = other.allocator_ref();
+
+					d_data = tmp.d_data;
+					tmp.d_data = nullptr;
+					return *this;
 				}
+
+				allocator_ref() = other.allocator_ref();
 			}
+
+			cvector tmp(other, allocator_ref());
+			destroy_internal(d_data);
+			d_data = tmp.d_data;
+			tmp.d_data = nullptr;
 			return *this;
 		}
 
@@ -2646,18 +2646,24 @@ namespace stenos
 		/// @brief Retruns true if the container is empty, false otherwise.
 		STENOS_ALWAYS_INLINE auto empty() const noexcept -> bool { return !d_data || d_data->size() == 0; }
 		/// @brief Returns the allocator associated with the container.
-		STENOS_ALWAYS_INLINE auto get_allocator() const noexcept -> const Allocator& { return static_cast<const Allocator&>(*this); }
-		/// @brief Returns the allocator associated with the container.
-		STENOS_ALWAYS_INLINE auto get_allocator() noexcept -> Allocator& { return static_cast<Allocator&>(*this); }
+		STENOS_ALWAYS_INLINE auto get_allocator() const -> Allocator { return allocator_ref(); }
+
 		/// @brief Exchanges the contents of the container with those of other. Does not invoke any move, copy, or swap operations on individual elements.
 		/// @param other other sequence to swap with
 		/// All iterators and references remain valid.
 		/// An iterator holding the past-the-end value in this container will refer to the other container after the operation.
-		void swap(cvector& other) noexcept(noexcept(swap_allocator(std::declval<Allocator&>(), std::declval<Allocator&>())))
+		void swap(cvector& other) noexcept(!Traits::propagate_on_container_swap::value || std::is_nothrow_swappable_v<Allocator>)
 		{
 			if (this != std::addressof(other)) {
+
+				if constexpr (!Traits::propagate_on_container_swap::value) {
+					STENOS_ASSERT_DEBUG(get_allocator() == other.get_allocator(), "swap requires equal non-propagating allocators");
+				}
+				else {
+					using std::swap;
+					swap(allocator_ref(), other.allocator_ref());
+				}
 				std::swap(d_data, other.d_data);
-				swap_allocator(get_allocator(), other.get_allocator());
 			}
 		}
 
