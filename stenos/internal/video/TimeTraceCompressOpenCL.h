@@ -358,7 +358,7 @@ namespace stenos
 			d_last_evt = (*d_advance_pixel_data)(args, d_buffer_data, d_buffer_pixels, d_buffer_img, d_pos, d_error, (int)d_gop, d_buffer_times);
 
 			++d_pos;
-			if (d_pos >= d_gop) {
+			if (d_pos >= (int)d_gop) {
 				finish_block();
 				return true;
 			}
