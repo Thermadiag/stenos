@@ -2,9 +2,9 @@ name: build
 on: 
 
   push:
-    branches: [ "main", "dev" ]
+    branches: [ "main", "dev", "trace" ]
   pull_request:
-    branches: [ "main", "dev", "releases/**" ]
+    branches: [ "main", "dev", "trace", "releases/**" ]
   workflow_dispatch:
   workflow_call:
 
