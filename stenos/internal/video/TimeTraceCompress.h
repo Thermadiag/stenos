@@ -149,7 +149,7 @@ namespace stenos
 			size_t csize = read_uint64(in);
 			vec.resize(bytes / sizeof(T));
 			std::vector<char> tmp(csize);
-			if (in->read(tmp.data(), csize, in->opaque) != csize)
+			if (in->read(tmp.data(), csize, in->opaque) != (int64_t)csize)
 				return false;
 			size_t r = stenos_decompress_generic(ctx, tmp.data(), sizeof(T), csize, vec.data(), bytes);
 			return stenos_has_error(r) == 0;
@@ -1069,8 +1069,8 @@ namespace stenos
 				return res;
 			}
 
-			uint64_t pix_bytes = compress_detail::read_uint64(in);
-			uint64_t csize = compress_detail::read_uint64(in);
+			/*uint64_t pix_bytes = */compress_detail::read_uint64(in);
+			/*uint64_t csize = */compress_detail::read_uint64(in);
 			int64_t stream_pos = (int64_t)in->tell(in->opaque);
 
 			// Unlock the lock during heavy computation, relock at the end
@@ -1242,7 +1242,7 @@ namespace stenos
 		{
 			close();
 
-			uint64_t full_block_size = compress_detail::read_uint64(in);
+			/*uint64_t full_block_size = */compress_detail::read_uint64(in);
 			return open_skip_size_partial(in, coords, count, lock);
 		}
 

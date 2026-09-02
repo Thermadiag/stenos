@@ -358,7 +358,7 @@ namespace stenos
 				int d = stenosv_compress_device(comp);
 				int gop = stenosv_compress_gop(comp);
 				auto pix = stenosv_compress_pixel_type(comp);
-				if (w != p.width || h != p.height || pix != p.pixel_type || d != p.device || gop != p.maxGOP) {
+				if (w != (int)p.width || h != (int)p.height || pix != p.pixel_type || d != p.device || gop != (int)p.maxGOP) {
 					stenosv_compress_destroy(comp);
 					comp = nullptr;
 				}
@@ -430,7 +430,7 @@ namespace stenos
 		}
 
 		// Recheck parameters
-		if( w != d_data->params.width || h != d_data->params.height ||  pix != d_data->params.pixel_type)
+		if( w != (int)d_data->params.width || h != (int)d_data->params.height ||  pix != d_data->params.pixel_type)
 			RETURN_ERROR(STENOS_ERROR_INVALID_PARAMETER, false);
 
 		// Check timestamps
@@ -469,7 +469,7 @@ namespace stenos
 			RETURN_ERROR(STENOS_ERROR_INVALID_PARAMETER, false);
 
 		auto file_pos = d_data->timestamps[pos].file_block_pos;
-		if (!d_data->dec || d_data->dec_block_pos != file_pos) {
+		if (!d_data->dec || d_data->dec_block_pos != (int64_t)file_pos) {
 
 			if (d_data->dec) {
 				stenosv_decompress_destroy(d_data->dec);
@@ -483,7 +483,7 @@ namespace stenos
 			d_data->dec = stenosv_decompress_make_stream(&in, (int)d_data->params.threads);
 			if (!d_data->dec)
 				RETURN_ERROR(STENOS_ERROR_INVALID_INPUT, false);
-			d_data->dec_block_pos = file_pos;
+			d_data->dec_block_pos = (int64_t)file_pos;
 		}
 
 		auto r = stenosv_decompress_read_image(d_data->dec, d_data->timestamps[pos].block_pos, 1, img);
