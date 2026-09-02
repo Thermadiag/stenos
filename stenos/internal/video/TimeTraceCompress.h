@@ -592,7 +592,7 @@ namespace stenos
 
 			set_context_max_time(timer, remaining_ns, 0);
 
-			auto st = std::chrono::system_clock::now();
+			//auto st = std::chrono::system_clock::now();
 			if (!d_error && d_pos == d_max_gop) {
 				// Directly use the internal buffer as it contains all pixels in the right order (no decimation)
 				compress_detail::write_compressed_buffer(d_ctx, out, d_buffer.data(), sizeof(PixelType), d_buffer.size() * sizeof(PixelType));
@@ -602,7 +602,7 @@ namespace stenos
 				compress_detail::write_compressed_buffer(d_ctx, out, pixels.data(), sizeof(PixelType), pixels.size() * sizeof(PixelType));
 			
 			//TEST
-			auto el = std::chrono::system_clock::now() -st;
+			//auto el = std::chrono::system_clock::now() -st;
 			//std::cout << "Compressing " << d_pos << " images took " << std::chrono::duration_cast<std::chrono::milliseconds>(el).count() / 1000. << " seconds" << std::endl;
 			
 			d_pos = 0;

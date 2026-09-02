@@ -375,7 +375,7 @@ int test_video_codec(int, char*[])
 	std::vector<char> compressed;
 		
 	// Build codec context with a GOP of 16 images
-	auto codec = stenosv_compress_make(StenosUInt16, width, height, error, 16, select_GPU);
+	auto codec = stenosv_compress_make(StenosUInt16, (int)width, (int)height, error, 16, select_GPU);
 	stenosv_compress_set_clevel(codec,9); // Set the compression level, from 0 (no compression) to 9 (maximum compression)
 	stenosv_compress_set_threads(codec,4); // Set the number of threads
 
