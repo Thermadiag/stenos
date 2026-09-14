@@ -303,11 +303,23 @@
 #endif
 #endif
 
+namespace stenos
+{
+	namespace detail
+	{
+		template<class... T>
+		bool msg(T...)
+		{
+			return true;
+		}
+	}
+}
+
 // Debug assertion
 #ifndef STENOS_DEBUG
-#define STENOS_ASSERT_DEBUG(condition, msg)
+#define STENOS_ASSERT_DEBUG(condition, ...)
 #else
-#define STENOS_ASSERT_DEBUG(condition, ...) assert((condition) && (__VA_ARGS__))
+#define STENOS_ASSERT_DEBUG(condition, ...) assert((condition) && stenos::detail::msg(__VA_ARGS__))
 #endif
 
 // Abort program with a last message

@@ -536,6 +536,52 @@ namespace stenos
 
 		static inline const uint8_t* read_16_bits(const uint8_t* src, const uint8_t* end, uint8_t* out, uint32_t bits) noexcept;
 
+
+		static inline uint8_t* write_16(const uint8_t* v, uint8_t* dst, uint8_t bits) noexcept
+		{
+			// Write 16 values using a fixed bits width
+			{
+#define _U64(val) static_cast<uint64_t>(val)
+#define _U32(val) static_cast<uint32_t>(val)
+
+				switch (bits) {
+					case 1:
+						dst[0] = v[0] | (v[1] << 1U) | (v[2] << 2U) | (v[3] << 3U) | (v[4] << 4U) | (v[5] << 5U) | (v[6] << 6U) | (v[7] << 7U);
+						dst[1] = v[8] | (v[9] << 1U) | (v[10] << 2U) | (v[11] << 3U) | (v[12] << 4U) | (v[13] << 5U) | (v[14] << 6U) | (v[15] << 7U);
+						break;
+					case 2:
+						dst[0] = v[0] | (v[1] << 2U) | (v[2] << 4U) | (v[3] << 6U);
+						dst[1] = v[4] | (v[5] << 2U) | (v[6] << 4U) | (v[7] << 6U);
+						dst[2] = v[8] | (v[9] << 2U) | (v[10] << 4U) | (v[11] << 6U);
+						dst[3] = v[12] | (v[13] << 2U) | (v[14] << 4U) | (v[15] << 6U);
+						break;
+					case 3:
+						write_LE_32(dst, (_U32(v[0]) | (_U32(v[1]) << 3U) | (_U32(v[2]) << 6U) | (_U32(v[3]) << 9U) | (_U32(v[4]) << 12U) | (_U32(v[5]) << 15U) | (_U32(v[6]) << 18U) | (_U32(v[7]) << 21U)));
+						write_LE_32(dst + 3, (_U32(v[8]) | (_U32(v[9]) << 3U) | (_U32(v[10]) << 6U) | (_U32(v[11]) << 9U) | (_U32(v[12]) << 12U) | (_U32(v[13]) << 15U) | (_U32(v[14]) << 18U) | (_U32(v[15]) << 21U)));
+						break;
+					case 4:
+						write_LE_32(dst, (_U32(v[0]) | (_U32(v[1]) << 4U) | (_U32(v[2]) << 8U) | (_U32(v[3]) << 12U) | (_U32(v[4]) << 16U) | (_U32(v[5]) << 20U) | (_U32(v[6]) << 24U) | (_U32(v[7]) << 28U)));
+						write_LE_32(dst + 4, (_U32(v[8]) | (_U32(v[9]) << 4U) | (_U32(v[10]) << 8U) | (_U32(v[11]) << 12U) | (_U32(v[12]) << 16U) | (_U32(v[13]) << 20U) | (_U32(v[14]) << 24U) | (_U32(v[15]) << 28U)));
+						break;
+					default:
+						write_LE_64(dst,
+							    _U64(v[0]) | (_U64(v[1]) << bits) | (_U64(v[2]) << bits * 2) | (_U64(v[3]) << bits * 3) | (_U64(v[4]) << bits * 4) | (_U64(v[5]) << bits * 5) |
+							      (_U64(v[6]) << bits * 6) | (_U64(v[7]) << bits * 7));
+						write_LE_64(dst + bits,
+							    _U64(v[8]) | (_U64(v[9]) << bits) | (_U64(v[10]) << bits * 2) | (_U64(v[11]) << bits * 3) | (_U64(v[12]) << bits * 4) |
+							      (_U64(v[13]) << bits * 5) | (_U64(v[14]) << bits * 6) | (_U64(v[15]) << bits * 7));
+
+						break;
+				}
+
+#undef _U64
+#undef _U32
+			}
+
+			return dst + bits * 2;
+		}
+
+
 #if defined(__BMI2__) && defined(STENOS_ARCH_64)
 		static STENOS_ALWAYS_INLINE uint8_t* write_16_bmi2(const uint8_t* v, uint8_t* dst, uint8_t bits) noexcept
 		{
@@ -551,6 +597,7 @@ namespace stenos
 				0x7F7F7F7F7F7F7F7FULL,
 				0xFFFFFFFFFFFFFFFFULL,
 			};
+
 			uint64_t v1 = _pext_u64(read_LE_64(v), mask[bits]);
 			write_LE_64(dst, v1);
 			uint64_t v2 = _pext_u64(read_LE_64(v + 8), mask[bits]);
@@ -558,48 +605,6 @@ namespace stenos
 			return dst + bits * 2;
 		}
 #endif
-
-		static inline uint8_t* write_16(const uint8_t* v, uint8_t* dst, uint8_t bits) noexcept
-		{
-			// Write 16 values using a fixed bits width
-			{
-#define _U64(val) static_cast<uint64_t>(val)
-
-				switch (bits) {
-					case 1:
-						dst[0] = v[0] | (v[1] << 1U) | (v[2] << 2U) | (v[3] << 3U) | (v[4] << 4U) | (v[5] << 5U) | (v[6] << 6U) | (v[7] << 7U);
-						dst[1] = v[8] | (v[9] << 1U) | (v[10] << 2U) | (v[11] << 3U) | (v[12] << 4U) | (v[13] << 5U) | (v[14] << 6U) | (v[15] << 7U);
-						break;
-					case 2:
-						dst[0] = v[0] | (v[1] << 2U) | (v[2] << 4U) | (v[3] << 6U);
-						dst[1] = v[4] | (v[5] << 2U) | (v[6] << 4U) | (v[7] << 6U);
-						dst[2] = v[8] | (v[9] << 2U) | (v[10] << 4U) | (v[11] << 6U);
-						dst[3] = v[12] | (v[13] << 2U) | (v[14] << 4U) | (v[15] << 6U);
-						break;
-					case 3:
-						write_LE_32(dst, (v[0] | (v[1] << 3U) | (v[2] << 6U) | (v[3] << 9U) | (v[4] << 12U) | (v[5] << 15U) | (v[6] << 18U) | (v[7] << 21U)));
-						write_LE_32(dst + 3, (v[8] | (v[9] << 3U) | (v[10] << 6U) | (v[11] << 9U) | (v[12] << 12U) | (v[13] << 15U) | (v[14] << 18U) | (v[15] << 21U)));
-						break;
-					case 4:
-						write_LE_32(dst, (v[0] | (v[1] << 4U) | (v[2] << 8U) | (v[3] << 12U) | (v[4] << 16U) | (v[5] << 20U) | (v[6] << 24U) | (v[7] << 28U)));
-						write_LE_32(dst + 4, (v[8] | (v[9] << 4U) | (v[10] << 8U) | (v[11] << 12U) | (v[12] << 16U) | (v[13] << 20U) | (v[14] << 24U) | (v[15] << 28U)));
-						break;
-					default:
-						write_LE_64(dst,
-							    v[0] | (v[1] << bits) | (v[2] << bits * 2) | (v[3] << bits * 3) | (_U64(v[4]) << bits * 4) | (_U64(v[5]) << bits * 5) |
-							      (_U64(v[6]) << bits * 6) | (_U64(v[7]) << bits * 7));
-						write_LE_64(dst + bits,
-							    v[8] | (_U64(v[9]) << bits) | (_U64(v[10]) << bits * 2) | (_U64(v[11]) << bits * 3) | (_U64(v[12]) << bits * 4) |
-							      (_U64(v[13]) << bits * 5) | (_U64(v[14]) << bits * 6) | (_U64(v[15]) << bits * 7));
-
-						break;
-				}
-
-#undef _U64
-			}
-
-			return dst + bits * 2;
-		}
 
 #if defined(__BMI2__) && defined(STENOS_ARCH_64)
 		template<bool First>
@@ -1096,6 +1101,8 @@ namespace stenos
 	}
 #endif
 
+
+
 	static STENOS_ALWAYS_INLINE size_t block_compress(const void* STENOS_RESTRICT __src,
 							  size_t bytesoftype,
 							  size_t bytes,
@@ -1269,8 +1276,6 @@ namespace stenos
 
 				if (ratio < *target_ratio && level >= 0) // avoid going through zstd if block compression is too slow (level < 0)
 					return STENOS_ERROR_DST_OVERFLOW;
-
-				target_ratio = nullptr;
 			}
 		}
 
@@ -1967,7 +1972,7 @@ namespace stenos
 			return src + size;
 		}
 
-		static STENOS_ALWAYS_INLINE const uint8_t* decolde_line_flat(uint8_t h,
+		static STENOS_ALWAYS_INLINE const uint8_t* decode_line_flat(uint8_t h,
 									     const uint8_t* STENOS_RESTRICT src,
 									     const uint8_t* STENOS_RESTRICT end,
 									     uint8_t* STENOS_RESTRICT dst,
@@ -2043,10 +2048,10 @@ namespace stenos
 				// check overflow
 				if STENOS_UNLIKELY (!src)
 					return nullptr;
-				src = decolde_line_flat(headers[i], src, end, dst, i, mins);
+				src = decode_line_flat(headers[i], src, end, dst, i, mins);
 				if STENOS_UNLIKELY (!src)
 					return nullptr;
-				src = decolde_line_flat(headers[i + 1], src, end, dst + 16, i + 1, mins);
+				src = decode_line_flat(headers[i + 1], src, end, dst + 16, i + 1, mins);
 			}
 			return src;
 		}
@@ -2179,6 +2184,84 @@ namespace stenos
 
 namespace stenos
 {
+
+	static inline size_t block_guess_compress_size(const void* __src, size_t bytesoftype, size_t bytes, size_t max_bytes) noexcept
+	{
+#ifdef __SSE4_1__
+		if ((cpu_features().HAS_SSE41)) {
+
+			static const uint32_t diff[3] = { 25, 16, 0 };
+			static const int methods[3] = { 0, __STENOS_COMP_RLE, __STENOS_COMP_RLE };
+
+			if STENOS_UNLIKELY (bytes == 0)
+				return 0;
+
+			const uint8_t* src = static_cast<const uint8_t*>(__src);
+			size_t header_size = (bytesoftype >> 1) + ((bytesoftype & 1) ? 1 : 0);
+			int block_level = 1;
+			int level = (int)block_level;
+
+			size_t block_size = bytesoftype * 256;
+			size_t block_count = block_size == bytes ? 1 : bytes / block_size;
+			size_t remaining_bytes = 0;
+
+			void* buff_src = make_compression_buffer(detail::compression_buffer_size(bytesoftype));
+			if STENOS_UNLIKELY (!buff_src)
+				return STENOS_ERROR_ALLOC;
+
+			detail::BlockEncoder encoder;
+			encoder.init(buff_src, bytesoftype);
+
+			uint32_t target = 0;
+			size_t full_size = 0;
+
+			//__m128i input[16];
+			__m128i transpose[16];
+
+			for (size_t bcount = 0; bcount < block_count; ++bcount, src += block_size) {
+
+				full_size += header_size;
+				if (max_bytes && full_size > max_bytes)
+					return STENOS_ERROR_DST_OVERFLOW;
+
+				// read source transposed
+				shuffle(bytesoftype, block_size, src, (uint8_t*)(encoder.arrays));
+
+				// copy first value for each bytesoftype
+				memcpy(encoder.firsts, src, bytesoftype);
+
+				target = 256 - diff[level];
+				for (uint32_t i = 0; i < (uint32_t)bytesoftype; i++) {
+
+					const void* input_tr = encoder.arrays[i][0].i8;
+
+					uint32_t size = detail::compute_block_generic(&encoder, input_tr, encoder.firsts[i], i, methods[level], transpose);
+					if (size > target) {
+
+						encoder.packs[i].all_type = __STENOS_BLOCK_ALL_RAW;
+						size = 256;
+					}
+
+					full_size += size;
+					if (max_bytes && full_size > max_bytes)
+						return STENOS_ERROR_DST_OVERFLOW;
+				}
+			}
+			remaining_bytes = bytes - (block_count * block_size);
+			if (remaining_bytes) {
+
+				// Last block is always a partial one
+				++full_size;
+				full_size += remaining_bytes;
+			}
+			if (max_bytes && full_size > max_bytes)
+				return STENOS_ERROR_DST_OVERFLOW;
+			return full_size;
+		}
+#endif
+		return 0;
+	}
+
 	static inline size_t block_decompress_generic(const void* STENOS_RESTRICT src, size_t size, size_t bytesoftype, size_t bytes, void* STENOS_RESTRICT dst) noexcept
 	{
 		STENOS_ASSERT_DEBUG(bytesoftype < STENOS_MAX_BYTESOFTYPE, "invalid bytesoftype");
@@ -2201,7 +2284,7 @@ namespace stenos
 						    const void* STENOS_RESTRICT __shuffled) noexcept
 	{
 		STENOS_ASSERT_DEBUG(bytesoftype < STENOS_MAX_BYTESOFTYPE, "invalid bytesoftype");
-#ifdef __SSE4_1__
+#if defined(__SSE4_1__) && !defined(__ARM_NEON)
 		if STENOS_LIKELY (cpu_features().HAS_SSE41) {
 			return block_compress(src, bytesoftype, bytes, dst, dst_size, block_level, full_level, t, target_ratio, __shuffled);
 		}

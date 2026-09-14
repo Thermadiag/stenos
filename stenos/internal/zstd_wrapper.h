@@ -76,12 +76,13 @@ namespace stenos
 		if (!ctx.ctx)
 			return STENOS_ERROR_ALLOC;
 
+
 		size_t r = 0;
 		if (dict)
 			r = ZSTD_compress_usingCDict(ctx.ctx, dst, dstCapacity, src, srcSize, dict);
 		else
 			r = ZSTD_compressCCtx(ctx.ctx, dst, dstCapacity, src, srcSize, zstd_from_reduced_level(level));
-
+		
 		if (ZSTD_getErrorCode(r) == ZSTD_error_dstSize_tooSmall)
 			return STENOS_ERROR_DST_OVERFLOW;
 		if (ZSTD_isError(r))
@@ -117,7 +118,7 @@ namespace stenos
 
 		static inline int clevel_for_remaining(TimeConstraint& t, size_t processed_bytes, size_t* target_rate = nullptr, unsigned shift = 0) noexcept
 		{
-			// Compute the best possible compressoin level for remaining bytes
+			// Compute the best possible compression level for remaining bytes
 			// based on the time constraint and the current compression rate
 
 			int clevel = 0;

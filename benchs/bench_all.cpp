@@ -226,7 +226,7 @@ void test_compression(const std::vector<T>& vec, unsigned threads)
 	std::cout << std::endl;
 
 	// print benchmarks
-	for (int level = 1; level <= 9; ++level) {
+	for (int level = 1; level <= 8; ++level) {
 		test_compression(vec, functions, level, threads);
 	}
 }
@@ -247,7 +247,7 @@ void test_time_limited(const std::vector<T>& vec, unsigned threads)
 	auto r2 = stenos_compress(vec.data(), sizeof(T), vec.size() * sizeof(T), dst.data(), dst.size(), 1);
 	auto el_min = stenos_tock(timer);
 
-	std::cout << "ratios: " << (double)bytes / r2 << " to " << (double)bytes / r1 << std::endl;
+	std::cout << "ratios: " << (double)bytes / r2 << "in " << el_min << " to " << (double)bytes / r1 << " in " << el_max<< std::endl;
 
 	// start at half the minimum time
 	el_min /= 2;
@@ -277,7 +277,13 @@ void bench_file(const char* filename)
 	if (!std::is_same<Type, void>::value) {
 		using type = typename std::conditional<std::is_same<Type, void>::value, int, Type>::type;
 		auto vec = read_text<type>(filename);
-		test_compression(vec, STENOS_THREADS);
+		if (sizeof(type) != N) {
+			std::vector<std::array<uint8_t, N>> tmp((vec.size() * sizeof(type))/N);
+			memcpy(tmp.data(), vec.data(), tmp.size() * N);
+			test_compression(tmp, STENOS_THREADS);
+		}
+		else
+			test_compression(vec, STENOS_THREADS);
 	}
 	else {
 
@@ -291,6 +297,7 @@ int bench_all(int, char** const)
 {
 	char* _STENOS_THREADS = getenv("STENOS_THREADS");
 	if (_STENOS_THREADS) {
+		std::cout << "Read STENOS_THREADS as " << _STENOS_THREADS << std::endl;
 		std::istringstream iss(_STENOS_THREADS);
 		iss >> STENOS_THREADS;
 		if (!iss)
@@ -299,6 +306,8 @@ int bench_all(int, char** const)
 
 	blosc1_set_compressor("zstd");
 
+	bench_file<2, uint16_t>(STENOS_DATA_DIR "/dataset/2_WA.txt");
+	
 	bench_file<1>(STENOS_DATA_DIR "/dataset/1_javascript.js");
 	bench_file<1, uint8_t>(STENOS_DATA_DIR "/dataset/1_tree_r.txt");
 	bench_file<12>(STENOS_DATA_DIR "/dataset/12_953134_float3.bin");

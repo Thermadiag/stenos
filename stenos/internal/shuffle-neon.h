@@ -1,0 +1,32 @@
+/*********************************************************************
+  Blosc - Blocked Shuffling and Compression Library
+
+  Copyright (c) 2021  Blosc Development Team <blosc@blosc.org>
+  https://blosc.org
+  License: BSD 3-Clause (see LICENSE.txt)
+
+  Note: Adapted for NEON by Lucian Marc.
+
+  See LICENSE.txt for details about copyright and rights to use.
+**********************************************************************/
+
+/* NEON-accelerated shuffle/unshuffle routines. */
+
+#ifndef SHUFFLE_NEON_H
+#define SHUFFLE_NEON_H
+
+#include <cstdint>
+
+/**
+  NEON-accelerated shuffle routine.
+*/
+void shuffle_neon(const int32_t bytesoftype, const int32_t blocksize,
+                                  const uint8_t* const _src, uint8_t* const _dest);
+
+/**
+  NEON-accelerated unshuffle routine.
+*/
+void unshuffle_neon(const int32_t bytesoftype, const int32_t blocksize,
+                                    const uint8_t *_src, uint8_t *_dest);
+
+#endif /* BLOSC_SHUFFLE_NEON_H */

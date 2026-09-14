@@ -25,6 +25,8 @@
 #include "delta.h"
 #include "simd.h"
 
+
+
 namespace stenos
 {
 	static inline void delta_generic(const void* _src, void* _dst, size_t bytes)
