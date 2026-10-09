@@ -1119,7 +1119,7 @@ std::size_t stenos_get_info(const void* _src, std::size_t bytesoftype, std::size
 	return (std::size_t)(src - (const uint8_t*)_src);
 }
 
-std::size_t stenos_decompress_generic(stenos_context* opts, const void* _src, std::size_t bytesoftype, std::size_t size, void* _dst, std::size_t dst_size)
+stenos_decompress_ret stenos_decompress_generic_impl(stenos_context* opts, const void* _src, std::size_t bytesoftype, std::size_t size, void* _dst, std::size_t dst_size)
 {
 	// Public API, generic decompression
 
@@ -1135,7 +1135,7 @@ std::size_t stenos_decompress_generic(stenos_context* opts, const void* _src, st
 
 	// Check bytesoftype validity
 	if STENOS_UNLIKELY (bytesoftype == 0 || bytesoftype >= STENOS_MAX_BYTESOFTYPE)
-		return STENOS_ERROR_INVALID_BYTESOFTYPE;
+		return { 0, STENOS_ERROR_INVALID_BYTESOFTYPE };
 
 	const uint8_t* src = (const uint8_t*)_src;
 	const uint8_t* end_src = src + size;
@@ -1146,20 +1146,20 @@ std::size_t stenos_decompress_generic(stenos_context* opts, const void* _src, st
 
 	// Check overflow
 	if STENOS_UNLIKELY (src + 8 > end_src)
-		return STENOS_ERROR_SRC_OVERFLOW;
+		return { 0, STENOS_ERROR_SRC_OVERFLOW };
 	shift = *src++;
 
 	// Check shift validity
 	if STENOS_UNLIKELY (shift > 4 && shift != 255)
-		return STENOS_ERROR_INVALID_INPUT;
+		return { 0, STENOS_ERROR_INVALID_INPUT };
 
 	// Read decompressed size
 	decompressed = stenos::read_uint64_7(src);
 	src += 7;
 	if STENOS_UNLIKELY (decompressed > dst_size)
-		return STENOS_ERROR_DST_OVERFLOW;
+		return { 0, STENOS_ERROR_DST_OVERFLOW };
 	if (decompressed == 0)
-		return 0;
+		return { (size_t)(src - (const uint8_t*)_src), 0 };
 
 	// Compute superblock size
 	std::size_t block_size = bytesoftype * 256;
@@ -1168,7 +1168,7 @@ std::size_t stenos_decompress_generic(stenos_context* opts, const void* _src, st
 	if (shift == 255) {
 		// Custom superblock size
 		if STENOS_UNLIKELY (src + 4 > end_src)
-			return STENOS_ERROR_SRC_OVERFLOW;
+			return { 0, STENOS_ERROR_SRC_OVERFLOW };
 		superblock_size = stenos::read_LE_32(src);
 		src += 4;
 	}
@@ -1191,25 +1191,25 @@ std::size_t stenos_decompress_generic(stenos_context* opts, const void* _src, st
 	if (opts->threads <= 1 || super_block_count == 1) {
 		// Mono thread decompression
 		if STENOS_UNLIKELY (stenos::has_error(opts->ensure_has_buffers(1)))
-			return STENOS_ERROR_ALLOC;
+			return { 0, STENOS_ERROR_ALLOC };
 
 		// Loop over superblocks
 		for (std::size_t i = 0; i < super_block_count; ++i) {
 
 			if STENOS_UNLIKELY (src + 4 > end_src)
-				return STENOS_ERROR_SRC_OVERFLOW;
+				return { 0, STENOS_ERROR_SRC_OVERFLOW };
 
 			uint8_t code = *src++;
 			unsigned csize = stenos::read_uint32_3(src);
 			unsigned dsize = (i == super_block_count - 1) ? (unsigned)super_block_remaining : (unsigned)opts->superblock_size;
 			src += 3;
 			if STENOS_UNLIKELY (src + csize > end_src || dst + dsize > end_dst)
-				return STENOS_ERROR_INVALID_INPUT;
+				return { 0, STENOS_ERROR_INVALID_INPUT };
 
 			std::size_t ret = stenos::decompress_generic_superblock(opts, code, src, bytesoftype, csize, dst, dsize, opts->tmp_buffers1[0]);
 			if STENOS_UNLIKELY (ret != dsize)
 				// Error
-				return ret;
+				return { 0, ret };
 
 			dst += dsize;
 			src += csize;
@@ -1217,8 +1217,8 @@ std::size_t stenos_decompress_generic(stenos_context* opts, const void* _src, st
 
 		std::size_t output_size = dst - (uint8_t*)_dst;
 		if STENOS_UNLIKELY (output_size != decompressed)
-			return STENOS_ERROR_INVALID_INPUT;
-		return decompressed;
+			return { 0, STENOS_ERROR_INVALID_INPUT };
+		return { (size_t)(src - (const uint8_t*)_src), decompressed };
 	}
 
 	// Multithread decompression
@@ -1226,7 +1226,7 @@ std::size_t stenos_decompress_generic(stenos_context* opts, const void* _src, st
 	const int threads = (int)std::min((std::size_t)opts->threads, super_block_count);
 	std::vector<Block> blocks((std::size_t)threads);
 	if STENOS_UNLIKELY (stenos::has_error(opts->ensure_has_buffers(threads)))
-		return STENOS_ERROR_ALLOC;
+		return { 0, STENOS_ERROR_ALLOC };
 
 	std::size_t chunks = super_block_count;
 	while (chunks) {
@@ -1239,14 +1239,14 @@ std::size_t stenos_decompress_generic(stenos_context* opts, const void* _src, st
 		for (int i = 0; i < thread_count; ++i) {
 
 			if STENOS_UNLIKELY (src + 4 >= end_src)
-				return STENOS_ERROR_SRC_OVERFLOW;
+				return { 0, STENOS_ERROR_SRC_OVERFLOW };
 
 			uint8_t code = *src++;
 			unsigned csize = stenos::read_uint32_3(src);
 			unsigned dsize = (chunks - (std::size_t)i - 1 == 0) ? (unsigned)super_block_remaining : (unsigned)opts->superblock_size;
 			src += 3;
 			if STENOS_UNLIKELY (src + csize > end_src || dst + dsize > end_dst)
-				return STENOS_ERROR_INVALID_INPUT;
+				return { 0, STENOS_ERROR_INVALID_INPUT };
 
 			blocks[(std::size_t)i] = Block{ csize, dsize, code, src, dst };
 
@@ -1260,7 +1260,7 @@ std::size_t stenos_decompress_generic(stenos_context* opts, const void* _src, st
 			    Block& bl = blocks[(std::size_t)i];
 			    bl.ret = stenos::decompress_generic_superblock(opts, bl.code, bl.src, bytesoftype, bl.csize, bl.dst, bl.dsize, opts->thread_buffers[(std::size_t)i]);
 		    }))
-			return STENOS_ERROR_ALLOC;
+			return { 0, STENOS_ERROR_ALLOC };
 
 		/* for (int i = 0; i < thread_count; ++i) {
 			if (!stenos::pool->push([&, i]() {
@@ -1275,7 +1275,7 @@ std::size_t stenos_decompress_generic(stenos_context* opts, const void* _src, st
 		for (int i = 0; i < thread_count; ++i) {
 			Block& bl = blocks[(std::size_t)i];
 			if STENOS_UNLIKELY (bl.ret != bl.dsize)
-				return bl.ret;
+				return { 0, bl.ret };
 		}
 
 		chunks -= (std::size_t)thread_count;
@@ -1283,8 +1283,18 @@ std::size_t stenos_decompress_generic(stenos_context* opts, const void* _src, st
 
 	std::size_t output_size = dst - (uint8_t*)_dst;
 	if STENOS_UNLIKELY (output_size != decompressed)
-		return STENOS_ERROR_INVALID_INPUT;
-	return decompressed;
+		return { 0, STENOS_ERROR_INVALID_INPUT };
+	return { (size_t)(src - (const uint8_t*)_src), decompressed };
+}
+
+size_t stenos_decompress_generic(stenos_context* ctx, const void* src, size_t bytesoftype, size_t bytes, void* dst, size_t dst_size)
+{
+	return stenos_decompress_generic_impl(ctx, src, bytesoftype, bytes, dst, dst_size).decompressed_bytes;
+}
+
+stenos_decompress_ret stenos_consume_generic(stenos_context* ctx, const void* src, size_t bytesoftype, size_t bytes, void* dst, size_t dst_size)
+{
+	return stenos_decompress_generic_impl(ctx, src, bytesoftype, bytes, dst, dst_size);
 }
 
 std::size_t stenos_private_assess_compressibility(const void* src, std::size_t bytesoftype, std::size_t bytes, void* _buffer)
@@ -1655,6 +1665,76 @@ std::size_t stenos_decompress(const void* src, std::size_t bytesoftype, std::siz
 	stenos_context_s opts;
 	return stenos_decompress_generic(&opts, src, bytesoftype, bytes, dst, dst_size);
 }
+
+stenos_decompress_ret stenos_consume(const void* src, size_t bytesoftype, size_t bytes, void* dst, size_t dst_size)
+{
+	// Create the context on the stack
+	stenos_context_s opts;
+	return stenos_decompress_generic_impl(&opts, src, bytesoftype, bytes, dst, dst_size);
+}
+
+size_t stenos_get_frame_size(const void* _src, size_t bytesoftype, size_t bytes)
+{
+	const uint8_t* src = (const uint8_t*)_src;
+	const uint8_t* end_src = src + bytes;
+
+	uint8_t shift = 0;
+	// Check overflow
+	if STENOS_UNLIKELY (src + 8 > end_src)
+		return STENOS_ERROR_SRC_OVERFLOW;
+	shift = *src++;
+
+	// Check shift validity
+	if STENOS_UNLIKELY (shift > 4 && shift != 255)
+		return STENOS_ERROR_INVALID_INPUT;
+
+	// Read decompressed size
+	size_t decompressed = stenos::read_uint64_7(src);
+	src += 7;
+	if (decompressed == 0)
+		return (size_t)(src - (const uint8_t*)_src);
+
+	// Compute superblock size
+	std::size_t block_size = bytesoftype * 256;
+	std::size_t superblock_size = 0;
+
+	if (shift == 255) {
+		// Custom superblock size
+		if STENOS_UNLIKELY (src + 4 > end_src)
+			return STENOS_ERROR_SRC_OVERFLOW;
+		superblock_size = stenos::read_LE_32(src);
+		src += 4;
+	}
+	else
+		// Default superblock size
+		superblock_size = stenos::super_block_size(block_size) << shift;
+
+	// Compute superblock count
+	std::size_t super_block_remaining = decompressed % superblock_size;
+	std::size_t super_block_count = decompressed / superblock_size + (super_block_remaining ? 1 : 0);
+
+	if (super_block_remaining == 0)
+		super_block_remaining = superblock_size;
+
+	// Loop over superblocks
+	for (std::size_t i = 0; i < super_block_count; ++i) {
+
+		if STENOS_UNLIKELY (src + 4 > end_src)
+			return STENOS_ERROR_SRC_OVERFLOW;
+
+		uint8_t code = *src++;
+		unsigned csize = stenos::read_uint32_3(src);
+		unsigned dsize = (i == super_block_count - 1) ? (unsigned)super_block_remaining : (unsigned)superblock_size;
+		src += 3;
+		if STENOS_UNLIKELY (src + csize > end_src)
+			return STENOS_ERROR_INVALID_INPUT;
+
+		src += csize;
+	}
+
+	return (size_t)(src - (const uint8_t*)_src);
+}
+
 
 //
 // C Timer structure wrapping stenos::timer

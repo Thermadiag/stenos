@@ -203,6 +203,15 @@ typedef struct stenos_lock_s
 } stenos_lock;
 
 /**
+* @brief Result type for stenos_consume_frame
+*/
+typedef struct stenos_decompress_ret_s
+{
+	size_t consummed_bytes;
+	size_t decompressed_bytes;
+} stenos_decompress_ret;
+
+/**
  * @brief Create a compression/decompression context.
  *
  * The new context uses compression level 1, one worker thread, automatic
@@ -370,6 +379,11 @@ STENOS_EXPORT size_t stenos_compress_generic(stenos_context* ctx, const void* sr
 STENOS_EXPORT size_t stenos_decompress_generic(stenos_context* ctx, const void* src, size_t bytesoftype, size_t bytes, void* dst, size_t dst_size);
 
 /**
+* @brief Similar to stenos_decompress_generic, but also returns the consumed frame bytes.
+*/
+STENOS_EXPORT stenos_decompress_ret stenos_consume_generic(stenos_context* ctx, const void* src, size_t bytesoftype, size_t bytes, void* dst, size_t dst_size);
+
+/**
  * @brief Compress an array without explicitly creating a context.
  *
  * This convenience function uses the requested compression level and manages
@@ -400,6 +414,11 @@ STENOS_EXPORT size_t stenos_compress(const void* src, size_t bytesoftype, size_t
  * @warning The input and output memory ranges must not overlap.
  */
 STENOS_EXPORT size_t stenos_decompress(const void* src, size_t bytesoftype, size_t bytes, void* dst, size_t dst_size);
+
+/**
+ * @brief Similar to stenos_decompress, but also returns the consumed frame bytes.
+ */
+STENOS_EXPORT stenos_decompress_ret stenos_consume(const void* src, size_t bytesoftype, size_t bytes, void* dst, size_t dst_size);
 
 /**
  * @brief Decompress selected element ranges from a seekable Stenos stream.
@@ -465,6 +484,11 @@ typedef struct stenos_info_s
  * @return Number of header bytes consumed, or a Stenos error code.
  */
 STENOS_EXPORT size_t stenos_get_info(const void* src, size_t bytesoftype, size_t bytes, stenos_info* info);
+
+/**
+ * @brief Returns the compressed frame size in bytes or an error code.
+ */
+STENOS_EXPORT size_t stenos_get_frame_size(const void* _src, size_t bytesoftype, size_t bytes);
 
 /** @} */
 

@@ -1666,8 +1666,11 @@ namespace stenos
 				const auto& val = last_pixels[pos];
 				double s, error_max;
 
-				if (pos == 256)
+				// TEST: use a bigger maximum GOP
+				if (pos == std::numeric_limits<Index>::max())
 					goto stop_here;
+				//if (pos == 256)
+				//	goto stop_here;
 
 				// check points before
 				// compute slope

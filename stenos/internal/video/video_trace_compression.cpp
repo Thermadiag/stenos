@@ -1187,8 +1187,6 @@ size_t stenosv_bytestream_extract_time_trace(stenosv_bytestream* input, int64_t*
 	}
 }
 
-
-
 /// @brief Helper function, returns the superblock size for given block size (bytesoftype * 256)
 static STENOS_ALWAYS_INLINE std::size_t internal_super_block_size(std::size_t block_size) noexcept
 {
@@ -1217,56 +1215,45 @@ struct MakeUnsigned<8>
 {
 	using type = std::uint64_t;
 };
+static STENOS_ALWAYS_INLINE void write_uint64_7(void* dst, uint64_t val) noexcept
+{
+	// Write 64 bits integer on 7 bytes
+#if STENOS_BYTEORDER_ENDIAN != STENOS_BYTEORDER_LITTLE_ENDIAN
+	val = byte_swap_64(val);
+#endif
+	memcpy(dst, &val, 7);
+}
+
+static STENOS_ALWAYS_INLINE uint64_t read_uint64_7(const void* src) noexcept
+{
+	// Read 64 bits integer from 7 bytes
+	uint64_t res = 0;
+	memcpy(&res, src, 7);
+#if STENOS_BYTEORDER_ENDIAN == STENOS_BYTEORDER_BIG_ENDIAN
+	res = byte_swap_64(res);
+#endif
+	return res;
+}
 
 template<class T>
 size_t stenosv_compress_numeric_type(const T* src, size_t count, void* dst, size_t dst_bytes, double error, int level)
 {
-	//TEST
-	{
-		using index_type = typename MakeUnsigned<sizeof(T)>::type;
-		using pixel_type = detail::ValueIndex<T, index_type>;
-		std::vector<pixel_type> buf(count);
-		size_t ret = detail::decimate_raw(src, count, buf.data(), error);
-		return stenos_compress(buf.data(), sizeof(pixel_type), ret * sizeof(pixel_type), dst, dst_bytes, level);
-	}
 
+	using index_type = typename MakeUnsigned<sizeof(T)>::type;
+	using pixel_type = detail::ValueIndex<T, index_type>;
 
-
-	struct DestroyContext
-	{
-		void operator()(stenos_context* ctx) const { stenos_destroy_context(ctx); }
-	};
-
-	// Use a 8 bits index with a decimation block boundary of 256
-	using pixel_type = detail::ValueIndex<T, std::uint32_t>;
-	constexpr size_t decimate_block_size = 256;
-	
-	// Empty input
-	if (count == 0) 
-		return stenos_compress(nullptr, sizeof(pixel_type), 0, dst, dst_bytes, level);
-	
-	// Check enough room for frame header
-	if (dst_bytes < 12)
+	// Custom header: 1 byte for pixel type, 7 bytes for number of samples
+	if STENOS_UNLIKELY (dst_bytes < 8)
 		return STENOS_ERROR_DST_OVERFLOW;
 
-	// Create compression context
-	std::unique_ptr<stenos_context, DestroyContext> ctx(stenos_make_context());
-	if (!ctx)
-		return STENOS_ERROR_ALLOC;
+	uint8_t* out = (uint8_t*)dst;
+	*out++ = (uint8_t)stenosv_to_pixel_type<T>();
+	write_uint64_7(out, count);
+	out += 7;
+	dst_bytes -= 8;
 
-	// Find superblock size
-	size_t block_size = internal_super_block_size(sizeof(pixel_type) * 256);
-	size_t compress_block_size = block_size;
-	if (count * sizeof(pixel_type) > compress_block_size) {
-		size_t shift = level ? (level - 1) / 2 : 0;
-		compress_block_size = compress_block_size << (std::size_t)shift;
-	}
-	compress_block_size = (compress_block_size / sizeof(pixel_type)) * sizeof(pixel_type);
-
-	// Max number of sample (pixel_type) within a superblock
-	size_t compress_sample_count = compress_block_size / sizeof(pixel_type);
-	// Max number of values (T) within a superblock
-	size_t compress_element_count = compress_block_size / sizeof(T);
+	if (count == 0)
+		return 8;
 
 	// Check level
 	if (level < 0)
@@ -1274,266 +1261,122 @@ size_t stenosv_compress_numeric_type(const T* src, size_t count, void* dst, size
 	else if (level > 9)
 		level = 9;
 
-	// We assess compressibility of decimated and raw input starting level 2
-	bool assess_compressibility = level > 1;
-	if (level == 1)
-		level = 2; // Disable SIMD packing
+	// Step size
+	size_t step_size = 1ull << (17ull + (size_t)level / 2ull); // 130k minimum
+	step_size = std::min(step_size, count);
 
-	stenos_set_level(ctx.get(), level);
-	stenos_set_block_size(ctx.get(), 255);
+	// Write level, used to get step_size at decompression
+	if (dst_bytes == 0)
+		return STENOS_ERROR_DST_OVERFLOW;
+	*out++ = (uint8_t)level;
+	--dst_bytes;
 
-	size_t input_count = count;
-
-	std::vector<pixel_type> buffer(std::min(count, decimate_block_size));
-	std::vector<pixel_type> to_compress;
-
-	std::vector<pixel_type> buf(count);
-	size_t tmp = detail::decimate_raw(src, 300, buf.data(), 0);
-	auto v0 = buf[0];
-	auto v1 = buf[1];
-	auto v2 = buf[2];
-	auto v3 = buf[3];
-	auto vllast = buf[tmp - 2];
-	auto vlast = buf[tmp - 1];
-
-	// Buffer to assess compressibility. We need twice the superblock size.
-	std::vector<char> assess_buffer;
-	if(assess_compressibility)
-		assess_buffer.resize(std::min(count, compress_sample_count) * sizeof(pixel_type) * 2);
-
-	// Skip compression header, we will write it later
-	char* _dst = (char*)dst + 12;
-	size_t dst_remaining = dst_bytes - 12;
-	size_t total_samples = 0;
-
-	// Keep track of what we decimated to assess compressibility of raw input
-	const T* start_decimate = src;
-	const T* end_decimate = src;
+	// Buffer
+	std::vector<pixel_type> buf(step_size);
+	std::vector<uint8_t> assess_buffer(step_size * sizeof(pixel_type) * 2);
 
 	while (count) {
-		// Decimate to buffer
-		size_t next_chunk = std::min(count, decimate_block_size);
-		size_t samples = detail::decimate_raw(src, next_chunk, buffer.data(), error);
-		total_samples += samples;
+		size_t rem = std::min(count, step_size);
+		size_t ret = detail::decimate_raw(src, rem, buf.data(), error);
+		size_t r = 0;
 
-		if (to_compress.size() + samples > compress_sample_count) {
+		if (level > 1) {
 
-			// Compress what is already decimated
+			// assess compressibility
+			size_t assess_dec = stenos_private_assess_compressibility(buf.data(), sizeof(pixel_type), ret * sizeof(pixel_type), assess_buffer.data());
+			size_t assess_raw = stenos_private_assess_compressibility(src, sizeof(T), rem * sizeof(T), assess_buffer.data());
 
-			/* if (assess_compressibility) {
-
-				// Assess compressibility of raw source and decimated one.
-				// The decimated input can contain up to 256 times more values than the superblock size can contain.
-				// Therefore, we need to loop through input values as we are limited by the assess_buffer size.
-				size_t r_raw = 0;
-				size_t element = (size_t)(end_decimate - start_decimate);
-				for (size_t i = 0; i < element; i += compress_element_count) {
-					size_t count = std::min(element - i, compress_element_count);
-					r_raw += stenos_private_assess_compressibility(start_decimate + i, sizeof(T), count * sizeof(T), assess_buffer.data());
-				}
-
-				size_t r_dec = stenos_private_assess_compressibility(to_compress.data(), sizeof(pixel_type), to_compress.size() * sizeof(pixel_type), assess_buffer.data());
-
-				if (r_raw < r_dec) {
-					// Store raw compressed input
-
-				}
-			}*/
-
-			// Compress
-			size_t r = stenos_private_compress_block(ctx.get(), to_compress.data(), sizeof(pixel_type), compress_block_size, to_compress.size() * sizeof(pixel_type), _dst, dst_remaining);
+			double factor = 1. + 0.1 / level;
+			if (assess_dec * factor < assess_raw) {
+				// Compress decimated values
+				r = stenos_compress(buf.data(), sizeof(pixel_type), ret * sizeof(pixel_type), out, dst_bytes, level);
+				if (stenos_has_error(r))
+					return r;
+			}
+			else {
+				// Compress raw values
+				buf[0] = { *src, 0 };
+				for (size_t i = 0; i < rem; ++i)
+					buf[i] = { src[i], 1 };
+				r = stenos_compress(buf.data(), sizeof(pixel_type), rem * sizeof(pixel_type), out, dst_bytes, level);
+				if (stenos_has_error(r))
+					return r;
+			}
+		}
+		else {
+			// Compress (well, memcpy...) decimated values
+			r = stenos_compress(buf.data(), sizeof(pixel_type), ret * sizeof(pixel_type), out, dst_bytes, level);
 			if (stenos_has_error(r))
 				return r;
-
-			to_compress.clear();
-			_dst += r;
-			dst_remaining -= r;
-
-			start_decimate = end_decimate = src;
 		}
 
-		to_compress.insert(to_compress.end(), buffer.data(), buffer.data() + samples);
-
-		src += next_chunk;
-		count -= next_chunk;
-
-		end_decimate = src;
+		out += r;
+		dst_bytes -= r;
+		src += rem;
+		count -= rem;
 	}
 
-	// Compress remaining
-	if (to_compress.size()) {
-		// Compress
-		size_t r = stenos_private_compress_block(ctx.get(), to_compress.data(), sizeof(pixel_type), compress_block_size, to_compress.size() * sizeof(pixel_type), _dst, dst_remaining);
-		if (stenos_has_error(r))
-			return r;
-
-		_dst += r;
-		dst_remaining -= r;
-	}
-
-	// Write frame header
-	stenos_private_create_compression_header(total_samples * sizeof(pixel_type), compress_block_size, dst, 12);
-
-	return (size_t)(_dst - (char*)dst);
-}
-
-template<class T>
-static STENOS_ALWAYS_INLINE T fround_val(double v) noexcept
-{
-	if STENOS_CONSTEXPR (std::is_integral<T>::value)
-		// return (T)std::llrint(v);
-		return (T)(v + 0.5);
-	return (T)v;
+	return (size_t)(out - (uint8_t*)dst);
 }
 
 template<class T>
 size_t stenosv_decompress_numeric_type(const void* src, size_t bytes, T* dst, size_t dst_count)
 {
-	// TEST
-	{
-		using pixel_type = detail::ValueIndex<T, std::uint32_t>;
 
-		stenos_info info;
-		size_t r = stenos_get_info(src, sizeof(pixel_type), bytes, &info);
-		if STENOS_UNLIKELY (stenos_has_error(r))
-			return r;
+	using index_type = typename MakeUnsigned<sizeof(T)>::type;
+	using pixel_type = detail::ValueIndex<T, index_type>;
 
-		size_t samples = info.decompressed_size / sizeof(pixel_type);
-		if (info.decompressed_size % sizeof(pixel_type))
+	if (bytes < 8)
+		return STENOS_ERROR_SRC_OVERFLOW;
+
+	const uint8_t* in = (const uint8_t*)src;
+	if (*in != (uint8_t)stenosv_to_pixel_type<T>())
+		return STENOS_ERROR_INVALID_PARAMETER;
+	++in;
+	size_t elements = read_uint64_7(in);
+	in += 7;
+	bytes -= 8;
+
+	if (elements > dst_count)
+		return STENOS_ERROR_DST_OVERFLOW;
+
+	if (elements == 0)
+		return 0;
+
+	// Read level
+	if (bytes == 0)
+		return STENOS_ERROR_SRC_OVERFLOW;
+	int level = (int)(*in++);
+	--bytes;
+	size_t step_size = 1ull << (17ull + (size_t)level / 2ull); // 130k minimum
+	step_size = std::min(step_size, elements);
+
+	std::vector<pixel_type> buf(step_size);
+
+	size_t remaining = elements;
+	while (remaining) {
+
+		// Decompress frame
+		stenos_decompress_ret r = stenos_consume(in, sizeof(pixel_type), bytes, buf.data(), buf.size() * sizeof(pixel_type));
+		if (stenos_has_error(r.decompressed_bytes))
+			return r.decompressed_bytes;
+
+		size_t samples = r.decompressed_bytes / sizeof(pixel_type);
+		if (r.decompressed_bytes % sizeof(pixel_type))
 			return STENOS_ERROR_INVALID_INPUT;
 
-		std::vector<pixel_type> buf(samples);
-		size_t dec_samples = stenos_decompress(src,sizeof(pixel_type),bytes,buf.data(),buf.size() * sizeof(pixel_type));
-		if (stenos_has_error(dec_samples))
-			return dec_samples;
-		if (info.decompressed_size != dec_samples)
-			return STENOS_ERROR_INVALID_INPUT;
+		size_t values = detail::undecimate_raw(buf.data(), samples, dst, dst_count);
+		if (stenos_has_error(values))
+			return values;
 
-		size_t ret = detail::undecimate_raw(buf.data(), buf.size(), dst, dst_count);
-		return ret;
+		dst += values;
+		dst_count -= values;
+		in += r.consummed_bytes;
+		bytes -= r.consummed_bytes;
+		remaining -= values;
 	}
 
-	struct DestroyContext
-	{
-		void operator()(stenos_context* ctx) const { stenos_destroy_context(ctx); }
-	};
-
-	using pixel_type = detail::ValueIndex<T, std::uint32_t>;
-
-	stenos_info info;
-	size_t r = stenos_get_info(src, sizeof(pixel_type), bytes, &info);
-	if STENOS_UNLIKELY (stenos_has_error(r))
-		return r;
-
-	size_t total_samples = info.decompressed_size / sizeof(pixel_type);
-
-	if STENOS_UNLIKELY (info.decompressed_size && total_samples == 0)
-		return STENOS_ERROR_INVALID_INPUT;
-	if STENOS_UNLIKELY (info.decompressed_size % sizeof(pixel_type))
-		return STENOS_ERROR_INVALID_INPUT;
-
-	size_t remaining_samples = total_samples;
-	size_t remaining_dst_count = dst_count;
-	size_t compress_block_size = info.superblock_size;
-	size_t max_samples_per_block = compress_block_size / sizeof(pixel_type);
-
-	T* _dst = dst;
-
-	// Skip header
-	const char* _src = (char*)src + 12;
-	bytes -= 12;
-
-	std::unique_ptr<stenos_context, DestroyContext> ctx(stenos_make_context());
-	if STENOS_UNLIKELY (!ctx)
-		return STENOS_ERROR_ALLOC;
-
-	std::vector<pixel_type> decompressed(std::min(total_samples, max_samples_per_block) + 1);
-	bool has_front_element = false;
-
-	pixel_type prev{};
-
-	while (remaining_samples) {
-
-		// Decompress block
-		size_t block_size = stenos_private_block_size(_src, bytes);
-		if (stenos_has_error(block_size))
-			return block_size;
-
-		// Decompress into decompressed, take into account a possible remaining value at the front
-		size_t out_bytes = std::min(max_samples_per_block, remaining_samples) * sizeof(pixel_type);
-		r = stenos_private_decompress_block(ctx.get(), _src, sizeof(pixel_type), compress_block_size, block_size, decompressed.data() + has_front_element, out_bytes);
-		if (stenos_has_error(r)) {
-			// TEST
-			r = stenos_private_decompress_block(ctx.get(), _src, sizeof(pixel_type), compress_block_size, block_size, decompressed.data() + has_front_element, out_bytes);
-			return r;
-		}
-
-		// Interpolate values
-		size_t decompressed_samples = r / sizeof(pixel_type);
-		size_t samples = decompressed_samples + has_front_element;
-
-		if (decompressed_samples > remaining_samples)
-			return STENOS_ERROR_INVALID_INPUT;
-
-		prev = decompressed[0];
-		for (size_t i = 1; i < samples; ++i) {
-			if (decompressed[i].index <= prev.index) {
-				// if STENOS_UNLIKELY (i == 1)
-				//  At first iteration, the first element should always be before the next one
-				//	return STENOS_ERROR_INVALID_INPUT;
-
-				// Write last element
-				*_dst++ = prev.value;
-				prev = decompressed[i];
-				continue;
-			}
-
-			// Write first value
-			*_dst++ = prev.value;
-			if (decompressed[i].index > prev.index + 1) {
-				// Interpolate
-				double factor = 1. / (double)(decompressed[i].index - prev.index);
-				double ival = (double)decompressed[i].value;
-				double pval = (double)prev.value;
-				unsigned start = prev.index + 1;
-				unsigned end = decompressed[i].index;
-				
-				while (start < end) {
-					double val1 = (double)(start - prev.index) * factor;
-					val1 = ival * val1 + (1. - val1) * pval;
-					*_dst++ = fround_val<T>(val1);
-					++start;
-				}
-			}
-
-			prev = decompressed[i];
-		}
-
-		// Update remaining sample count
-		remaining_samples -= decompressed_samples;
-
-		// Increment src
-		_src += block_size;
-		bytes -= block_size;
-
-		//if (prev.index != 255) {
-			// We are not at decimation end block: keep last element and move it to the front
-			has_front_element = true;
-			decompressed[0] = prev;
-		/*}
-		else {
-			// All elements were used
-			has_front_element = false;
-
-			// Write the last element (index 255)
-			*_dst++ = prev.value;
-		}*/
-	}
-	// Write last element
-	if (prev.index != 255)
-		*_dst++ = prev.value;
-
-	return (size_t)(_dst - dst);
+	return elements;
 }
 
 size_t stenosv_compress_numeric(const void* src, stenosv_pixel_type type, size_t count, void* dst, size_t dst_size, double error, int level)
@@ -1570,31 +1413,31 @@ size_t stenosv_compress_numeric(const void* src, stenosv_pixel_type type, size_t
 	}
 }
 
-size_t stenosv_decompress_numeric(const void* src, size_t bytes, void* dst, size_t dst_bytes, stenosv_pixel_type dst_type)
+size_t stenosv_decompress_numeric(const void* src, size_t bytes, void* dst, size_t dst_size, stenosv_pixel_type dst_type)
 {
 	try {
 
 		switch (dst_type) {
 			case StenosUInt8:
-				return stenosv_decompress_numeric_type(src, bytes, (std::uint8_t*)dst, dst_bytes / sizeof(std::uint8_t));
+				return stenosv_decompress_numeric_type(src, bytes, (std::uint8_t*)dst, dst_size );
 			case StenosInt8:
-				return stenosv_decompress_numeric_type(src, bytes, (std::int8_t*)dst, dst_bytes / sizeof(std::int8_t));
+				return stenosv_decompress_numeric_type(src, bytes, (std::int8_t*)dst, dst_size);
 			case StenosUInt16:
-				return stenosv_decompress_numeric_type(src, bytes, (std::uint16_t*)dst, dst_bytes / sizeof(std::uint16_t));
+				return stenosv_decompress_numeric_type(src, bytes, (std::uint16_t*)dst, dst_size );
 			case StenosInt16:
-				return stenosv_decompress_numeric_type(src, bytes, (std::int16_t*)dst, dst_bytes / sizeof(std::int16_t));
+				return stenosv_decompress_numeric_type(src, bytes, (std::int16_t*)dst, dst_size );
 			case StenosUInt32:
-				return stenosv_decompress_numeric_type(src, bytes, (std::uint32_t*)dst, dst_bytes / sizeof(std::uint32_t));
+				return stenosv_decompress_numeric_type(src, bytes, (std::uint32_t*)dst, dst_size);
 			case StenosInt32:
-				return stenosv_decompress_numeric_type(src, bytes, (std::int32_t*)dst, dst_bytes / sizeof(std::int32_t));
+				return stenosv_decompress_numeric_type(src, bytes, (std::int32_t*)dst, dst_size );
 			case StenosUInt64:
-				return stenosv_decompress_numeric_type(src, bytes, (std::uint64_t*)dst, dst_bytes / sizeof(std::uint64_t));
+				return stenosv_decompress_numeric_type(src, bytes, (std::uint64_t*)dst, dst_size);
 			case StenosInt64:
-				return stenosv_decompress_numeric_type(src, bytes, (std::int64_t*)dst, dst_bytes / sizeof(std::int64_t));
+				return stenosv_decompress_numeric_type(src, bytes, (std::int64_t*)dst, dst_size);
 			case StenosFloat32:
-				return stenosv_decompress_numeric_type(src, bytes, (float*)dst, dst_bytes / sizeof(float));
+				return stenosv_decompress_numeric_type(src, bytes, (float*)dst, dst_size);
 			case StenosFloat64:
-				return stenosv_decompress_numeric_type(src, bytes, (double*)dst, dst_bytes / sizeof(double));
+				return stenosv_decompress_numeric_type(src, bytes, (double*)dst, dst_size );
 			default:
 				return STENOS_ERROR_INVALID_PARAMETER;
 		}
