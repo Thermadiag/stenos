@@ -1588,7 +1588,7 @@ namespace stenos
 
 			void reset(T* ptr) noexcept { start = finish = ptr; }
 			void push_back(const T& val) noexcept { *finish++ = val; }
-			void erase(const T* , const T* last) noexcept { start = (T*)last; }
+			void erase(const T*, const T* last) noexcept { start = (T*)last; }
 		};
 
 		template<class T, class Index>
@@ -1599,7 +1599,8 @@ namespace stenos
 			Range<VType> last_pixels;
 			std::int64_t candidate = -1;
 			std::int64_t pos = 1;
-			std::int64_t start = 0;
+			const VType* last_pos = nullptr;
+			const VType* start_pos = nullptr;
 
 			static STENOS_ALWAYS_INLINE double slope(double l, double r, double dist) noexcept { return (r - l) / dist; }
 			template<class U>
@@ -1615,7 +1616,7 @@ namespace stenos
 				if (1 == end)
 					return error_max;
 
-				const double beta = last_pixels.front().value - s * last_pixels.front().index;
+				const double beta = last_pixels.front().value - s * index(last_pixels.front());
 				const auto* p = last_pixels.data() + 1;
 				const auto* pend = last_pixels.data() + end;
 
@@ -1639,7 +1640,7 @@ namespace stenos
 				}*/
 
 				for (; p < pend; ++p) {
-					double theoric_y = s * (double)p->index + beta;
+					double theoric_y = s * (double)index(*p) + beta;
 					double err = dabs((double)p->value - theoric_y);
 					error_max = std::max(error_max, err);
 				}
@@ -1653,22 +1654,34 @@ namespace stenos
 				return a < b;
 			}
 
+			STENOS_ALWAYS_INLINE void update_last_pos()
+			{
+				points[0] = VType{ last_pixels[candidate].value, (Index)(&last_pixels[candidate] - last_pos) };
+				++points;
+				last_pos = &last_pixels[candidate];
+			}
+
 			STENOS_ALWAYS_INLINE void advance_min_max(double err, double error2)
 			{
-				const auto val = last_pixels[pos];
+				const auto& val = last_pixels[pos];
+				double s, error_max;
+
+				if (pos == 256)
+					goto stop_here;
 
 				// check points before
 				// compute slope
-				double s = slope((double)last_pixels[0].value, (double)val.value, val.index - last_pixels[0].index);
-
-				double error_max = check_candidate_min_max(pos, s, error2);
+				s = slope((double)last_pixels[0].value, (double)val.value, (double)(index(val) - index(last_pixels[0])));
+				error_max = check_candidate_min_max(pos, s, error2);
 
 				if (error_max > error2) {
+
+				stop_here:
 					// stop here
 					if (candidate == -1)
 						candidate = pos;
 
-					*points++ = (last_pixels[candidate]);
+					update_last_pos();
 					last_pixels.erase(last_pixels.begin(), last_pixels.begin() + candidate);
 					pos = 0;
 					candidate = -1;
@@ -1677,28 +1690,35 @@ namespace stenos
 					candidate = pos;
 				}
 			}
+
+			STENOS_ALWAYS_INLINE size_t index(const VType& v) { return (size_t)(&v - start_pos); }
 		};
 
 		template<class T, class Index>
 		size_t decimate_raw(const T* in, size_t count, ValueIndex<T, Index>* out, double err)
 		{
+			using VType = ValueIndex<T, Index>;
+
 			if (count == 0)
 				return 0;
 			if (err < 0)
 				err = 0;
+
 			double err2 = err * 2;
 			Decimate<T, Index> d;
 			d.candidate = -1;
 			d.pos = 1;
-			d.start = 0;
 			d.points = out;
+			d.last_pos = out;
+			d.start_pos = out;
 			*d.points++ = { in[0], (Index)0 };
 			d.last_pixels.reset(out);
 			d.last_pixels.push_back({ in[0], (Index)0 });
 
 			for (size_t i = 1; i < count; ++i) {
 
-				d.last_pixels.push_back({ in[i], (Index)i });
+				d.last_pixels.push_back({ in[i], (Index)0 });
+
 				if (d.pos == 1)
 					d.candidate = d.pos;
 				else
@@ -1707,38 +1727,54 @@ namespace stenos
 			}
 
 			// Finish
-			if (d.pos >= (std::int64_t)d.last_pixels.size() - 1) {
-				// we reach the end
-				if (d.candidate != -1) {
-					// add previous candidate
-					*d.points++ = (d.last_pixels[d.candidate]);
-					d.last_pixels.erase(d.last_pixels.begin(), d.last_pixels.begin() + d.candidate);
-					d.pos = 0;
-					d.candidate = -1;
-				}
-			}
 
 			for (; d.pos != (std::int64_t)d.last_pixels.size(); ++d.pos) {
-				d.advance_min_max(err, err2);
-				if (d.pos >= (std::int64_t)d.last_pixels.size() - 1) {
-					// we reach the end
-					if (d.candidate != -1) {
-						// add previous candidate
-						if (d.points[-1].index != (Index)(count - 1)) {
-							*d.points++ = (d.last_pixels[d.candidate]);
-							d.last_pixels.erase(d.last_pixels.begin(), d.last_pixels.begin() + d.candidate);
-							d.pos = 0;
-							d.candidate = -1;
-						}
-					}
-				}
+				if (d.pos == 1)
+					d.candidate = d.pos;
+				else
+					d.advance_min_max(err, err2);
 			}
 
 			// Add last point
-			if (d.points[-1].index != (Index)(count - 1))
-				*d.points++ = (d.last_pixels.back());
+			if (d.last_pixels.size() && d.index(d.last_pixels.back()) == count - 1) {
+
+				d.candidate = d.last_pixels.size() - 1;
+				d.update_last_pos();
+			}
 
 			return (size_t)(d.points - out);
+		}
+
+		template<class T, class Index>
+		size_t undecimate_raw(const ValueIndex<T, Index>* src, size_t count, T* out, size_t dst_size)
+		{
+			T* dst = out;
+			for (size_t i = 1; i < count; ++i) {
+				// write first value
+				*out++ = src[i - 1].value;
+				if (src[i].index > 1) {
+					// Interpolate
+					double factor = 1. / (double)(src[i].index);
+					double ival = (double)src[i].value;
+					double pval = (double)src[i -1].value;
+					unsigned start = 1;
+					unsigned end = (unsigned)src[i].index;
+
+					while (start < end) {
+						double val1 = (double)(start) * factor;
+						val1 = ival * val1 + (1. - val1) * pval;
+						if STENOS_CONSTEXPR (std::is_integral<T>::value)
+							*out = (T)(val1 + 0.5);
+						else
+							*out = (T)(val1);
+						++out;
+						++start;
+					}
+				}
+			}
+			if (count)
+				*out++ = src[count - 1].value;
+			return (size_t)(out - dst);
 		}
 
 	} // end detail

@@ -354,12 +354,12 @@ int test_video_codec(int, char*[])
 {
 	{
 		const double error = 0;
-		int level = 3;
+		int level = 2;
 		constexpr size_t count = 10000000;
 		// Test decimation
 		std::vector<int> values(count);
 		for (size_t i = 0; i < values.size(); ++i)
-			values[i] = (int)i;
+			values[i] = (int)rand();
 
 		std::vector<char> dst(stenos_bound( values.size() * 5));
 		std::vector<int> decomp(count);
