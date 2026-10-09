@@ -66,6 +66,10 @@ static bool compare(T v1, T v2, double error)
 template<class T, class Fun>
 void test_codec(int width, int height, int GOP, double error, int threads, int device, Fun pattern)
 {
+
+	
+
+
 	static constexpr size_t frames = 100;
 
 	auto pixel_type = stenosv_to_pixel_type<T>();
@@ -338,10 +342,65 @@ void test_codec(int width, int height, int GOP, double error, int threads, int d
 #include <iostream>
 #include <cstddef>
 #include <vector>
+#include <chrono>
 #include <stenos/stenos_video.h>
+
+static auto msecs_since_epoch()
+{
+	return std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
+}
 
 int test_video_codec(int, char*[]) 
 {
+	{
+		const double error = 0;
+		int level = 3;
+		constexpr size_t count = 10000000;
+		// Test decimation
+		std::vector<int> values(count);
+		for (size_t i = 0; i < values.size(); ++i)
+			values[i] = (int)i;
+
+		std::vector<char> dst(stenos_bound( values.size() * 5));
+		std::vector<int> decomp(count);
+
+		int64_t st, el;
+
+		st = msecs_since_epoch();
+		size_t ret1 = stenos_compress(values.data(), 4, values.size() * 4, dst.data(), dst.size(), level);
+		el = msecs_since_epoch() - st;
+		std::cout << "compress: " << el << " ms " <<ret1<< std::endl;
+
+		st = msecs_since_epoch();
+		stenos_decompress(dst.data(), ret1, 4, decomp.data(), decomp.size() * 4);
+		el = msecs_since_epoch() - st;
+		std::cout << "decompress: " << el << " ms" << std::endl;
+
+
+		st = msecs_since_epoch();
+		size_t ret2 = stenosv_compress_numeric(values.data(), StenosInt32, values.size(), dst.data(), dst.size(), error, level);
+		el = msecs_since_epoch() - st;
+		std::cout << "num compress: " << el << " ms " << ret2<< std::endl;
+
+		st = msecs_since_epoch();
+		size_t dec = stenosv_decompress_numeric(dst.data(), ret2, decomp.data(), decomp.size() * 4, StenosInt32);
+		el = msecs_since_epoch() - st;
+		std::cout << "num decompress: " << el << " ms" << std::endl;
+
+		bool ok = dec == decomp.size();
+		if (ok) {
+			for (size_t i = 0; i < dec; ++i) {
+				if (std::abs((double)decomp[i] - (double)values[i]) > error) {
+					ok = false;
+					break;
+				}
+			}
+		}
+		std::cout << "ok " << ok << std::endl;
+		return 0;
+	}
+
+
 	////////////////////////////////
 	// Video compression
 	////////////////////////////////

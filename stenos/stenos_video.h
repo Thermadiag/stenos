@@ -603,6 +603,16 @@ STENOS_EXPORT size_t stenosv_extract_time_trace(stenos_input* input, stenosv_tra
  */
 STENOS_EXPORT size_t stenosv_bytestream_extract_time_trace(stenosv_bytestream* input, int64_t* start_time, int64_t* end_time, stenosv_trace_query* query, stenosv_trace_result* out_trace);
 
+
+
+
+
+
+
+STENOS_EXPORT size_t stenosv_compress_numeric(const void* src, stenosv_pixel_type type, size_t count, void* dst, size_t dst_size, double error, int level);
+
+STENOS_EXPORT size_t stenosv_decompress_numeric(const void* src, size_t bytes, void* dst, size_t dst_bytes, stenosv_pixel_type dst_type);
+
 /** @} */
 
 #ifdef __cplusplus

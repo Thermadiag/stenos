@@ -54,10 +54,9 @@ int stenosv_default_gpu_device()
 	}
 }
 
-
 size_t stenosv_sizeof_pixel_type(stenosv_pixel_type type)
 {
-	switch(type) {
+	switch (type) {
 		case StenosInt8:
 		case StenosUInt8:
 			return 1;
@@ -161,7 +160,6 @@ void stenosv_compress_set_max_time(stenosv_compress* ctx, uint64_t max_nanosecon
 	ctx->compress->set_max_time(max_nanoseconds);
 }
 
-
 stenosv_pixel_type stenosv_compress_pixel_type(stenosv_compress* ctx)
 {
 	return ctx->pixel_type;
@@ -204,11 +202,11 @@ size_t stenosv_compress_add_image(stenosv_compress* ctx, void* img, int64_t time
 {
 	try {
 		const auto& times = ctx->compress->times();
-		if (!times.empty() && ctx->compress->current_pos() > 0 ){
+		if (!times.empty() && ctx->compress->current_pos() > 0) {
 			auto last_time = times.back();
-			if(timestamp <= last_time)
+			if (timestamp <= last_time)
 				return STENOS_ERROR_INVALID_PARAMETER;
-		} 
+		}
 
 		ctx->payload.clear();
 		ctx->payload = ctx->compress->add_frame(img, timestamp);
@@ -389,19 +387,19 @@ stenosv_block_header stenosv_read_block_header_stream(stenos_input* input, uint6
 		else
 			memcpy(&ret, tmp + 8, sizeof(ret));
 
-		if (ret.version == 0 || ret.version > STENOS_VIDEO_TRACE_VERSION || ret.pixel_type > StenosFloat64){
+		if (ret.version == 0 || ret.version > STENOS_VIDEO_TRACE_VERSION || ret.pixel_type > StenosFloat64) {
 
 			// Handle old format
-			if(ret.version == 0 && ret.pixel_type == 0 && ret.width && ret.height && ret.count){
+			if (ret.version == 0 && ret.pixel_type == 0 && ret.width && ret.height && ret.count) {
 				ret.version = STENOS_VIDEO_TRACE_VERSION;
 				ret.pixel_type = StenosUInt16;
-			} 
-			else{ 
+			}
+			else {
 				memset(&ret, 0, sizeof(ret));
 				return ret;
-			}	
-		}	
-		
+			}
+		}
+
 		if (full_block_size)
 			*full_block_size = read_LE_64(tmp) + 8;
 
@@ -487,7 +485,7 @@ stenosv_decompress* stenosv_decompress_make_stream(stenos_input* read, int threa
 	return ret;
 }
 
-size_t stenosv_extract_timestamps(stenos_input* input, int64_t * timestamps, size_t count)
+size_t stenosv_extract_timestamps(stenos_input* input, int64_t* timestamps, size_t count)
 {
 	int threads = 1;
 
@@ -507,13 +505,13 @@ size_t stenosv_extract_timestamps(stenos_input* input, int64_t * timestamps, siz
 			ret->input = *input;
 			ret->dec->set_threads(threads);
 			bool ok = ret->dec->open(&ret->input, false);
-			if(!ok) {
+			if (!ok) {
 				delete ret;
 				return STENOS_ERROR_INVALID_INPUT;
 			}
 
-			const auto & times = ret->dec->times();
-			if(count < times.size()) {
+			const auto& times = ret->dec->times();
+			if (count < times.size()) {
 				delete ret;
 				return STENOS_ERROR_INVALID_PARAMETER;
 			}
@@ -766,7 +764,7 @@ size_t stenosv_bytestream_read(stenosv_bytestream* ctx, uint64_t pos, void* img)
 		s.pos = 0;
 		s.start = ctx->current->pos;
 		s.input = ctx->input;
-		if(ctx->input.seek(s.start, SEEK_SET, ctx->input.opaque) < 0)
+		if (ctx->input.seek(s.start, SEEK_SET, ctx->input.opaque) < 0)
 			return STENOS_ERROR_INVALID_IO;
 		stenos_input in;
 		in.opaque = &s;
@@ -1130,7 +1128,6 @@ size_t stenosv_bytestream_extract_time_trace(stenosv_bytestream* input, int64_t*
 		std::atomic<size_t> ret{ 0 };
 
 		std::mutex mutex;
-		
 
 		stenos::get_pool().loop_for(threads, 0, (int)input->blocks.size(), 1, [&](auto i) {
 			if (err.load())
@@ -1139,7 +1136,7 @@ size_t stenosv_bytestream_extract_time_trace(stenosv_bytestream* input, int64_t*
 			size_t idx = (size_t)i;
 
 			auto start_t = times[input->blocks[idx].start_frame];
-			auto last_t = times[input->blocks[idx].start_frame + input->blocks[idx].count -1];
+			auto last_t = times[input->blocks[idx].start_frame + input->blocks[idx].count - 1];
 
 			if (last_t < time_bounds.first || start_t > time_bounds.second)
 				return;
@@ -1148,7 +1145,7 @@ size_t stenosv_bytestream_extract_time_trace(stenosv_bytestream* input, int64_t*
 			p.pos = 0;
 			p.start = input->blocks[idx].pos;
 			p.input = input->input;
-			
+
 			stenos_input stream;
 			stream.opaque = &p;
 			stream.read = read_stream_pos;
@@ -1184,6 +1181,293 @@ size_t stenosv_bytestream_extract_time_trace(stenosv_bytestream* input, int64_t*
 			return error;
 
 		return ret.load();
+	}
+	catch (...) {
+		return STENOS_ERROR_ALLOC;
+	}
+}
+
+template<class T>
+size_t stenosv_compress_numeric_type(const T* src, size_t count, void* dst, size_t dst_bytes, double error, int level)
+{
+	struct DestroyContext
+	{
+		void operator()(stenos_context* ctx) const { stenos_destroy_context(ctx); }
+	};
+	using pixel_type = detail::ValueIndex<T, std::uint8_t>;
+
+	constexpr size_t decimate_block_size = 256;
+	constexpr size_t compress_block_size = 1 << 17; // 128k
+	constexpr size_t compress_sample_count = compress_block_size / sizeof(pixel_type);
+
+	if (count == 0) {
+		return stenos_compress(nullptr, sizeof(pixel_type), 0, dst, dst_bytes, level);
+	}
+
+	std::unique_ptr<stenos_context, DestroyContext> ctx(stenos_make_context());
+	if (!ctx)
+		return STENOS_ERROR_ALLOC;
+	stenos_set_level(ctx.get(), level);
+	stenos_set_block_size(ctx.get(), 9);
+
+	if (dst_bytes < 12)
+		return STENOS_ERROR_DST_OVERFLOW;
+
+	if (level < 0)
+		level = 0;
+	else if (level > 9)
+		level = 9;
+
+	size_t input_count = count;
+
+	std::vector<pixel_type> buffer(std::min(count, decimate_block_size));
+	std::vector<pixel_type> to_compress;
+
+	// Skip compression header, we will write it later
+	char* _dst = (char*)dst + 12;
+	size_t dst_remaining = dst_bytes - 12;
+	size_t total_samples = 0;
+
+	while (count) {
+		// Decimate to buffer
+		size_t next_chunk = std::min(count, decimate_block_size);
+		size_t samples = detail::decimate_raw(src, next_chunk, buffer.data(), error);
+		total_samples += samples;
+
+		// Copy decimated output to to_compress
+		size_t room_for = compress_sample_count - to_compress.size();
+		size_t to_copy = std::min(room_for, samples);
+		to_compress.insert(to_compress.end(), buffer.data(), buffer.data() + to_copy);
+
+		if (to_compress.size() == compress_sample_count) {
+			// Compress
+			size_t r = stenos_private_compress_block(ctx.get(), to_compress.data(), sizeof(pixel_type), compress_block_size, to_compress.size() * sizeof(pixel_type), _dst, dst_remaining);
+			if (stenos_has_error(r))
+				return r;
+
+			_dst += r;
+			dst_remaining -= r;
+
+			// Reset to_compress with remaining samples
+			to_compress.clear();
+			to_compress.insert(to_compress.end(), buffer.data() + to_copy, buffer.data() + samples);
+		}
+
+		src += next_chunk;
+		count -= next_chunk;
+	}
+
+	// Compress remaining
+	if (to_compress.size()) {
+		// Compress
+		size_t r = stenos_private_compress_block(ctx.get(), to_compress.data(), sizeof(pixel_type), compress_block_size, to_compress.size() * sizeof(pixel_type), _dst, dst_remaining);
+		if (stenos_has_error(r))
+			return r;
+
+		_dst += r;
+		dst_remaining -= r;
+	}
+
+	// Write frame header
+	stenos_private_create_compression_header(total_samples * sizeof(pixel_type), compress_block_size, dst, 12);
+
+	return (size_t)(_dst - (char*)dst);
+}
+
+template<class T>
+static STENOS_ALWAYS_INLINE T fround_val(double v) noexcept
+{
+	if STENOS_CONSTEXPR (std::is_integral<T>::value)
+		// return (T)std::llrint(v);
+		return (T)(v + 0.5);
+	return (T)v;
+}
+
+template<class T>
+size_t stenosv_decompress_numeric_type(const void* src, size_t bytes, T* dst, size_t dst_count)
+{
+	struct DestroyContext
+	{
+		void operator()(stenos_context* ctx) const { stenos_destroy_context(ctx); }
+	};
+
+	using pixel_type = detail::ValueIndex<T, std::uint8_t>;
+
+	stenos_info info;
+	size_t r = stenos_get_info(src, sizeof(pixel_type), bytes, &info);
+	if STENOS_UNLIKELY (stenos_has_error(r))
+		return r;
+
+	size_t total_samples = info.decompressed_size / sizeof(pixel_type);
+
+	if STENOS_UNLIKELY (info.decompressed_size && total_samples == 0)
+		return STENOS_ERROR_INVALID_INPUT;
+	if STENOS_UNLIKELY (info.decompressed_size % sizeof(pixel_type))
+		return STENOS_ERROR_INVALID_INPUT;
+
+	size_t remaining_samples = total_samples;
+	size_t remaining_dst_count = dst_count;
+	size_t compress_block_size = info.superblock_size;
+	size_t max_samples_per_block = compress_block_size / sizeof(pixel_type);
+
+	T* _dst = dst;
+
+	// Skip header
+	const char* _src = (char*)src + 12;
+	bytes -= 12;
+
+	std::unique_ptr<stenos_context, DestroyContext> ctx(stenos_make_context());
+	if STENOS_UNLIKELY (!ctx)
+		return STENOS_ERROR_ALLOC;
+
+	std::vector<pixel_type> decompressed(std::min(total_samples, max_samples_per_block) + 1);
+	bool has_front_element = false;
+
+	pixel_type prev{};
+
+	while (remaining_samples) {
+
+		// Decompress block
+		size_t block_size = stenos_private_block_size(_src, bytes);
+		if (stenos_has_error(block_size))
+			return block_size;
+
+		// Decompress into decompressed, take into account a possible remaining value at the front
+		size_t out_bytes = std::min(max_samples_per_block, remaining_samples) * sizeof(pixel_type);
+		r = stenos_private_decompress_block(ctx.get(), _src, sizeof(pixel_type), compress_block_size, block_size, decompressed.data() + has_front_element, out_bytes);
+		if (stenos_has_error(r))
+			return r;
+
+		// Interpolate values
+		size_t decompressed_samples = r / sizeof(pixel_type);
+		size_t samples = decompressed_samples + has_front_element;
+
+		if (decompressed_samples > remaining_samples)
+			return STENOS_ERROR_INVALID_INPUT;
+
+		prev = decompressed[0];
+		for (size_t i = 1; i < samples; ++i) {
+			if (decompressed[i].index <= prev.index) {
+				// if STENOS_UNLIKELY (i == 1)
+				//  At first iteration, the first element should always be before the next one
+				//	return STENOS_ERROR_INVALID_INPUT;
+
+				// Write last element
+				*_dst++ = prev.value;
+				prev = decompressed[i];
+				continue;
+			}
+
+			// Write first value
+			*_dst++ = prev.value;
+			if (decompressed[i].index > prev.index + 1) {
+				// Interpolate
+				double factor = 1. / (double)(decompressed[i].index - prev.index);
+				double ival = (double)decompressed[i].value;
+				double pval = (double)prev.value;
+				unsigned start = prev.index + 1;
+				unsigned end = decompressed[i].index;
+				
+				while (start < end) {
+					double val1 = (double)(start - prev.index) * factor;
+					val1 = ival * val1 + (1. - val1) * pval;
+					*_dst++ = fround_val<T>(val1);
+					++start;
+				}
+			}
+
+			prev = decompressed[i];
+		}
+
+		// Update remaining sample count
+		remaining_samples -= decompressed_samples;
+
+		// Increment src
+		_src += block_size;
+		bytes -= block_size;
+
+		if (prev.index != 255) {
+			// We are not at decimation end block: keep last element and move it to the front
+			has_front_element = true;
+			decompressed[0] = prev;
+		}
+		else {
+			// All elements were used
+			has_front_element = false;
+
+			// Write the last element (index 255)
+			*_dst++ = prev.value;
+		}
+	}
+	// Write last element
+	if (prev.index != 255)
+		*_dst++ = prev.value;
+
+	return (size_t)(_dst - dst);
+}
+
+size_t stenosv_compress_numeric(const void* src, stenosv_pixel_type type, size_t count, void* dst, size_t dst_size, double error, int level)
+{
+	try {
+
+		switch (type) {
+			case StenosUInt8:
+				return stenosv_compress_numeric_type((std::uint8_t*)src, count, dst, dst_size, error, level);
+			case StenosInt8:
+				return stenosv_compress_numeric_type((std::int8_t*)src, count, dst, dst_size, error, level);
+			case StenosUInt16:
+				return stenosv_compress_numeric_type((std::uint16_t*)src, count, dst, dst_size, error, level);
+			case StenosInt16:
+				return stenosv_compress_numeric_type((std::int16_t*)src, count, dst, dst_size, error, level);
+			case StenosUInt32:
+				return stenosv_compress_numeric_type((std::uint32_t*)src, count, dst, dst_size, error, level);
+			case StenosInt32:
+				return stenosv_compress_numeric_type((std::int32_t*)src, count, dst, dst_size, error, level);
+			case StenosUInt64:
+				return stenosv_compress_numeric_type((std::uint64_t*)src, count, dst, dst_size, error, level);
+			case StenosInt64:
+				return stenosv_compress_numeric_type((std::int64_t*)src, count, dst, dst_size, error, level);
+			case StenosFloat32:
+				return stenosv_compress_numeric_type((float*)src, count, dst, dst_size, error, level);
+			case StenosFloat64:
+				return stenosv_compress_numeric_type((double*)src, count, dst, dst_size, error, level);
+			default:
+				return STENOS_ERROR_INVALID_PARAMETER;
+		}
+	}
+	catch (...) {
+		return STENOS_ERROR_ALLOC;
+	}
+}
+
+size_t stenosv_decompress_numeric(const void* src, size_t bytes, void* dst, size_t dst_bytes, stenosv_pixel_type dst_type)
+{
+	try {
+
+		switch (dst_type) {
+			case StenosUInt8:
+				return stenosv_decompress_numeric_type(src, bytes, (std::uint8_t*)dst, dst_bytes / sizeof(std::uint8_t));
+			case StenosInt8:
+				return stenosv_decompress_numeric_type(src, bytes, (std::int8_t*)dst, dst_bytes / sizeof(std::int8_t));
+			case StenosUInt16:
+				return stenosv_decompress_numeric_type(src, bytes, (std::uint16_t*)dst, dst_bytes / sizeof(std::uint16_t));
+			case StenosInt16:
+				return stenosv_decompress_numeric_type(src, bytes, (std::int16_t*)dst, dst_bytes / sizeof(std::int16_t));
+			case StenosUInt32:
+				return stenosv_decompress_numeric_type(src, bytes, (std::uint32_t*)dst, dst_bytes / sizeof(std::uint32_t));
+			case StenosInt32:
+				return stenosv_decompress_numeric_type(src, bytes, (std::int32_t*)dst, dst_bytes / sizeof(std::int32_t));
+			case StenosUInt64:
+				return stenosv_decompress_numeric_type(src, bytes, (std::uint64_t*)dst, dst_bytes / sizeof(std::uint64_t));
+			case StenosInt64:
+				return stenosv_decompress_numeric_type(src, bytes, (std::int64_t*)dst, dst_bytes / sizeof(std::int64_t));
+			case StenosFloat32:
+				return stenosv_decompress_numeric_type(src, bytes, (float*)dst, dst_bytes / sizeof(float));
+			case StenosFloat64:
+				return stenosv_decompress_numeric_type(src, bytes, (double*)dst, dst_bytes / sizeof(double));
+			default:
+				return STENOS_ERROR_INVALID_PARAMETER;
+		}
 	}
 	catch (...) {
 		return STENOS_ERROR_ALLOC;
