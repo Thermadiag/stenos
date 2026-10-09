@@ -1197,12 +1197,34 @@ static STENOS_ALWAYS_INLINE std::size_t internal_super_block_size(std::size_t bl
 	return (STENOS_BLOCK_SIZE / block_size) * block_size;
 }
 
+template<size_t Bytes>
+struct MakeUnsigned
+{
+	using type = std::uint8_t;
+};
+template<>
+struct MakeUnsigned<2>
+{
+	using type = std::uint16_t;
+};
+template<>
+struct MakeUnsigned<4>
+{
+	using type = std::uint32_t;
+};
+template<>
+struct MakeUnsigned<8>
+{
+	using type = std::uint64_t;
+};
+
 template<class T>
 size_t stenosv_compress_numeric_type(const T* src, size_t count, void* dst, size_t dst_bytes, double error, int level)
 {
 	//TEST
 	{
-		using pixel_type = detail::ValueIndex<T, std::uint32_t>;
+		using index_type = typename MakeUnsigned<sizeof(T)>::type;
+		using pixel_type = detail::ValueIndex<T, index_type>;
 		std::vector<pixel_type> buf(count);
 		size_t ret = detail::decimate_raw(src, count, buf.data(), error);
 		return stenos_compress(buf.data(), sizeof(pixel_type), ret * sizeof(pixel_type), dst, dst_bytes, level);
