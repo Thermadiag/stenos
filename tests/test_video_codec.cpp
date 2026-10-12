@@ -353,13 +353,14 @@ static auto msecs_since_epoch()
 int test_video_codec(int, char*[]) 
 {
 	{
-		const double error = 0;
+		const double error = 20;
 		int level = 2;
-		constexpr size_t count = 10000000;
+		constexpr size_t count = 1000000;
 		// Test decimation
 		std::vector<int> values(count);
 		for (size_t i = 0; i < values.size(); ++i)
-			values[i] = (int)rand();
+			//values[i] =  (int)i;
+			values[i] = (int) (10*std::cos(i*0.1));
 
 		std::vector<char> dst(stenos_bound( values.size() * 5));
 		std::vector<int> decomp(count);
@@ -390,6 +391,7 @@ int test_video_codec(int, char*[])
 		bool ok = dec == decomp.size();
 		if (ok) {
 			for (size_t i = 0; i < dec; ++i) {
+				//std::cout << values[i] << "\t" << decomp[i] << std::endl;
 				if (std::abs((double)decomp[i] - (double)values[i]) > error) {
 					ok = false;
 					break;

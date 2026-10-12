@@ -14,6 +14,7 @@
 #include <thread>
 #include <cmath>
 #include <iostream>
+#include <queue>
 
 #include "../../bits.hpp"
 #include "../../timer.hpp"
@@ -1602,6 +1603,9 @@ namespace stenos
 			const VType* last_pos = nullptr;
 			const VType* start_pos = nullptr;
 
+			std::priority_queue<double> max_slope;
+			std::priority_queue<double, std::vector<double>, std::greater<>> min_slope;
+
 			static STENOS_ALWAYS_INLINE double slope(double l, double r, double dist) noexcept { return (r - l) / dist; }
 			template<class U>
 			static STENOS_ALWAYS_INLINE U dabs(U v) noexcept
@@ -1653,6 +1657,12 @@ namespace stenos
 					return true;
 				return a < b;
 			}
+			static STENOS_ALWAYS_INLINE bool inf(double a, double b)
+			{
+				if (dcompare(a, b))
+					return false;
+				return a < b;
+			}
 
 			STENOS_ALWAYS_INLINE void update_last_pos()
 			{
@@ -1661,13 +1671,42 @@ namespace stenos
 				last_pos = &last_pixels[candidate];
 			}
 
+			STENOS_ALWAYS_INLINE void advance_min_max2(double err, double error2)
+			{ 
+				const auto& val = last_pixels[pos];
+
+				
+				double current_slope = slope((double)last_pixels[0].value, (double)val.value, (double)(index(val) - index(last_pixels[0])));
+
+				if (!min_slope.empty()) {
+					double max_sl = max_slope.top();
+					double min_sl = min_slope.top();
+
+					if (/* pos == 256 ||*/ inf(min_sl, current_slope) || inf(current_slope, max_sl)) {
+						update_last_pos();
+						auto ss = last_pixels.size();
+						last_pixels.erase(last_pixels.begin(), last_pixels.begin() + candidate);
+						pos = 1;
+						candidate = -1;
+						min_slope = {};
+						max_slope = {};
+					}
+				}
+
+				double upper_slope = slope((double)last_pixels[0].value, (double)val.value + err, (double)(index(val) - index(last_pixels[0])));
+				double lower_slope = slope((double)last_pixels[0].value, (double)val.value - err, (double)(index(val) - index(last_pixels[0])));
+				min_slope.emplace(upper_slope);
+				max_slope.emplace(lower_slope);
+				candidate = pos;
+			}
+
 			STENOS_ALWAYS_INLINE void advance_min_max(double err, double error2)
 			{
 				const auto& val = last_pixels[pos];
 				double s, error_max;
 
-				if (pos == 256)
-					goto stop_here;
+				//if (pos == 256)
+				//	goto stop_here;
 
 				// check points before
 				// compute slope
@@ -1676,7 +1715,7 @@ namespace stenos
 
 				if (error_max > error2) {
 
-				stop_here:
+				//stop_here:
 					// stop here
 					if (candidate == -1)
 						candidate = pos;
@@ -1715,6 +1754,27 @@ namespace stenos
 			d.last_pixels.reset(out);
 			d.last_pixels.push_back({ in[0], (Index)0 });
 
+
+			for (size_t i = 1; i < count; ++i, ++d.pos) {
+
+				if (in[i] == -1)
+					bool stop = true;
+
+				d.last_pixels.push_back({ in[i], (Index)0 });
+				d.advance_min_max2(err, err2);
+			}
+			// Add last point
+			if (d.last_pixels.size() && d.index(d.last_pixels.back()) == count - 1) {
+
+				d.candidate = d.last_pixels.size() - 1;
+				d.update_last_pos();
+			}
+
+			return (size_t)(d.points - out);
+			
+
+
+			 /*
 			for (size_t i = 1; i < count; ++i) {
 
 				d.last_pixels.push_back({ in[i], (Index)0 });
@@ -1743,6 +1803,7 @@ namespace stenos
 			}
 
 			return (size_t)(d.points - out);
+			*/
 		}
 
 		template<class T, class Index>
@@ -1763,8 +1824,12 @@ namespace stenos
 					while (start < end) {
 						double val1 = (double)(start) * factor;
 						val1 = ival * val1 + (1. - val1) * pval;
-						if STENOS_CONSTEXPR (std::is_integral<T>::value)
-							*out = (T)(val1 + 0.5);
+						if STENOS_CONSTEXPR (std::is_integral<T>::value) {
+							if STENOS_CONSTEXPR (std::is_unsigned<T>::value)
+								*out = (T)(val1 + 0.5);
+							else
+								*out = (T)std::llround(val1); //(T)(val1 + 0.5);
+						}
 						else
 							*out = (T)(val1);
 						++out;

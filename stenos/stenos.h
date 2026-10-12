@@ -466,6 +466,11 @@ typedef struct stenos_info_s
  */
 STENOS_EXPORT size_t stenos_get_info(const void* src, size_t bytesoftype, size_t bytes, stenos_info* info);
 
+/**
+* @brief Returns the compressed frame size in bytes or an error code.
+*/
+STENOS_EXPORT size_t stenos_get_frame_size(const void* src, size_t bytesoftype, size_t bytes);
+
 /** @} */
 
 /** @defgroup stenos_timer_api High-resolution timer */
