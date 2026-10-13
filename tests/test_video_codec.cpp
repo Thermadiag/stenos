@@ -357,7 +357,7 @@ int test_video_codec(int, char*[])
 	{
 		const double error = 1;
 		int level = 2;
-		constexpr size_t count = 1000000;
+		constexpr size_t count =  1000000;
 
 		using vtype = int;
 		constexpr stenosv_pixel_type pix = stenosv_to_pixel_type<vtype>();
@@ -372,7 +372,7 @@ int test_video_codec(int, char*[])
 		//values.erase(values.begin(), values.begin() + (1000000 - 737856));
 		//values.resize((1000000 - 737856));
 
-		/* {
+		{
 			using pixtype = detail::ValueIndex<vtype,size_t>;
 			std::vector<pixtype> decold(values.size()), decnew(values.size());
 
@@ -380,16 +380,7 @@ int test_video_codec(int, char*[])
 			auto rnew = detail::decimate_raw_new(values.data(), values.size(), decnew.data(), error);
 			std::cout << "old: " << rold << std::endl;
 			std::cout << "new: " << rnew << std::endl;
-			for (size_t i = values.size() - 30; i < values.size(); ++i)
-				std::cout << values[i] << ", " << i << std::endl;
-			std::cout << std::endl;
 			
-			for (size_t i = 0; i < std::min(rold, rnew); ++i) {
-				if (i > rold - 10) 
-					std::cout << decold[i].value << ", " << decold[i].index << "\t" << decnew[i].value << ", " << decnew[i].index << std::endl;
-				if (decold[i].value != decnew[i].value || decold[i].index != decnew[i].index)
-					bool stop = true;
-			}
 
 			std::vector<vtype> out(values.size());
 			auto dec = detail::undecimate_raw(decold.data(), rold, out.data(), out.size());
@@ -405,7 +396,7 @@ int test_video_codec(int, char*[])
 			}
 			std::cout << "ok " << ok << std::endl;
 			return 0;
-		}*/
+		}
 
 		std::vector<char> dst(stenos_bound( values.size() * sizeof(vtype)*2));
 		std::vector<vtype> decomp(count);

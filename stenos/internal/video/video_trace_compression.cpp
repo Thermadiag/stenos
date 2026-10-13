@@ -1280,7 +1280,9 @@ size_t stenosv_compress_numeric_type(const T* src, size_t count, void* dst, size
 		size_t ret = detail::decimate_raw_new(src, rem, buf.data(), error);
 
 		//TEST
-		{
+		/* {
+			for (size_t i = ret - 10; i < ret; ++i)
+				std::cout << buf[i].value << ", " << buf[i].index << std::endl;
 			std::vector<T> decomp(rem);
 			auto dec = detail::undecimate_raw(buf.data(), ret, decomp.data(), decomp.size());
 			bool ok = dec == decomp.size();
@@ -1295,7 +1297,7 @@ size_t stenosv_compress_numeric_type(const T* src, size_t count, void* dst, size
 			}
 			if (!ok)
 				bool stop = true;
-		}
+		}*/
 
 		size_t r = 0;
 

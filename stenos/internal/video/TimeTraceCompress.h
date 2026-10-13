@@ -1915,19 +1915,50 @@ namespace stenos
 
 			// Finish
 
-			// TEST
+
+			/* if (d.pos >= (int64_t)d.last_pixels.size() - 1) {
+				// we reach the end
+				if (d.candidate != -1) {
+					// add previous candidate
+					d.update_last_pos();
+					d.last_pixels.erase(d.last_pixels.begin(), d.last_pixels.begin() + d.candidate);
+					d.pos = 0;
+					d.candidate = (size_t)-1;
+					d.min_slope.clear();
+					d.max_slope.clear();
+				}
+			}*/
+
 			auto ss = d.last_pixels.size();
 
-			for (; d.pos != (std::int64_t)d.last_pixels.size(); ++d.pos) {
+			for (; d.pos != (int64_t)d.last_pixels.size(); ++d.pos) {
+				d.advance_min_max3(err, err2);
+				if (d.pos >= (int64_t)d.last_pixels.size() - 1) {
+					// we reach the end
+					if (d.candidate != -1) {
+						// add previous candidate
+						if (d.points->index != d.pos - 1) {
+							d.update_last_pos();
+							d.last_pixels.erase(d.last_pixels.begin(), d.last_pixels.begin() + d.candidate);
+							d.pos = 0;
+							d.candidate = (size_t)-1;
+							d.min_slope.clear();
+							d.max_slope.clear();
+						}
+					}
+				}
+			}
+
+
+			/* for (; d.pos != (std::int64_t)d.last_pixels.size(); ++d.pos) {
 
 				d.advance_min_max3(err, err2);
-			}
+			}*/
 
 			ss = d.last_pixels.size();
 
 			// Add last point
-			if (d.last_pixels.size() && d.index(d.last_pixels.back()) == count - 1) {
-
+			if (d.last_pixels.size() && d.pos > 1 && d.index(d.last_pixels.back()) == count - 1) {
 				d.candidate = d.last_pixels.size() - 1;
 				d.update_last_pos();
 			}
