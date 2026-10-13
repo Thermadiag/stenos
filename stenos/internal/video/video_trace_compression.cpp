@@ -1286,8 +1286,8 @@ size_t stenosv_compress_numeric_type(const T* src, size_t count, void* dst, size
 			size_t assess_dec = stenos_private_assess_compressibility(buf.data(), sizeof(pixel_type), ret * sizeof(pixel_type), assess_buffer.data());
 			size_t assess_raw = stenos_private_assess_compressibility(src, sizeof(T), rem * sizeof(T), assess_buffer.data());
 
-			double factor = 1. + 0.1 / level;
-			if (assess_dec * factor < assess_raw) {
+			double factor = 1.2; // + 0.1 / level;
+			if (true || assess_dec * factor < assess_raw) {
 				// Compress decimated values
 				r = stenos_compress(buf.data(), sizeof(pixel_type), ret * sizeof(pixel_type), out, dst_bytes, level);
 				if (stenos_has_error(r))

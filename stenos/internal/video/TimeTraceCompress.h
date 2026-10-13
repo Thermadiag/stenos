@@ -1705,14 +1705,13 @@ namespace stenos
 				const auto& val = last_pixels[pos];
 				double s, error_max;
 
-<<<<<<< HEAD
-=======
+
 				// TEST: use a bigger maximum GOP
-				if (pos == std::numeric_limits<Index>::max())
-					goto stop_here;
->>>>>>> f3e25aa9c0c14131f2825608cd52946a5b55deb4
-				//if (pos == 256)
+				//if (pos == std::numeric_limits<Index>::max())
 				//	goto stop_here;
+
+				if (pos == 256)
+					goto stop_here;
 
 				// check points before
 				// compute slope
@@ -1721,7 +1720,7 @@ namespace stenos
 
 				if (error_max > error2) {
 
-				//stop_here:
+				stop_here:
 					// stop here
 					if (candidate == -1)
 						candidate = pos;
@@ -1761,7 +1760,7 @@ namespace stenos
 			d.last_pixels.push_back({ in[0], (Index)0 });
 
 
-			for (size_t i = 1; i < count; ++i, ++d.pos) {
+			/* for (size_t i = 1; i < count; ++i, ++d.pos) {
 
 				if (in[i] == -1)
 					bool stop = true;
@@ -1777,10 +1776,10 @@ namespace stenos
 			}
 
 			return (size_t)(d.points - out);
-			
+			*/
 
 
-			 /*
+			 
 			for (size_t i = 1; i < count; ++i) {
 
 				d.last_pixels.push_back({ in[i], (Index)0 });
@@ -1809,7 +1808,7 @@ namespace stenos
 			}
 
 			return (size_t)(d.points - out);
-			*/
+			
 		}
 
 		template<class T, class Index>
