@@ -1705,6 +1705,12 @@ namespace stenos
 				const auto& val = last_pixels[pos];
 				double s, error_max;
 
+<<<<<<< HEAD
+=======
+				// TEST: use a bigger maximum GOP
+				if (pos == std::numeric_limits<Index>::max())
+					goto stop_here;
+>>>>>>> f3e25aa9c0c14131f2825608cd52946a5b55deb4
 				//if (pos == 256)
 				//	goto stop_here;
 
