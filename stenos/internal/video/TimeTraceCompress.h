@@ -14,7 +14,6 @@
 #include <thread>
 #include <cmath>
 #include <iostream>
-#include <queue>
 
 #include "../../bits.hpp"
 #include "../../timer.hpp"
@@ -27,6 +26,34 @@
 
 namespace stenos
 {
+
+	template<class T, class Less = std::less<T>>
+	class heap
+	{
+	public:
+		using container_type = std::vector<T>;
+		using value_type = typename container_type::value_type;
+		using reference = typename container_type::reference;
+		using const_reference = typename container_type::const_reference;
+		using size_type = typename container_type::size_type;
+		using value_compare = Less;
+
+		heap() = default;
+
+		STENOS_ALWAYS_INLINE bool empty() const noexcept { return c.empty(); }
+		STENOS_ALWAYS_INLINE size_type size() const noexcept { return c.size(); }
+		STENOS_ALWAYS_INLINE const_reference top() const noexcept { return c.front(); }
+		template<class... Args>
+		STENOS_ALWAYS_INLINE void emplace(Args&&... args)
+		{
+			c.emplace_back(std::forward<Args>(args)...);
+			std::push_heap(c.begin(), c.end(), Less{});
+		}
+		STENOS_ALWAYS_INLINE void clear() noexcept { c.clear(); }
+
+	protected:
+		container_type c{};
+	};
 
 	namespace compress_detail
 	{
@@ -1606,17 +1633,15 @@ namespace stenos
 			struct Slope
 			{
 				double val;
-				size_t index;
+				// size_t index;
 				bool operator<(const Slope& other) const { return val < other.val; }
 				bool operator>(const Slope& other) const { return val > other.val; }
 			};
 
-			std::priority_queue<Slope> max_slope;
-			std::priority_queue<Slope, std::vector<Slope>, std::greater<>> min_slope;
+			heap<Slope> max_slope;
+			heap<Slope, std::greater<>> min_slope;
 
-			static STENOS_ALWAYS_INLINE double slope(double l, double r, double dist) noexcept { 
-				return (r - l) / dist; 
-			}
+			static STENOS_ALWAYS_INLINE double slope(double l, double r, double dist) noexcept { return (r - l) / dist; }
 			template<class U>
 			static STENOS_ALWAYS_INLINE U dabs(U v) noexcept
 			{
@@ -1682,17 +1707,17 @@ namespace stenos
 			}
 
 			STENOS_ALWAYS_INLINE void advance_min_max2(double err, double error2)
-			{ 
+			{
 				const auto& val = last_pixels.back();
 				const auto& start = last_pixels[0];
-				
+
 				double current_slope = slope((double)last_pixels[0].value, (double)val.value, (double)(index(val) - index(last_pixels[0])));
 
 				if (!min_slope.empty()) {
 					auto max_sl = max_slope.top();
 					auto min_sl = min_slope.top();
 					if (!(current_slope <= min_sl.val && current_slope >= max_sl.val)) {
-					//if (/* pos == 256 ||*/ inf(min_sl.val, current_slope) || inf(current_slope, max_sl.val)) {
+						// if (/* pos == 256 ||*/ inf(min_sl.val, current_slope) || inf(current_slope, max_sl.val)) {
 						update_last_pos();
 						last_pixels.erase(last_pixels.begin(), last_pixels.begin() + candidate);
 						auto ss = last_pixels.size();
@@ -1704,8 +1729,8 @@ namespace stenos
 
 				double upper_slope = slope((double)last_pixels[0].value, (double)val.value + err, (double)(index(val) - index(last_pixels[0])));
 				double lower_slope = slope((double)last_pixels[0].value, (double)val.value - err, (double)(index(val) - index(last_pixels[0])));
-				min_slope.emplace(Slope{ upper_slope, index(val) });
-				max_slope.emplace(Slope{ lower_slope, index(val) });
+				min_slope.emplace(Slope{ upper_slope /*, index(val)*/ });
+				max_slope.emplace(Slope{ lower_slope /*, index(val)*/ });
 				candidate = pos;
 			}
 
@@ -1714,9 +1739,8 @@ namespace stenos
 				const auto& val = last_pixels[pos];
 				double s, error_max;
 
-
 				// TEST: use a bigger maximum GOP
-				//if (pos == std::numeric_limits<Index>::max())
+				// if (pos == std::numeric_limits<Index>::max())
 				//	goto stop_here;
 
 				if (pos == 256)
@@ -1750,26 +1774,27 @@ namespace stenos
 				const auto& first = last_pixels[0];
 
 				// TEST: use a bigger maximum GOP
-				// if (pos == std::numeric_limits<Index>::max())
-				//	goto stop_here;
-
-				if (pos == 256)
+				if STENOS_UNLIKELY(pos == std::numeric_limits<Index>::max())
 					goto stop_here;
+
+				// if (pos == 256)
+				//	goto stop_here;
 
 				// check points before
 				// compute slope
-				size_t diff_t = (index(*val) - index(first));
+				size_t diff_t = (size_t)(val - &first);
 				double s = slope((double)first.value, (double)val->value, (double)diff_t);
-				
-				if (min_slope.empty() ) {
+
+				if (min_slope.empty()) {
 					candidate = pos;
 				}
 				else {
-					const auto max_sl = max_slope.top();
-					const auto min_sl = min_slope.top();
+					const auto& max_sl = max_slope.top();
+					const auto& min_sl = min_slope.top();
 					if (inf(min_sl.val, s) || inf(s, max_sl.val)) {
+
 						if (min_sl.val < max_sl.val) {
-							stop_here:
+						stop_here:
 							// stop here
 							if (candidate == -1)
 								candidate = pos;
@@ -1779,73 +1804,31 @@ namespace stenos
 							val = &last_pixels[1];
 							pos = 0;
 							candidate = -1;
-							max_slope = {};
-							min_slope = {};
+							max_slope.clear();
+							min_slope.clear();
 						}
 					}
 					else
 						candidate = pos;
 				}
-				
-				diff_t = index(*val) - index(last_pixels[0]);
-				double upper_slope = slope((double)last_pixels[0].value, (double)val->value + err, (double)diff_t);
-				double lower_slope = slope((double)last_pixels[0].value, (double)val->value - err, (double)diff_t);
-				min_slope.emplace(Slope{ upper_slope, diff_t });
-				max_slope.emplace(Slope{ lower_slope, diff_t });
 
-				//error_max = check_candidate_min_max(pos, s, error2);
-				/*if (min_slope.empty())
-					;// Keep going
+				diff_t = (size_t)(val - &last_pixels[0]);
+				double upper_slope, lower_slope;
+				if (diff_t == 1) {
+					upper_slope = ((double)val->value + err - (double)last_pixels[0].value);
+					lower_slope = ((double)val->value - err - (double)last_pixels[0].value);
+				}
 				else {
-					const auto max_sl = max_slope.top();
-					const auto min_sl = min_slope.top();
-					if (inf(min_sl.val,s)) {
-						// We are above the bounds
-						const double beta = (double)first.value; //- s * (double)diff_t;
-						const double interp = min_sl.index * s + beta;
-						error_max = abs(interp - (double)last_pixels[min_sl.index].value);
-					}
-					if (inf(s , max_sl.val)) {
-						const double beta = (double)first.value; // - s * (double)diff_t;
-						const double interp = max_sl.index * s + beta;
-						error_max = std::max(error_max, abs(interp - (double)last_pixels[max_sl.index].value));
-					}
+					upper_slope = slope((double)last_pixels[0].value, (double)val->value + err, (double)diff_t);
+					lower_slope = slope((double)last_pixels[0].value, (double)val->value - err, (double)diff_t);
 				}
-					
-				
+				min_slope.emplace(Slope{ upper_slope /*, diff_t*/ });
+				max_slope.emplace(Slope{ lower_slope /*, diff_t*/ });
 
-				if (error_max > error2) {
-
-				stop_here:
-					// stop here
-					if (candidate == -1)
-						candidate = pos;
-
-					update_last_pos();
-					last_pixels.erase(last_pixels.begin(), last_pixels.begin() + candidate);
-					val = &last_pixels[1];
-					pos = 0;
-					candidate = -1;
-					max_slope = {};
-					min_slope = {};
-				}
-				else if (inf_equal(error_max, err)) {
-					candidate = pos;
-				}
-
-				diff_t = index(*val) - index(last_pixels[0]);
-				double upper_slope = slope((double)last_pixels[0].value, (double)val->value + err, (double)diff_t);
-				double lower_slope = slope((double)last_pixels[0].value, (double)val->value - err, (double)diff_t);
-				min_slope.emplace(Slope{ upper_slope, diff_t });
-				max_slope.emplace(Slope{ lower_slope, diff_t });
-				*/
 			}
 
 			STENOS_ALWAYS_INLINE size_t index(const VType& v) { return (size_t)(&v - start_pos); }
 		};
-
-
-
 
 		template<class T, class Index>
 		size_t decimate_raw_old(const T* in, size_t count, ValueIndex<T, Index>* out, double err)
@@ -1868,7 +1851,6 @@ namespace stenos
 			d.last_pixels.reset(out);
 			d.last_pixels.push_back({ in[0], (Index)0 });
 
-			
 			for (size_t i = 1; i < count; ++i) {
 
 				d.last_pixels.push_back({ in[i], (Index)0 });
@@ -1882,7 +1864,7 @@ namespace stenos
 
 			// Finish
 
-			//TEST
+			// TEST
 			auto ss = d.last_pixels.size();
 
 			for (; d.pos != (std::int64_t)d.last_pixels.size(); ++d.pos) {
@@ -1901,7 +1883,6 @@ namespace stenos
 
 			return (size_t)(d.points - out);
 		}
-
 
 		template<class T, class Index>
 		size_t decimate_raw_new(const T* in, size_t count, ValueIndex<T, Index>* out, double err)
@@ -1938,11 +1919,11 @@ namespace stenos
 			auto ss = d.last_pixels.size();
 
 			for (; d.pos != (std::int64_t)d.last_pixels.size(); ++d.pos) {
-				
+
 				d.advance_min_max3(err, err2);
 			}
 
-			 ss = d.last_pixels.size();
+			ss = d.last_pixels.size();
 
 			// Add last point
 			if (d.last_pixels.size() && d.index(d.last_pixels.back()) == count - 1) {
@@ -1975,7 +1956,6 @@ namespace stenos
 			d.last_pixels.reset(out);
 			d.last_pixels.push_back({ in[0], (Index)0 });
 
-
 			for (size_t i = 1; i < count; ++i, ++d.pos) {
 
 				if (in[i] == -1)
@@ -2005,12 +1985,12 @@ namespace stenos
 					// Interpolate
 					double factor = 1. / (double)(src[i].index);
 					double ival = (double)src[i].value;
-					double pval = (double)src[i -1].value;
+					double pval = (double)src[i - 1].value;
 					unsigned start = 1;
 					unsigned end = (unsigned)src[i].index;
 
 					while (start < end) {
-						double val1 = (double)(start) * factor;
+						double val1 = (double)(start)*factor;
 						val1 = ival * val1 + (1. - val1) * pval;
 						if STENOS_CONSTEXPR (std::is_integral<T>::value) {
 							if STENOS_CONSTEXPR (std::is_unsigned<T>::value)
