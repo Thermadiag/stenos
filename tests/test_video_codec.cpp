@@ -353,38 +353,42 @@ static auto msecs_since_epoch()
 int test_video_codec(int, char*[]) 
 {
 	{
-		const double error = 20;
+		const double error = 0.01;
 		int level = 2;
 		constexpr size_t count = 1000000;
+
+		using vtype = double;
+		constexpr stenosv_pixel_type pix = stenosv_to_pixel_type<vtype>();
+
 		// Test decimation
-		std::vector<int> values(count);
+		std::vector<vtype> values(count);
 		for (size_t i = 0; i < values.size(); ++i)
 			//values[i] =  (int)i;
-			values[i] = (int) (10*std::cos(i*0.1));
+			values[i] = (vtype)(10 * std::cos(i * 0.1));
 
-		std::vector<char> dst(stenos_bound( values.size() * 5));
-		std::vector<int> decomp(count);
+		std::vector<char> dst(stenos_bound( values.size() * sizeof(vtype)*2));
+		std::vector<vtype> decomp(count);
 
 		int64_t st, el;
 
 		st = msecs_since_epoch();
-		size_t ret1 = stenos_compress(values.data(), 4, values.size() * 4, dst.data(), dst.size(), level);
+		size_t ret1 = stenos_compress(values.data(), sizeof(vtype), values.size() * sizeof(vtype), dst.data(), dst.size(), level);
 		el = msecs_since_epoch() - st;
 		std::cout << "compress: " << el << " ms " <<ret1<< std::endl;
 
 		st = msecs_since_epoch();
-		stenos_decompress(dst.data(), ret1, 4, decomp.data(), decomp.size() * 4);
+		stenos_decompress(dst.data(), ret1, sizeof(vtype), decomp.data(), decomp.size() * sizeof(vtype));
 		el = msecs_since_epoch() - st;
 		std::cout << "decompress: " << el << " ms" << std::endl;
 
 
 		st = msecs_since_epoch();
-		size_t ret2 = stenosv_compress_numeric(values.data(), StenosInt32, values.size(), dst.data(), dst.size(), error, level);
+		size_t ret2 = stenosv_compress_numeric(values.data(), pix, values.size(), dst.data(), dst.size(), error, level);
 		el = msecs_since_epoch() - st;
 		std::cout << "num compress: " << el << " ms " << ret2<< std::endl;
 
 		st = msecs_since_epoch();
-		size_t dec = stenosv_decompress_numeric(dst.data(), ret2, decomp.data(), decomp.size() * 4, StenosInt32);
+		size_t dec = stenosv_decompress_numeric(dst.data(), ret2, decomp.data(), decomp.size() * sizeof(vtype), pix);
 		el = msecs_since_epoch() - st;
 		std::cout << "num decompress: " << el << " ms" << std::endl;
 
