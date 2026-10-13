@@ -1277,7 +1277,26 @@ size_t stenosv_compress_numeric_type(const T* src, size_t count, void* dst, size
 
 	while (count) {
 		size_t rem = std::min(count, step_size);
-		size_t ret = detail::decimate_raw(src, rem, buf.data(), error);
+		size_t ret = detail::decimate_raw_new(src, rem, buf.data(), error);
+
+		//TEST
+		{
+			std::vector<T> decomp(rem);
+			auto dec = detail::undecimate_raw(buf.data(), ret, decomp.data(), decomp.size());
+			bool ok = dec == decomp.size();
+			if (ok) {
+				for (size_t i = 0; i < dec; ++i) {
+					// std::cout << values[i] << "\t" << decomp[i] << std::endl;
+					if (std::abs((double)decomp[i] - (double)src[i]) > error) {
+						ok = false;
+						break;
+					}
+				}
+			}
+			if (!ok)
+				bool stop = true;
+		}
+
 		size_t r = 0;
 
 		if (level > 1) {
@@ -1286,8 +1305,8 @@ size_t stenosv_compress_numeric_type(const T* src, size_t count, void* dst, size
 			size_t assess_dec = stenos_private_assess_compressibility(buf.data(), sizeof(pixel_type), ret * sizeof(pixel_type), assess_buffer.data());
 			size_t assess_raw = stenos_private_assess_compressibility(src, sizeof(T), rem * sizeof(T), assess_buffer.data());
 
-			double factor = 1.2; // + 0.1 / level;
-			if (true || assess_dec * factor < assess_raw) {
+			double factor = 1. + 0.1 / level;
+			if (assess_dec * factor < assess_raw) {
 				// Compress decimated values
 				r = stenos_compress(buf.data(), sizeof(pixel_type), ret * sizeof(pixel_type), out, dst_bytes, level);
 				if (stenos_has_error(r))

@@ -344,6 +344,7 @@ void test_codec(int width, int height, int GOP, double error, int threads, int d
 #include <vector>
 #include <chrono>
 #include <stenos/stenos_video.h>
+#include "stenos/internal/video/TimeTraceCompress.h"
 
 static auto msecs_since_epoch()
 {
@@ -352,12 +353,13 @@ static auto msecs_since_epoch()
 
 int test_video_codec(int, char*[]) 
 {
+	using namespace stenos;
 	{
-		const double error = 0.01;
+		const double error = 1;
 		int level = 2;
 		constexpr size_t count = 1000000;
 
-		using vtype = double;
+		using vtype = int;
 		constexpr stenosv_pixel_type pix = stenosv_to_pixel_type<vtype>();
 
 		// Test decimation
@@ -365,6 +367,45 @@ int test_video_codec(int, char*[])
 		for (size_t i = 0; i < values.size(); ++i)
 			//values[i] =  (int)i;
 			values[i] = (vtype)(10 * std::cos(i * 0.1));
+
+		//TEST
+		//values.erase(values.begin(), values.begin() + (1000000 - 737856));
+		//values.resize((1000000 - 737856));
+
+		/* {
+			using pixtype = detail::ValueIndex<vtype,size_t>;
+			std::vector<pixtype> decold(values.size()), decnew(values.size());
+
+			auto rold = detail::decimate_raw_old(values.data(), values.size(), decold.data(), error);
+			auto rnew = detail::decimate_raw_new(values.data(), values.size(), decnew.data(), error);
+			std::cout << "old: " << rold << std::endl;
+			std::cout << "new: " << rnew << std::endl;
+			for (size_t i = values.size() - 30; i < values.size(); ++i)
+				std::cout << values[i] << ", " << i << std::endl;
+			std::cout << std::endl;
+			
+			for (size_t i = 0; i < std::min(rold, rnew); ++i) {
+				if (i > rold - 10) 
+					std::cout << decold[i].value << ", " << decold[i].index << "\t" << decnew[i].value << ", " << decnew[i].index << std::endl;
+				if (decold[i].value != decnew[i].value || decold[i].index != decnew[i].index)
+					bool stop = true;
+			}
+
+			std::vector<vtype> out(values.size());
+			auto dec = detail::undecimate_raw(decold.data(), rold, out.data(), out.size());
+			bool ok = dec == out.size();
+			if (ok) {
+				for (size_t i = 0; i < dec; ++i) {
+					// std::cout << values[i] << "\t" << decomp[i] << std::endl;
+					if (std::abs((double)out[i] - (double)values[i]) > error) {
+						ok = false;
+						break;
+					}
+				}
+			}
+			std::cout << "ok " << ok << std::endl;
+			return 0;
+		}*/
 
 		std::vector<char> dst(stenos_bound( values.size() * sizeof(vtype)*2));
 		std::vector<vtype> decomp(count);

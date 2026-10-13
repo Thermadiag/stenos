@@ -1603,10 +1603,20 @@ namespace stenos
 			const VType* last_pos = nullptr;
 			const VType* start_pos = nullptr;
 
-			std::priority_queue<double> max_slope;
-			std::priority_queue<double, std::vector<double>, std::greater<>> min_slope;
+			struct Slope
+			{
+				double val;
+				size_t index;
+				bool operator<(const Slope& other) const { return val < other.val; }
+				bool operator>(const Slope& other) const { return val > other.val; }
+			};
 
-			static STENOS_ALWAYS_INLINE double slope(double l, double r, double dist) noexcept { return (r - l) / dist; }
+			std::priority_queue<Slope> max_slope;
+			std::priority_queue<Slope, std::vector<Slope>, std::greater<>> min_slope;
+
+			static STENOS_ALWAYS_INLINE double slope(double l, double r, double dist) noexcept { 
+				return (r - l) / dist; 
+			}
 			template<class U>
 			static STENOS_ALWAYS_INLINE U dabs(U v) noexcept
 			{
@@ -1673,21 +1683,20 @@ namespace stenos
 
 			STENOS_ALWAYS_INLINE void advance_min_max2(double err, double error2)
 			{ 
-				const auto& val = last_pixels[pos];
-
+				const auto& val = last_pixels.back();
+				const auto& start = last_pixels[0];
 				
 				double current_slope = slope((double)last_pixels[0].value, (double)val.value, (double)(index(val) - index(last_pixels[0])));
 
 				if (!min_slope.empty()) {
-					double max_sl = max_slope.top();
-					double min_sl = min_slope.top();
-
-					if (/* pos == 256 ||*/ inf(min_sl, current_slope) || inf(current_slope, max_sl)) {
+					auto max_sl = max_slope.top();
+					auto min_sl = min_slope.top();
+					if (!(current_slope <= min_sl.val && current_slope >= max_sl.val)) {
+					//if (/* pos == 256 ||*/ inf(min_sl.val, current_slope) || inf(current_slope, max_sl.val)) {
 						update_last_pos();
-						auto ss = last_pixels.size();
 						last_pixels.erase(last_pixels.begin(), last_pixels.begin() + candidate);
+						auto ss = last_pixels.size();
 						pos = 1;
-						candidate = -1;
 						min_slope = {};
 						max_slope = {};
 					}
@@ -1695,8 +1704,8 @@ namespace stenos
 
 				double upper_slope = slope((double)last_pixels[0].value, (double)val.value + err, (double)(index(val) - index(last_pixels[0])));
 				double lower_slope = slope((double)last_pixels[0].value, (double)val.value - err, (double)(index(val) - index(last_pixels[0])));
-				min_slope.emplace(upper_slope);
-				max_slope.emplace(lower_slope);
+				min_slope.emplace(Slope{ upper_slope, index(val) });
+				max_slope.emplace(Slope{ lower_slope, index(val) });
 				candidate = pos;
 			}
 
@@ -1735,11 +1744,218 @@ namespace stenos
 				}
 			}
 
+			STENOS_ALWAYS_INLINE void advance_min_max3(double err, double error2)
+			{
+				const auto* val = &last_pixels[pos];
+				const auto& first = last_pixels[0];
+
+				// TEST: use a bigger maximum GOP
+				// if (pos == std::numeric_limits<Index>::max())
+				//	goto stop_here;
+
+				if (pos == 256)
+					goto stop_here;
+
+				// check points before
+				// compute slope
+				size_t diff_t = (index(*val) - index(first));
+				double s = slope((double)first.value, (double)val->value, (double)diff_t);
+				
+				if (min_slope.empty() ) {
+					candidate = pos;
+				}
+				else {
+					const auto max_sl = max_slope.top();
+					const auto min_sl = min_slope.top();
+					if (inf(min_sl.val, s) || inf(s, max_sl.val)) {
+						if (min_sl.val < max_sl.val) {
+							stop_here:
+							// stop here
+							if (candidate == -1)
+								candidate = pos;
+
+							update_last_pos();
+							last_pixels.erase(last_pixels.begin(), last_pixels.begin() + candidate);
+							val = &last_pixels[1];
+							pos = 0;
+							candidate = -1;
+							max_slope = {};
+							min_slope = {};
+						}
+					}
+					else
+						candidate = pos;
+				}
+				
+				diff_t = index(*val) - index(last_pixels[0]);
+				double upper_slope = slope((double)last_pixels[0].value, (double)val->value + err, (double)diff_t);
+				double lower_slope = slope((double)last_pixels[0].value, (double)val->value - err, (double)diff_t);
+				min_slope.emplace(Slope{ upper_slope, diff_t });
+				max_slope.emplace(Slope{ lower_slope, diff_t });
+
+				//error_max = check_candidate_min_max(pos, s, error2);
+				/*if (min_slope.empty())
+					;// Keep going
+				else {
+					const auto max_sl = max_slope.top();
+					const auto min_sl = min_slope.top();
+					if (inf(min_sl.val,s)) {
+						// We are above the bounds
+						const double beta = (double)first.value; //- s * (double)diff_t;
+						const double interp = min_sl.index * s + beta;
+						error_max = abs(interp - (double)last_pixels[min_sl.index].value);
+					}
+					if (inf(s , max_sl.val)) {
+						const double beta = (double)first.value; // - s * (double)diff_t;
+						const double interp = max_sl.index * s + beta;
+						error_max = std::max(error_max, abs(interp - (double)last_pixels[max_sl.index].value));
+					}
+				}
+					
+				
+
+				if (error_max > error2) {
+
+				stop_here:
+					// stop here
+					if (candidate == -1)
+						candidate = pos;
+
+					update_last_pos();
+					last_pixels.erase(last_pixels.begin(), last_pixels.begin() + candidate);
+					val = &last_pixels[1];
+					pos = 0;
+					candidate = -1;
+					max_slope = {};
+					min_slope = {};
+				}
+				else if (inf_equal(error_max, err)) {
+					candidate = pos;
+				}
+
+				diff_t = index(*val) - index(last_pixels[0]);
+				double upper_slope = slope((double)last_pixels[0].value, (double)val->value + err, (double)diff_t);
+				double lower_slope = slope((double)last_pixels[0].value, (double)val->value - err, (double)diff_t);
+				min_slope.emplace(Slope{ upper_slope, diff_t });
+				max_slope.emplace(Slope{ lower_slope, diff_t });
+				*/
+			}
+
 			STENOS_ALWAYS_INLINE size_t index(const VType& v) { return (size_t)(&v - start_pos); }
 		};
 
+
+
+
 		template<class T, class Index>
-		size_t decimate_raw(const T* in, size_t count, ValueIndex<T, Index>* out, double err)
+		size_t decimate_raw_old(const T* in, size_t count, ValueIndex<T, Index>* out, double err)
+		{
+			using VType = ValueIndex<T, Index>;
+
+			if (count == 0)
+				return 0;
+			if (err < 0)
+				err = 0;
+
+			double err2 = err * 2;
+			Decimate<T, Index> d;
+			d.candidate = -1;
+			d.pos = 1;
+			d.points = out;
+			d.last_pos = out;
+			d.start_pos = out;
+			*d.points++ = { in[0], (Index)0 };
+			d.last_pixels.reset(out);
+			d.last_pixels.push_back({ in[0], (Index)0 });
+
+			
+			for (size_t i = 1; i < count; ++i) {
+
+				d.last_pixels.push_back({ in[i], (Index)0 });
+
+				if (d.pos == 1)
+					d.candidate = d.pos;
+				else
+					d.advance_min_max(err, err2);
+				d.pos++;
+			}
+
+			// Finish
+
+			//TEST
+			auto ss = d.last_pixels.size();
+
+			for (; d.pos != (std::int64_t)d.last_pixels.size(); ++d.pos) {
+				if (d.pos == 1)
+					d.candidate = d.pos;
+				else
+					d.advance_min_max(err, err2);
+			}
+
+			// Add last point
+			if (d.last_pixels.size() && d.index(d.last_pixels.back()) == count - 1) {
+
+				d.candidate = d.last_pixels.size() - 1;
+				d.update_last_pos();
+			}
+
+			return (size_t)(d.points - out);
+		}
+
+
+		template<class T, class Index>
+		size_t decimate_raw_new(const T* in, size_t count, ValueIndex<T, Index>* out, double err)
+		{
+			using VType = ValueIndex<T, Index>;
+
+			if (count == 0)
+				return 0;
+			if (err < 0)
+				err = 0;
+
+			double err2 = err * 2;
+			Decimate<T, Index> d;
+			d.candidate = -1;
+			d.pos = 1;
+			d.points = out;
+			d.last_pos = out;
+			d.start_pos = out;
+			*d.points++ = { in[0], (Index)0 };
+			d.last_pixels.reset(out);
+			d.last_pixels.push_back({ in[0], (Index)0 });
+
+			for (size_t i = 1; i < count; ++i) {
+
+				d.last_pixels.push_back({ in[i], (Index)0 });
+
+				d.advance_min_max3(err, err2);
+				d.pos++;
+			}
+
+			// Finish
+
+			// TEST
+			auto ss = d.last_pixels.size();
+
+			for (; d.pos != (std::int64_t)d.last_pixels.size(); ++d.pos) {
+				
+				d.advance_min_max3(err, err2);
+			}
+
+			 ss = d.last_pixels.size();
+
+			// Add last point
+			if (d.last_pixels.size() && d.index(d.last_pixels.back()) == count - 1) {
+
+				d.candidate = d.last_pixels.size() - 1;
+				d.update_last_pos();
+			}
+
+			return (size_t)(d.points - out);
+		}
+
+		template<class T, class Index>
+		size_t decimate_raw_new_keep(const T* in, size_t count, ValueIndex<T, Index>* out, double err)
 		{
 			using VType = ValueIndex<T, Index>;
 
@@ -1760,7 +1976,7 @@ namespace stenos
 			d.last_pixels.push_back({ in[0], (Index)0 });
 
 
-			/* for (size_t i = 1; i < count; ++i, ++d.pos) {
+			for (size_t i = 1; i < count; ++i, ++d.pos) {
 
 				if (in[i] == -1)
 					bool stop = true;
@@ -1776,39 +1992,6 @@ namespace stenos
 			}
 
 			return (size_t)(d.points - out);
-			*/
-
-
-			 
-			for (size_t i = 1; i < count; ++i) {
-
-				d.last_pixels.push_back({ in[i], (Index)0 });
-
-				if (d.pos == 1)
-					d.candidate = d.pos;
-				else
-					d.advance_min_max(err, err2);
-				d.pos++;
-			}
-
-			// Finish
-
-			for (; d.pos != (std::int64_t)d.last_pixels.size(); ++d.pos) {
-				if (d.pos == 1)
-					d.candidate = d.pos;
-				else
-					d.advance_min_max(err, err2);
-			}
-
-			// Add last point
-			if (d.last_pixels.size() && d.index(d.last_pixels.back()) == count - 1) {
-
-				d.candidate = d.last_pixels.size() - 1;
-				d.update_last_pos();
-			}
-
-			return (size_t)(d.points - out);
-			
 		}
 
 		template<class T, class Index>
