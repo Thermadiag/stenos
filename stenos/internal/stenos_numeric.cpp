@@ -21,6 +21,11 @@
  * SOFTWARE.
  */
 
+// Exact <=32-bit integer mode requires this matching decoder. Record layout
+// is unchanged (no format version flag); legacy floating-point decoders do not
+// provide this guarantee. Half-integer ties now round toward the larger value.
+// No validation pass, candidate buffer, or 128-bit arithmetic is used.
+
 #include "../stenos.h"
 #include "../bits.hpp"
 #include "context.h"
@@ -30,6 +35,8 @@
 #include <limits>
 #include <algorithm>
 #include <vector>
+#include <cmath>
+#include <type_traits>
 
 namespace stenos
 {
@@ -105,6 +112,90 @@ namespace stenos
 		using type = std::conditional_t<sizeof(T) == 8 && std::is_integral_v<T> && (std::numeric_limits<long double>::digits > std::numeric_limits<double>::digits), long double, double>;
 	};
 
+	// Exact slopes for integer samples up to 32 bits. Denominators are positive.
+	// Numerators have magnitude < 2^33; the exact path limits distances to
+	// < 2^29, so every cross-product fits in signed 64-bit arithmetic.
+	struct NumericIntegerSlope
+	{
+		int64_t numerator = 0;
+		int64_t denominator = 1;
+	};
+	static STENOS_ALWAYS_INLINE bool numeric_slope_less(
+		NumericIntegerSlope a, NumericIntegerSlope b) noexcept
+	{
+		return a.numerator * b.denominator < b.numerator * a.denominator;
+	}
+
+	template<class T>
+	struct NumericInterpolateSmallInteger
+	{
+		static_assert(std::is_integral_v<T> && sizeof(T) <= 4);
+
+		int64_t value;
+		int64_t step;
+		uint64_t remainder;
+		uint64_t accumulator;
+		uint64_t length;
+
+		// Preconditions: 1 <= len <= UINT32_MAX.
+		NumericInterpolateSmallInteger(T a, T b, uint64_t len) noexcept
+		  : value(static_cast<int64_t>(a))
+		  , length(len)
+		{
+			const int64_t delta = static_cast<int64_t>(b) - static_cast<int64_t>(a);
+			const int64_t divisor = static_cast<int64_t>(len);
+
+			step = delta / divisor;
+			int64_t rem = delta % divisor;
+
+			// Convert truncating division to floor division.
+			if (rem < 0) {
+				--step;
+				rem += divisor;
+			}
+
+			remainder = static_cast<uint64_t>(rem);
+
+			// Bias for nearest-integer rounding, with ties toward +infinity.
+			accumulator = len / 2;
+		}
+
+		// Returns the next sample: first call gives k = 1.
+		// Call at most 'length' times.
+		STENOS_ALWAYS_INLINE T next() noexcept
+		{
+			value += step;
+			accumulator += remainder;
+
+			if (accumulator >= length) {
+				accumulator -= length;
+				++value;
+			}
+
+			return static_cast<T>(value);
+		}
+	};
+
+	// Exact interpolation for <=32-bit integer endpoints and <=32-bit gaps.
+	// Round to nearest, with ties toward the larger value. The product fits
+	// uint64_t even for the full uint32_t range and maximum uint32_t gap.
+	template<class T>
+	static STENOS_ALWAYS_INLINE T numeric_interpolate_small_integer(
+		T a, T b, uint64_t k, uint64_t length) noexcept
+	{
+		static_assert(std::is_integral_v<T> && sizeof(T) <= 4);
+		const int64_t left = static_cast<int64_t>(a);
+		const int64_t right = static_cast<int64_t>(b);
+		const int64_t lo = std::min(left, right);
+		const uint64_t delta = static_cast<uint64_t>(std::max(left, right) - lo);
+		const uint64_t position = left <= right ? k : length - k;
+		const uint64_t product = delta * position;
+		uint64_t quotient = product / length;
+		const uint64_t remainder = product % length;
+		if (remainder >= length - remainder) ++quotient;
+		return static_cast<T>(lo + static_cast<int64_t>(quotient));
+	}
+
 	// Decimation class based on a maximum error.
 	template<class T>
 	struct Decimate
@@ -121,11 +212,16 @@ namespace stenos
 		const VType* last_pos = nullptr;
 		const VType* start_pos = nullptr;
 
+		NumericIntegerSlope integer_lower{}, integer_upper{};
+		bool integer_bounds_valid = false;
+		int64_t integer_error = 0;
+
 		Double max_slope = -std::numeric_limits<Double>::infinity();
 		Double min_slope = std::numeric_limits<Double>::infinity();
 
 		STENOS_ALWAYS_INLINE void clear_slopes() noexcept
 		{
+			integer_bounds_valid = false;
 			max_slope = -std::numeric_limits<Double>::infinity();
 			min_slope = std::numeric_limits<Double>::infinity();
 		}
@@ -146,9 +242,53 @@ namespace stenos
 			last_pos = &last_pixels[candidate];
 		}
 
+		// Same candidate/restart policy as the floating path, with exact bounds.
+		STENOS_ALWAYS_INLINE void advance_integer() noexcept
+		{
+			const auto* val = &last_pixels[pos];
+			constexpr int64_t safe_distance = int64_t{1} << 29;
+			const int64_t limit = std::min<int64_t>(
+				static_cast<int64_t>(std::numeric_limits<Index>::max()), safe_distance);
+			bool restart = pos >= limit;
+			if (!restart) {
+				const NumericIntegerSlope slope{
+					static_cast<int64_t>(val->value) - static_cast<int64_t>(last_pixels[0].value), pos};
+				if (pos == 1 || !integer_bounds_valid) candidate = pos;
+				else if (numeric_slope_less(integer_upper, slope) || numeric_slope_less(slope, integer_lower))
+					restart = numeric_slope_less(integer_upper, integer_lower);
+				else candidate = pos;
+			}
+			if (restart) {
+				// A positive candidate exists: the adjacent sample always qualifies.
+				update_last_pos();
+				last_pixels.erase(last_pixels.begin() + candidate);
+				val = &last_pixels[1];
+				pos = 0; // Caller increments to 1 before processing the new anchor's successor.
+				candidate = -1;
+				clear_slopes();
+			}
+			const int64_t distance = val - &last_pixels[0];
+			const int64_t delta = static_cast<int64_t>(val->value)
+				- static_cast<int64_t>(last_pixels[0].value);
+			const NumericIntegerSlope lower{delta - integer_error, distance};
+			const NumericIntegerSlope upper{delta + integer_error, distance};
+			if (!integer_bounds_valid) {
+				integer_lower = lower;
+				integer_upper = upper;
+				integer_bounds_valid = true;
+			} else {
+				if (numeric_slope_less(integer_lower, lower)) integer_lower = lower;
+				if (numeric_slope_less(upper, integer_upper)) integer_upper = upper;
+			}
+		}
+
 		// Process last added point
 		STENOS_ALWAYS_INLINE void advance_min_max(double err)
 		{
+			if constexpr (std::is_integral_v<T> && sizeof(T) <= 4) {
+				advance_integer();
+				return;
+			}
 			const auto* val = &last_pixels[pos];
 			const auto& first = last_pixels[0];
 
@@ -215,8 +355,9 @@ namespace stenos
 	};
 
 	// Decimate input array with given maximum error.
-	// This ensures that the reconstructed curve will
-	// always be in the range [input - err, input + err].
+	// With the matching decoder, integer types up to 32 bits satisfy the
+	// requested absolute error (negative errors are treated as zero).
+	// Floating-point and 64-bit integer types retain best-effort accuracy.
 	// The decimation only drops points from input array,
 	// and never create non existing points.
 	template<class T>
@@ -224,6 +365,7 @@ namespace stenos
 	{
 		using VType = ValueIndex<T>;
 
+		if (!std::isfinite(err) || stride == 0) return STENOS_ERROR_INVALID_PARAMETER;
 		if (count == 0)
 			return 0;
 		if (err < 0)
@@ -233,6 +375,12 @@ namespace stenos
 			err = std::floor(err);
 
 		Decimate<T> d;
+		if constexpr (std::is_integral_v<T> && sizeof(T) <= 4) {
+			// Capping at the type's total range cannot tighten the requested bound.
+			const int64_t range = static_cast<int64_t>(std::numeric_limits<T>::max())
+				- static_cast<int64_t>(std::numeric_limits<T>::lowest());
+			d.integer_error = static_cast<int64_t>(std::min(err, static_cast<double>(range)));
+		}
 		d.candidate = -1;
 		d.pos = 1;
 		d.points = out;
@@ -283,6 +431,7 @@ namespace stenos
 	{
 		using VType = ValueIndex<T>;
 
+		if (!std::isfinite(err) || stride == 0) return STENOS_ERROR_INVALID_PARAMETER;
 		if constexpr (std::is_integral_v<T>)
 			return decimate_raw_internal(in, count, stride, out, err);
 		else {
@@ -382,6 +531,19 @@ namespace stenos
 
 				if STENOS_UNLIKELY ((src[i].index - 1) > dst_size)
 					return STENOS_ERROR_DST_OVERFLOW;
+
+				if constexpr (std::is_integral_v<T> && sizeof(T) <= 4) {
+					const uint64_t length = src[i].index;
+					
+					NumericInterpolateSmallInteger<T> interpolate(src[i - 1].value, src[i].value, length);
+					for (uint64_t k = 1; k < length; ++k) {
+						*out = interpolate.next();
+						out += stride;
+					}
+
+					dst_size -= static_cast<size_t>(length - 1);
+					continue;
+				}
 
 				// Interpolate
 				Double factor = (Double)1. / (Double)(src[i].index);
@@ -499,6 +661,7 @@ namespace stenos
 		while (count) {
 			size_t rem = std::min(count, step_size);
 			size_t ret = decimate_raw(src, rem, stride, buf.data(), error);
+			if (stenos_has_error(ret)) return ret;
 			size_t r = 0;
 
 			if (level > 1) {
