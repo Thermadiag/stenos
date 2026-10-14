@@ -22,7 +22,7 @@ Benchmarks ran on an Intel(R) Core(TM) i7-10850H CPU @ 2.70GHz (AVX2 available) 
 
 Stenos supports multi-threaded compression and decompression, but not (yet) streaming compression.
 
-C++14 is required to compile Stenos.
+C++17 is required to compile Stenos.
 
 Usage
 -----
@@ -147,6 +147,83 @@ int  main  (int , char** )
 }
 
 ```
+
+Lossy numeric signal compression
+-------------------------------
+
+Stenos also provides lossy compression for uniformly sampled numeric signals. It drops samples according to a requested maximum absolute error, then compresses the retained values and their offsets. Decompression reconstructs missing samples by linear interpolation. Supported sample types are signed and unsigned 8-, 16-, 32-, and 64-bit integers, and 32- and 64-bit floating-point values.
+
+The requested error is expressed in the same units as the signal. For example, an error of `0.01` requests reconstructed values within `input +/- 0.01`. This bound is **best effort**: floating-point precision and integer rounding can cause it to be exceeded. In particular, an error of zero does not guarantee lossless reconstruction; use the regular compression API when exact recovery is required. For 64-bit integers, the implementation uses `long double` when it offers more precision than `double`, so results can depend on the platform.
+
+The error must be finite. Negative errors are treated as zero, and fractional errors are rounded down for integer inputs. NaN and infinity samples are retained at their original positions; finite runs on either side are decimated independently.
+
+### API
+
+The convenience functions operate on contiguous sample arrays:
+
+```cpp
+size_t stenos_compress_numeric(
+    const void* src, stenos_numeric_type type, size_t count,
+    void* dst, size_t dst_size, double error, int level);
+
+size_t stenos_decompress_numeric(
+    const void* src, size_t bytes, void* dst,
+    size_t dst_size, stenos_numeric_type dst_type);
+```
+
+The context-based functions use the compression level, maximum error, and element stride configured on the context. Decompression uses the context's output stride:
+
+```cpp
+size_t stenos_compress_numeric_generic(
+    stenos_context* ctx, const void* src, stenos_numeric_type type,
+    size_t count, void* dst, size_t dst_size);
+
+size_t stenos_decompress_numeric_generic(
+    stenos_context* ctx, const void* src, size_t bytes,
+    void* dst, size_t dst_size, stenos_numeric_type dst_type);
+```
+
+All four functions return errors detectable with `stenos_has_error()`. Numeric streams must be decoded with the numeric decompression API. Keep the original sample count to allocate the reconstruction buffer. For strided output, allocate enough storage for the logical samples at the requested element spacing; the stride must be nonzero and is measured in elements, not bytes. The output stride need not match the input stride.
+
+### Example
+
+This example uses caller-provided buffers: `compressed_capacity` is in bytes, while `restored_capacity` is in samples. A compression destination overflow requires a larger buffer and a retry; do not assume that lossy compression always produces fewer bytes than the input.
+
+```cpp
+#include <stenos/stenos.h>
+
+bool compress_and_restore_signal(
+    const double* signal, size_t count,
+    void* compressed, size_t compressed_capacity,
+    double* restored, size_t restored_capacity)
+{
+    const double error = 0.01;
+    const int level = 2;
+
+    const size_t bytes = stenos_compress_numeric(
+        signal, StenosFloat64, count,
+        compressed, compressed_capacity, error, level);
+    if (stenos_has_error(bytes))
+        return false;
+
+    const size_t samples = stenos_decompress_numeric(
+        compressed, bytes, restored, restored_capacity, StenosFloat64);
+    return !stenos_has_error(samples) && samples == count;
+}
+```
+
+For context-based compression, configure the error and level before calling `stenos_compress_numeric_generic()`:
+
+```cpp
+stenos_context* ctx = stenos_make_context();
+if (ctx) {
+    stenos_set_level(ctx, 2);
+    stenos_set_maximum_error(ctx, 0.01);
+    // Call stenos_compress_numeric_generic() with your buffers and sample count.
+    stenos_destroy_context(ctx);
+}
+```
+
 
 Video compression
 -----------------

@@ -36,13 +36,82 @@
 #ifndef STENOS_H
 #define STENOS_H
 
+/**
+ * @brief Scalar sample formats supported by the video codec and numeric array compression.
+ */
+typedef enum
+{
+	StenosInt8,    /**< Signed 8-bit integer. */
+	StenosUInt8,   /**< Unsigned 8-bit integer. */
+	StenosInt16,   /**< Signed 16-bit integer. */
+	StenosUInt16,  /**< Unsigned 16-bit integer. */
+	StenosInt32,   /**< Signed 32-bit integer. */
+	StenosUInt32,  /**< Unsigned 32-bit integer. */
+	StenosInt64,   /**< Signed 64-bit integer. */
+	StenosUInt64,  /**< Unsigned 64-bit integer. */
+	StenosFloat32, /**< IEEE-754 single-precision floating point. */
+	StenosFloat64, /**< IEEE-754 double-precision floating point. */
+} stenos_numeric_type;
+
+/** Typedef for compatibility purpose (might be removed at any time)*/
+typedef stenos_numeric_type stenosv_pixel_type;
+
+
 #ifdef __cplusplus
+
 #include <cstddef>
 #include <limits>
+#include "bits.hpp"
 
 /** @brief C++ convenience functions for Stenos. */
 namespace stenos
 {
+	/**
+	 * @brief Map a C++ arithmetic type to its corresponding Stenos pixel type.
+	 *
+	 * @tparam T Arithmetic scalar type.
+	 * @return The matching stenos_numeric_type value.
+	 *
+	 * @note The mapping is based on type category, signedness, and sizeof(T).
+	 */
+	template<class T>
+	inline constexpr stenos_numeric_type stenos_to_numeric_type()
+	{
+		static_assert(std::is_arithmetic_v<T>, "invalid type");
+		if STENOS_CONSTEXPR (sizeof(T) == 1) {
+			if STENOS_CONSTEXPR (std::is_signed_v<T>)
+				return StenosInt8;
+			else
+				return StenosUInt8;
+		}
+		else if STENOS_CONSTEXPR (sizeof(T) == 2) {
+			if STENOS_CONSTEXPR (std::is_signed_v<T>)
+				return StenosInt16;
+			else
+				return StenosUInt16;
+		}
+		else if STENOS_CONSTEXPR (sizeof(T) == 4) {
+			if STENOS_CONSTEXPR (std::is_integral_v<T>) {
+				if STENOS_CONSTEXPR (std::is_signed_v<T>)
+					return StenosInt32;
+				else
+					return StenosUInt32;
+			}
+			else
+				return StenosFloat32;
+		}
+		else {
+			if STENOS_CONSTEXPR (std::is_integral_v<T>) {
+				if STENOS_CONSTEXPR (std::is_signed_v<T>)
+					return StenosInt64;
+				else
+					return StenosUInt64;
+			}
+			else
+				return StenosFloat64;
+		}
+	}
+
 	/**
 	 * @brief Return an upper bound for the compressed size of an input buffer.
 	 *
@@ -203,13 +272,20 @@ typedef struct stenos_lock_s
 } stenos_lock;
 
 /**
-* @brief Result type for stenos_consume_frame
-*/
+ * @brief Result type for stenos_consume_frame
+ */
 typedef struct stenos_decompress_ret_s
 {
 	size_t consummed_bytes;
 	size_t decompressed_bytes;
 } stenos_decompress_ret;
+
+/**
+ * @brief Return the storage size of one scalar sample type.
+ * @param type Numeric type to inspect.
+ * @return Sample size in bytes, or zero for an invalid type.
+ */
+STENOS_EXPORT size_t stenos_sizeof_numeric_type(stenos_numeric_type type);
 
 /**
  * @brief Create a compression/decompression context.
@@ -252,6 +328,7 @@ STENOS_EXPORT void stenos_reset_context(stenos_context* ctx);
  * @return 0 on success, or a Stenos error code.
  */
 STENOS_EXPORT size_t stenos_set_level(stenos_context* ctx, int level);
+STENOS_EXPORT int stenos_get_level(stenos_context* ctx);
 
 /**
  * @brief Set the maximum number of worker threads.
@@ -264,6 +341,7 @@ STENOS_EXPORT size_t stenos_set_level(stenos_context* ctx, int level);
  * @return 0 on success, or a Stenos error code.
  */
 STENOS_EXPORT size_t stenos_set_threads(stenos_context* ctx, int threads);
+STENOS_EXPORT int stenos_get_threads(stenos_context* ctx);
 
 /**
  * @brief Set a soft upper bound on compression time.
@@ -280,6 +358,7 @@ STENOS_EXPORT size_t stenos_set_threads(stenos_context* ctx, int threads);
  * @return 0 on success, or a Stenos error code.
  */
 STENOS_EXPORT size_t stenos_set_max_nanoseconds(stenos_context* ctx, uint64_t nanoseconds);
+STENOS_EXPORT uint64_t stenos_get_max_nanoseconds(stenos_context* ctx);
 
 /**
  * @brief Select a custom superblock size.
@@ -300,6 +379,32 @@ STENOS_EXPORT size_t stenos_set_max_nanoseconds(stenos_context* ctx, uint64_t na
  *         shift cannot produce a valid superblock size.
  */
 STENOS_EXPORT size_t stenos_set_block_size(stenos_context* ctx, size_t blocksize_shift);
+STENOS_EXPORT size_t stenos_get_block_size(stenos_context* ctx);
+
+/**
+ * @brief Set a maximum for numeric array compression.
+ *
+ * The maximum error is used by stenos_compress_numeric family of functions.
+ *
+ * @param ctx Context to configure.
+ * @param error Maximum error to enforce. Set to 0 for lossless compression.
+ * @return 0 on success, or STENOS_ERROR_INVALID_PARAMETER for invalid error value.
+ */
+STENOS_EXPORT size_t stenos_set_maximum_error(stenos_context* ctx, double error);
+STENOS_EXPORT double stenos_get_maximum_error(stenos_context* ctx);
+
+
+/**
+ * @brief Set input/output numeric array stride.
+ *
+ * The stride is expressed in numeric elements (not in bytes) and is only used by stenos_compress_numeric family of functions.
+ *
+ * @param ctx Context to configure.
+ * @param stride Stride value expressed in elements (not bytes).
+ * @return 0 on success, or STENOS_ERROR_INVALID_PARAMETER for invalid error value.
+ */
+STENOS_EXPORT size_t stenos_set_stride(stenos_context* ctx, size_t stride);
+STENOS_EXPORT size_t stenos_get_stride(stenos_context* ctx);
 
 /**
  * @brief Estimate the memory currently owned by a context.
@@ -379,8 +484,8 @@ STENOS_EXPORT size_t stenos_compress_generic(stenos_context* ctx, const void* sr
 STENOS_EXPORT size_t stenos_decompress_generic(stenos_context* ctx, const void* src, size_t bytesoftype, size_t bytes, void* dst, size_t dst_size);
 
 /**
-* @brief Similar to stenos_decompress_generic, but also returns the consumed frame bytes.
-*/
+ * @brief Similar to stenos_decompress_generic, but also returns the consumed frame bytes.
+ */
 STENOS_EXPORT stenos_decompress_ret stenos_consume_generic(stenos_context* ctx, const void* src, size_t bytesoftype, size_t bytes, void* dst, size_t dst_size);
 
 /**
@@ -461,6 +566,91 @@ STENOS_EXPORT size_t stenos_decompress_sub_part(stenos_context* ctx, stenos_inpu
  */
 STENOS_EXPORT size_t stenos_guess_bytesoftype(const void* src, size_t bytes);
 
+
+
+
+
+/**
+ * @brief Compresses a numeric signal using context settings.
+ *
+ * Drops samples according to the context's maximum absolute error, then
+ * compresses the retained values and offsets. Missing samples are reconstructed
+ * by linear interpolation. The error bound is best effort due to numeric
+ * precision and rounding. NaN and infinity samples are retained.
+ *
+ * @param ctx Compression context providing error, compression level, and stride.
+ * @param src Input samples.
+ * @param type Numeric type of the input samples.
+ * @param count Number of logical input samples.
+ * @param dst Destination buffer.
+ * @param dst_size Destination capacity in bytes.
+ * @return Number of bytes written, or an error code detectable by stenos_has_error().
+ *
+ * @note The context stride is measured in elements, not bytes.
+ */
+STENOS_EXPORT size_t stenos_compress_numeric_generic(stenos_context* ctx, const void* src, stenos_numeric_type type, size_t count, void* dst, size_t dst_size);
+
+/**
+ * @brief Compresses a contiguous numeric signal.
+ *
+ * Uses best-effort error-bounded sample decimation followed by compression.
+ * Missing samples are reconstructed by linear interpolation. NaN and infinity
+ * samples are retained.
+ *
+ * @param src Contiguous input samples.
+ * @param type Numeric type of the input samples.
+ * @param count Number of input samples.
+ * @param dst Destination buffer.
+ * @param dst_size Destination capacity in bytes.
+ * @param error Maximum absolute reconstruction error requested; must be finite.
+ *              Negative values are treated as zero. For integer inputs,
+ *              fractional error values are rounded down.
+ * @param level Compression level.
+ * @return Number of bytes written, or an error code detectable by stenos_has_error().
+ *
+ * @note Numeric precision and rounding may cause the requested error to be exceeded.
+ *       An error of zero does not guarantee lossless reconstruction.
+ */
+STENOS_EXPORT size_t stenos_compress_numeric(const void* src, stenos_numeric_type type, size_t count, void* dst, size_t dst_size, double error, int level);
+
+/**
+ * @brief Decompresses a numeric signal using context settings.
+ *
+ * Restores retained samples and linearly interpolates missing samples.
+ * The requested output type must match the type stored in the compressed data.
+ *
+ * @param ctx Decompression context providing the output stride.
+ * @param src Compressed input buffer.
+ * @param bytes Size of the compressed input in bytes.
+ * @param dst Destination sample buffer.
+ * @param dst_size Destination capacity in logical samples, not bytes.
+ * @param dst_type Numeric type of the destination samples.
+ * @return Number of samples reconstructed, or an error code detectable by
+ *         stenos_has_error().
+ *
+ * @note Output stride is measured in elements and must be nonzero.
+ *       The destination allocation must accommodate the strided output.
+ */
+STENOS_EXPORT size_t stenos_decompress_numeric_generic(stenos_context* ctx, const void* src, size_t bytes, void* dst, size_t dst_size, stenos_numeric_type dst_type);
+
+/**
+ * @brief Decompresses a numeric signal into a contiguous sample array.
+ *
+ * Restores retained samples and linearly interpolates missing samples.
+ * The requested output type must match the type stored in the compressed data.
+ *
+ * @param src Compressed input buffer.
+ * @param bytes Size of the compressed input in bytes.
+ * @param dst Contiguous destination sample buffer.
+ * @param dst_size Destination capacity in samples, not bytes.
+ * @param dst_type Numeric type of the destination samples.
+ * @return Number of samples reconstructed, or an error code detectable by
+ *         stenos_has_error().
+ */
+STENOS_EXPORT size_t stenos_decompress_numeric(const void* src, size_t bytes, void* dst, size_t dst_size, stenos_numeric_type dst_type);
+
+
+
 /** @brief Basic metadata stored in a Stenos frame header. */
 typedef struct stenos_info_s
 {
@@ -486,8 +676,8 @@ typedef struct stenos_info_s
 STENOS_EXPORT size_t stenos_get_info(const void* src, size_t bytesoftype, size_t bytes, stenos_info* info);
 
 /**
-* @brief Returns the compressed frame size in bytes or an error code.
-*/
+ * @brief Returns the compressed frame size in bytes or an error code.
+ */
 STENOS_EXPORT size_t stenos_get_frame_size(const void* src, size_t bytesoftype, size_t bytes);
 
 /** @} */
