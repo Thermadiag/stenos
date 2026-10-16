@@ -1204,6 +1204,43 @@ namespace stenos
 #endif
 	}
 
+
+	/// @brief Minimal contiguous array range class
+	template<class T>
+	class range
+	{
+		T* start = nullptr;
+		T* finish = nullptr;
+
+	public:
+
+		auto size() const noexcept { return (size_t)(finish - start); }
+		auto data() const noexcept { return start; }
+		auto begin() const noexcept { return start; }
+		auto end() const noexcept { return finish; }
+		const T& back() const noexcept { return finish[-1]; }
+		const T& front() const noexcept { return *start; }
+		template<class Integer>
+		const T& operator[](Integer i) const noexcept
+		{
+			return start[i];
+		}
+
+		void reset(T* ptr) noexcept { start = finish = ptr; }
+		void push_back(const T& val) noexcept { *finish++ = val; }
+		void erase(const T* last) noexcept { start = (T*)last; }
+	};
+
+	/// @brief Check if value is finite (not NaN or +-infinity)
+	template<class T>
+	static STENOS_ALWAYS_INLINE bool is_finite(T value) noexcept
+	{
+		if constexpr (std::is_floating_point_v<T>)
+			return std::isfinite(value);
+		else
+			return true;
+	}
+
 } // end namespace stenos
 
 #ifdef __GNUC__

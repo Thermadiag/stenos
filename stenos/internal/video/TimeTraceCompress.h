@@ -26,75 +26,201 @@
 
 namespace stenos
 {
+#pragma pack(1)
+	// Pixel value and temporal position
+	template<class T>
+	struct PixelIndex
+	{
+		T value; // pixel value
+		unsigned short index;
+	};
+#pragma pack()
 
-	
+	template<class T>
+	struct MakeDouble
+	{
+		using type = std::conditional_t<sizeof(T) == 8 && std::is_integral_v<T> && (std::numeric_limits<long double>::digits > std::numeric_limits<double>::digits), long double, double>;
+	};
+
+	template<class T>
+	class PixelData
+	{
+		using VType = PixelIndex<T>;
+		using Index = unsigned short;
+		// Best effort to handle 64 bits integer without precision loss: use long double (plateform/compiler dependant)
+		using Double = typename MakeDouble<T>::type;
+
+		std::vector<VType> points;
+		std::vector<std::int64_t>* ptimes = nullptr;
+		VType* buffer = nullptr;
+		range<VType> last_pixels;
+		std::int64_t candidate = -1;
+		std::int64_t pos = 1;
+		Double max_slope = -std::numeric_limits<Double>::infinity();
+		Double min_slope = std::numeric_limits<Double>::infinity();
+		bool finished = true;
+
+		STENOS_ALWAYS_INLINE void clear_slopes() noexcept
+		{
+			max_slope = -std::numeric_limits<Double>::infinity();
+			min_slope = std::numeric_limits<Double>::infinity();
+		}
+
+		STENOS_ALWAYS_INLINE int64_t time(const VType& v) const noexcept { return (*ptimes)[v.index]; }
+
+		// Compute the slope between l and r
+		static STENOS_ALWAYS_INLINE Double slope(Double l, Double r, Double dist) noexcept { return (r - l) / dist; }
+
+		// Add last valid candidate to output points
+		STENOS_ALWAYS_INLINE void update_last_pos() { points.push_back(last_pixels[candidate]); }
+
+		// Process last added point
+		STENOS_ALWAYS_INLINE void advance_min_max(double err)
+		{
+			const auto* val = &last_pixels[pos];
+			const auto& first = last_pixels[0];
+
+			// Compute slope
+			int64_t diff_t = time(*val) - time(first);
+			Double s = slope(first.value, val->value, (Double)diff_t);
+
+			if (pos == 1) {
+				// This is the first point, always valid
+				candidate = pos;
+			}
+			else {
+				// Get the minimum upper slope and maximum lower slope
+				if ((min_slope < s) || (s < max_slope)) {
+
+					// This point is outside: we cannot discard it.
+					// However, next point(s) might bring back the slope
+					// into the valid range, so we can keep investigating,
+					// but without updating the last valid candidate.
+
+					if (min_slope < max_slope) {
+						// Ok, we know that next point won't be able to bring back
+						// the slope to the valid range, add the last valid candidate to output
+						// and restart from there.
+
+						if (candidate == -1)
+							candidate = pos;
+
+						update_last_pos();
+						last_pixels.erase(last_pixels.begin() + candidate);
+						val = &last_pixels[1];
+						pos = 0;
+						candidate = -1;
+						clear_slopes();
+					}
+				}
+				else
+					candidate = pos;
+			}
+
+			// Compute upper and lower slope based on maximum error,
+			// and update min/max slopes.
+			diff_t = time(*val) - time(last_pixels[0]);
+			Double upper_slope = slope((Double)last_pixels[0].value, (Double)val->value + err, (Double)diff_t);
+			Double lower_slope = slope((Double)last_pixels[0].value, (Double)val->value - err, (Double)diff_t);
+			min_slope = std::min(min_slope, upper_slope);
+			max_slope = std::max(max_slope, lower_slope);
+		}
+
+	public:
+		// Initialize with a value buffer and a time buffer.
+		// Both buffers must have a size at least equal to the number
+		// of values we are going to add.
+		// The time buffer is shared, and the next pixel time must be updated
+		// before the corresponding call to add().
+		STENOS_ALWAYS_INLINE void init(VType* _buffer, std::vector<std::int64_t>* _times) noexcept
+		{
+			ptimes = _times;
+			buffer = _buffer;
+			last_pixels.reset(_buffer);
+			points.clear();
+
+			pos = 0;
+			candidate = -1;
+			finished = true;
+			clear_slopes();
+		}
+
+		// Finish the decimation process.
+		// Must be called before retrieving the decimated points with decimation().
+		void finish(double error)
+		{
+			if (finished)
+				return;
+
+			// Finish
+
+			// Commit the last valid endpoint and restart after the new anchor.
+			if (pos >= (int64_t)(last_pixels.size()) - 1 && candidate != -1) {
+				update_last_pos();
+				last_pixels.erase(last_pixels.begin() + candidate);
+
+				pos = 1; // Index 0 is the anchor, already emitted.
+				candidate = -1;
+				clear_slopes();
+			}
+
+			for (; pos < static_cast<std::int64_t>(last_pixels.size()); ++pos) {
+				advance_min_max(error);
+
+				// At the end of the pending range, commit the last valid endpoint.
+				if (pos == (int64_t)(last_pixels.size()) - 1 && candidate != -1) {
+					update_last_pos();
+					last_pixels.erase(last_pixels.begin() + candidate);
+
+					// The loop increment advances this to 1, past the new anchor.
+					pos = 0;
+					candidate = -1;
+					clear_slopes();
+				}
+			}
+			last_pixels.erase(last_pixels.end());
+			clear_slopes();
+			pos = 0;
+			candidate = -1;
+			finished = true;
+		}
+
+		// Add a new pixel value with its incrementing position (starting 0).
+		STENOS_ALWAYS_INLINE void add(T value, unsigned short val_pos, double error)
+		{
+			if (error == 0) {
+				last_pixels.push_back(VType{ value, val_pos });
+				++pos;
+				return;
+			}
+
+			if (!is_finite(value)) {
+				finish(error);
+				points.push_back(VType{ value, val_pos });
+				return;
+			}
+
+			last_pixels.push_back(VType{ value, val_pos });
+
+			if (finished) {
+				points.push_back(VType{ value, val_pos });
+				pos = 1;
+				candidate = -1;
+				finished = false;
+			}
+			else {
+				advance_min_max(error);
+				++pos;
+			}
+		}
+
+		STENOS_ALWAYS_INLINE const std::vector<VType>& decimation() const noexcept { return points; }
+		STENOS_ALWAYS_INLINE void decimation(std::vector<VType>& out) noexcept { out = std::move(points); }
+		STENOS_ALWAYS_INLINE VType* pixel_buffer() noexcept { return buffer; }
+	};
 
 	namespace compress_detail
 	{
-		template<class T>
-		class StaticFifo
-		{
-			T* d_data{ nullptr };
-			T* d_buffer{ nullptr };
-			size_t d_size{ 0 };
-			size_t d_buffer_capacity{ 0 };
-
-			static constexpr bool valid_type = std::is_trivially_copyable<T>::value && std::is_trivially_destructible<T>::value;
-
-		public:
-			static_assert(valid_type, "invalid type for StaticFifo");
-			using value_type = T;
-			using iterator = T*;
-			using const_iterator = const T*;
-
-			StaticFifo() noexcept = default;
-			~StaticFifo() noexcept = default;
-
-			void set_buffer(T* buffer, size_t capacity) noexcept
-			{
-				d_buffer = d_data = buffer;
-				d_buffer_capacity = capacity;
-			}
-
-			STENOS_ALWAYS_INLINE size_t size() const noexcept { return d_size; }
-			STENOS_ALWAYS_INLINE size_t capacity() const noexcept { return d_buffer_capacity - (d_data - d_buffer); }
-			STENOS_ALWAYS_INLINE bool full() const noexcept { return size() == capacity(); }
-			STENOS_ALWAYS_INLINE T* data() noexcept { return d_data; }
-			STENOS_ALWAYS_INLINE const T* data() const noexcept { return d_data; }
-			STENOS_ALWAYS_INLINE T* buffer() noexcept { return d_buffer; }
-			STENOS_ALWAYS_INLINE const T* buffer() const noexcept { return d_buffer; }
-			STENOS_ALWAYS_INLINE T* begin() noexcept { return d_data; }
-			STENOS_ALWAYS_INLINE const T* begin() const noexcept { return d_data; }
-			STENOS_ALWAYS_INLINE T* end() noexcept { return d_data + d_size; }
-			STENOS_ALWAYS_INLINE const T* end() const noexcept { return d_data + d_size; }
-			STENOS_ALWAYS_INLINE T& operator[](size_t i) noexcept { return d_data[i]; }
-			STENOS_ALWAYS_INLINE const T& operator[](size_t i) const noexcept { return d_data[i]; }
-
-			STENOS_ALWAYS_INLINE T& back() noexcept { return d_data[d_size - 1]; }
-			STENOS_ALWAYS_INLINE const T& back() const noexcept { return d_data[d_size - 1]; }
-
-			STENOS_ALWAYS_INLINE void push_back(const T& v)
-			{
-				if STENOS_UNLIKELY (full())
-					throw std::runtime_error("push_back : StaticFifo is full");
-				new (d_data + d_size) T(v);
-				++d_size;
-			}
-			STENOS_ALWAYS_INLINE void erase(const_iterator start, const_iterator end)
-			{
-				if (start != d_data)
-					throw std::runtime_error("StaticFifo can only erase from the beginning");
-
-				d_size -= (end - start);
-				d_data += (end - start);
-			}
-			STENOS_ALWAYS_INLINE void clear() noexcept
-			{
-				d_size = 0;
-				d_data = d_buffer;
-			}
-			STENOS_ALWAYS_INLINE void shrink_to_fit() noexcept {}
-		};
 
 		static inline void write_uint64(std::string& out, uint64_t v)
 		{
@@ -166,18 +292,6 @@ namespace stenos
 
 	}
 
-#pragma pack(1)
-
-	// Pixel value and temporal position
-	template<class T>
-	struct PixelIndex
-	{
-		T value; // pixel value
-		unsigned short index;
-	};
-
-#pragma pack()
-
 	class BaseTimeTraceCompress
 	{
 	public:
@@ -221,19 +335,8 @@ namespace stenos
 		using FloatType = double;
 
 	private:
-		static constexpr size_t MaxSpace = (size_t)-1;
-		using PixelTypeVector = compress_detail::StaticFifo<PixelType>;
-		struct PixelData
-		{
-			std::vector<PixelType> points;
-			PixelTypeVector last_pixels;
-			size_t candidate;
-			size_t pos = 1;
-			size_t start = 0;
-		};
-
 		std::vector<T> d_tmp_img;
-		std::vector<PixelData> d_data;
+		std::vector<PixelData<T>> d_data;
 		size_t d_width{ 0 };
 		size_t d_height{ 0 };
 		size_t d_max_gop{ 0 };
@@ -255,167 +358,18 @@ namespace stenos
 		std::unique_ptr<TimeTraceCompressCL<T>> d_openCL;
 #endif
 
-		STENOS_ALWAYS_INLINE int64_t time(const PixelType& p) const noexcept { return d_times[p.index]; }
-
-		static STENOS_ALWAYS_INLINE FloatType slope(FloatType l, FloatType r, FloatType dist) noexcept { return (r - l) / dist; }
-		template<class U>
-		static STENOS_ALWAYS_INLINE U dabs(U v) noexcept
-		{
-			return v < 0 ? -v : v;
-		}
-		static STENOS_ALWAYS_INLINE FloatType dmax(FloatType v1, FloatType v2) noexcept { return v1 > v2 ? v1 : v2; }
-		static STENOS_ALWAYS_INLINE bool dcompare(double p1, double p2) noexcept { return (dabs(p1 - p2) * 1000000000000. <= std::min(dabs(p1), dabs(p2))); }
-		static STENOS_ALWAYS_INLINE bool dcompare(float p1, float p2) { return (dabs(p1 - p2) * 100000.f <= std::min(dabs(p1), dabs(p2))); }
-
-		/*static STENOS_ALWAYS_INLINE double hmax(__m256d x) noexcept
-		{
-			__m256d y = _mm256_permute2f128_pd(x, x, 1); // permute 128-bit values
-			__m256d m1 = _mm256_max_pd(x, y); // m1[0] = max(x[0], x[2]), m1[1] = max(x[1], x[3]), etc.
-			__m256d m2 = _mm256_permute_pd(m1, 5); // set m2[0] = m1[1], m2[1] = m1[0], etc.
-			__m256d m = _mm256_max_pd(m1, m2);
-			double v[4];
-			_mm256_storeu_pd(v, m);
-			return v[0];
-		}*/
-
-		FloatType check_candidate_min_max(const PixelTypeVector& last_pixels, size_t end, FloatType s, FloatType error2) const noexcept
-		{
-			FloatType error_max = -std::numeric_limits<FloatType>::infinity();
-			if (1 == end)
-				return error_max;
-
-			const FloatType beta = last_pixels[0].value - s * time(last_pixels[0]);
-			const auto* p = last_pixels.data() + 1;
-			const auto* pend = last_pixels.data() + end;
-
-			/*if (p + 3 < pend) {
-				const __m256d betas = _mm256_set1_pd(beta);
-				const __m256d ss = _mm256_set1_pd(s);
-				const __m256d sign_mask = _mm256_set1_pd(-0.);
-
-				while (p + 3 < pend) {
-					__m256d theoric = _mm256_setr_pd((double)time(p[0]), (double)time(p[0 + 1]), (double)time(p[0 + 2]), (double)time(p[0 + 3]));
-					__m256d vals = _mm256_setr_pd((double)p[0].value, (double)p[0 + 1].value, (double)p[0 + 2].value, (double)p[0 + 3].value);
-					theoric = _mm256_add_pd(betas, _mm256_mul_pd(ss, theoric));
-					vals = _mm256_andnot_pd(sign_mask, _mm256_sub_pd(vals, theoric));
-					error_max = std::max(error_max,hmax(vals));
-					if (error_max > error2) // check early stop
-						return error_max;
-					p += 4;
-				}
-			}*/
-
-			while (p + 3 < pend) {
-				FloatType theoric_y1 = s * (FloatType)time(p[0]) + beta;
-				FloatType theoric_y2 = s * (FloatType)time(p[1]) + beta;
-				FloatType theoric_y3 = s * (FloatType)time(p[2]) + beta;
-				FloatType theoric_y4 = s * (FloatType)time(p[3]) + beta;
-
-				theoric_y1 = dabs((FloatType)p[0].value - theoric_y1);
-				theoric_y2 = dabs((FloatType)p[1].value - theoric_y2);
-				theoric_y3 = dabs((FloatType)p[2].value - theoric_y3);
-				theoric_y4 = dabs((FloatType)p[3].value - theoric_y4);
-
-				theoric_y1 = dmax(theoric_y1, theoric_y2);
-				theoric_y3 = dmax(theoric_y3, theoric_y4);
-				error_max = dmax(error_max, dmax(theoric_y1, theoric_y3));
-				if (error_max > error2) // check early stop
-					return error_max;
-				p += 4;
-			}
-
-			for (; p < pend; ++p) {
-				FloatType theoric_y = s * (FloatType)time(*p) + beta;
-				FloatType err = dabs((FloatType)p->value - theoric_y);
-				error_max = dmax(error_max, err);
-			}
-			return error_max;
-		}
-		static STENOS_ALWAYS_INLINE bool inf_equal(FloatType a, FloatType b)
-		{
-			if (dcompare(a, b))
-				return true;
-			return a < b;
-		}
-
-		void advance_min_max(PixelData& d, double error2, bool key)
-		{
-
-			const auto val = d.last_pixels[d.pos];
-
-			// check points before
-			FloatType error_max = std::numeric_limits<FloatType>::infinity();
-			if (d_error != 0 && !key) { // if d_error is 0, it is more efficient to just NOT try to remove points
-				// compute slope
-				FloatType s = slope((FloatType)d.last_pixels[0].value, (FloatType)val.value, (FloatType)(time(val) - time(d.last_pixels[0])));
-
-				error_max = check_candidate_min_max(d.last_pixels, d.pos, s, error2);
-			}
-
-			if (error_max > error2) {
-				// stop here
-				if (d.candidate == MaxSpace)
-					d.candidate = d.pos;
-
-				d.points.push_back(d.last_pixels[d.candidate]);
-				d.last_pixels.erase(d.last_pixels.begin(), d.last_pixels.begin() + d.candidate);
-				d.pos = 0;
-				d.candidate = MaxSpace;
-			}
-			else if (inf_equal(error_max, d_error)) {
-				d.candidate = d.pos;
-			}
-		}
-
-		void insert_key_frame(const std::vector<size_t>& key_pixels = std::vector<size_t>())
+		void insert_key_frame()
 		{
 			if (!d_error)
 				return; // no decimation
 
 			size_t size = d_width * d_height;
-			if (!key_pixels.empty())
-				size = key_pixels.size();
-
-			const FloatType error2 = (FloatType)d_error * (FloatType)2.00001;
 
 			// #pragma omp parallel for num_threads(d_threads)
 			get_pool().loop_for(d_threads, 0, (int)size, 1, [&](auto p) {
 				size_t pix = (size_t)p;
-				if (!key_pixels.empty())
-					pix = key_pixels[pix];
-
-				PixelData& d = this->d_data[pix];
-
-				if (d.pos >= d.last_pixels.size() - 1) {
-					// we reach the end
-					if (d.candidate != MaxSpace) {
-						// add previous candidate
-						d.points.push_back(d.last_pixels[d.candidate]);
-						d.last_pixels.erase(d.last_pixels.begin(), d.last_pixels.begin() + d.candidate);
-						d.pos = 0;
-						d.candidate = (size_t)-1;
-					}
-				}
-
-				for (; d.pos != d.last_pixels.size(); ++d.pos) {
-					advance_min_max(d, error2, false);
-					if (d.pos >= d.last_pixels.size() - 1) {
-						// we reach the end
-						if (d.candidate != MaxSpace) {
-							// add previous candidate
-							if (d.points.back().index != d_pos - 1) {
-								d.points.push_back(d.last_pixels[d.candidate]);
-								d.last_pixels.erase(d.last_pixels.begin(), d.last_pixels.begin() + d.candidate);
-								d.pos = 0;
-								d.candidate = (size_t)-1;
-							}
-						}
-					}
-				}
-
-				// Add last point
-				if (d.points.back().index != d_pos - 1)
-					d.points.push_back(d.last_pixels.back());
+				PixelData<T>& d = this->d_data[pix];
+				d.finish(d_error);
 			});
 		}
 
@@ -483,31 +437,16 @@ namespace stenos
 
 			std::vector<unsigned short> cnts_pix(size);
 			std::vector<PixelType> pixels;
+
 			if (!d_error) {
 
-				// Directly take the decimated points
-				/*#ifdef STENOS_OPENCL
-								if (d_openCL && d_error) {
-									// stenos::timer t;
-									// t.tick();
-									for (size_t i = 0; i < size; ++i) {
-										cnts_pix[i] = (uint16_t)d_openCL->retrieve_decimated_pixels(i, (std::vector<CLPixelType<T>>&)pixels);
-										total_pixels += cnts_pix[i];
-
-									}
-									// auto el = t.tock();
-									// printf("%f\n", (el * 1e-6));
-								}
-								else
-				#endif*/
-				{
-					for (size_t i = 0; i < size; ++i) {
-						cnts_pix[i] = (uint16_t)d_data[i].last_pixels.size();
-						total_pixels += d_data[i].last_pixels.size();
-						if (d_pos != d_max_gop)
-							pixels.insert(pixels.end(), d_data[i].last_pixels.begin(), d_data[i].last_pixels.end());
-						// pixels.insert(pixels.end(), d_data[i].points.begin(), d_data[i].points.end());
-					}
+				// Directly take the raw points
+				for (size_t i = 0; i < size; ++i) {
+					auto last_pixels = d_data[i].pixel_buffer();
+					cnts_pix[i] = (uint16_t)d_times.size();
+					total_pixels += d_times.size();
+					if (d_pos != d_max_gop)
+						pixels.insert(pixels.end(), last_pixels, last_pixels + d_times.size());
 				}
 			}
 			else {
@@ -537,8 +476,8 @@ namespace stenos
 #endif
 						{
 							size_t i = x + y * d_width;
-							auto& pts = d_data[i].points;
-							auto* r = d_data[i].last_pixels.buffer();
+							const auto& pts = d_data[i].decimation();
+							auto* r = d_data[i].pixel_buffer();
 							std::copy(pts.begin(), pts.end(), dec.begin() + dec_size);
 							dec_size += pts.size();
 							std::copy(r, r + d_times.size(), raw.data() + x * d_times.size());
@@ -562,8 +501,8 @@ namespace stenos
 							else
 #endif
 							{
-								cnts_pix[i] = (uint16_t)d_data[i].points.size();
-								total_pixels += d_data[i].points.size();
+								cnts_pix[i] = (uint16_t)d_data[i].decimation().size();
+								total_pixels += d_data[i].decimation().size();
 							}
 						}
 					}
@@ -623,6 +562,10 @@ namespace stenos
 			d_data.resize(d_width * d_height);
 			d_pos = 0;
 			d_times.clear();
+			if (error < 0)
+				error = 0;
+			if constexpr (std::is_integral_v<T>)
+				error = std::floor(error);
 		}
 
 	public:
@@ -632,6 +575,10 @@ namespace stenos
 
 		TimeTraceCompressFast(size_t width, size_t height, double error, size_t GOP, int threads, int device_id = -1)
 		{
+			if (error < 0)
+				error = 0;
+			if constexpr (std::is_integral_v<T>)
+				error = std::floor(error);
 			d_device = device_id;
 #ifdef STENOS_OPENCL
 			if (device_id >= 0 && error) {
@@ -703,11 +650,7 @@ namespace stenos
 			size_t total_pixels = gop * d_width * d_height;
 			d_buffer.resize(total_pixels);
 
-			auto* start = d_buffer.data();
 			size_t size = d_width * d_height;
-			for (size_t i = 0; i < size; ++i, start += gop) {
-				d_data[i].last_pixels.set_buffer(start, gop);
-			}
 
 			d_max_point_count = total_pixels / 16;
 			if (d_max_point_count < size * 4)
@@ -790,6 +733,7 @@ namespace stenos
 			}
 
 			size_t size = d_width * d_height;
+			auto* start = d_buffer.data();
 
 			if (d_pos == 0) {
 				// #pragma omp parallel for num_threads(d_threads)
@@ -800,30 +744,19 @@ namespace stenos
 						val = t_img[pix * inner];
 					else
 						memcpy(&val, c_img + pix * inner_bytes, sizeof(T));
-					PixelData& d = d_data[pix];
-					d.candidate = MaxSpace;
+					PixelData<T>& d = d_data[pix];
 
-					d.points.clear();
-					d.last_pixels.clear();
-					d.points.shrink_to_fit();
-					d.last_pixels.shrink_to_fit();
-
-					if (d_error) // decimation enabled
-						d.points.push_back(PixelType{ val, d_pos });
-					d.last_pixels.push_back(PixelType{ val, d_pos });
-					d.pos = 1;
-					d.start = 0;
+					d.init(start + pix * d_max_gop, &d_times);
+					d.add(val, d_pos, d_error);
 				});
 				++d_pos;
 				return std::string();
 			}
 
-			const FloatType error2 = (FloatType)d_error * (FloatType)2.00001;
-
 			// #pragma omp parallel for num_threads(d_threads)
 			get_pool().loop_for(d_threads, 0, (int)size, 1, [&](auto p) {
 				size_t pix = (size_t)p;
-				PixelData& d = this->d_data[pix];
+				PixelData<T>& d = this->d_data[pix];
 
 				T val;
 				if (is_aligned)
@@ -831,10 +764,7 @@ namespace stenos
 				else
 					memcpy(&val, c_img + pix * inner_bytes, sizeof(T));
 
-				d.last_pixels.push_back(PixelType{ val, d_pos });
-				if (d_error) // decimation enabled
-					advance_min_max(d, error2, false);
-				d.pos++;
+				d.add(val, d_pos, d_error);
 			});
 			++d_pos;
 
@@ -1554,6 +1484,5 @@ namespace stenos
 			return true;
 		}
 	};
-
 
 } // end namespace stenos

@@ -73,38 +73,7 @@ namespace stenos
 		index_type index = 0;
 	};
 
-	// Minimal contiguous array range class
-	template<class T>
-	struct Range
-	{
-		T* start = nullptr;
-		T* finish = nullptr;
-
-		auto size() const noexcept { return (size_t)(finish - start); }
-		auto data() const noexcept { return start; }
-		auto begin() const noexcept { return start; }
-		auto end() const noexcept { return finish; }
-		const T& back() const noexcept { return finish[-1]; }
-		const T& front() const noexcept { return *start; }
-		template<class Integer>
-		const T& operator[](Integer i) const noexcept
-		{
-			return start[i];
-		}
-
-		void reset(T* ptr) noexcept { start = finish = ptr; }
-		void push_back(const T& val) noexcept { *finish++ = val; }
-		void erase(const T* last) noexcept { start = (T*)last; }
-	};
-
-	template<class T>
-	static STENOS_ALWAYS_INLINE bool is_finite(T value) noexcept
-	{
-		if constexpr (std::is_floating_point_v<T>)
-			return std::isfinite(value);
-		else
-			return true;
-	}
+	
 
 	template<class T>
 	struct MakeDouble
@@ -206,7 +175,7 @@ namespace stenos
 		using Double = typename MakeDouble<T>::type;
 
 		VType* points = nullptr;
-		Range<VType> last_pixels;
+		range<VType> last_pixels;
 		std::int64_t candidate = -1;
 		std::int64_t pos = 1;
 		const VType* last_pos = nullptr;
@@ -552,22 +521,6 @@ namespace stenos
 				index_type start = 1;
 				index_type end = src[i].index;
 
-				while (end - start > 3) {
-					Double val1 = (Double)(start)*factor;
-					Double val2 = (Double)(start + 1) * factor;
-					Double val3 = (Double)(start + 2) * factor;
-					Double val4 = (Double)(start + 3) * factor;
-					val1 = ival * val1 + (1. - val1) * pval;
-					val2 = ival * val2 + (1. - val2) * pval;
-					val3 = ival * val3 + (1. - val3) * pval;
-					val4 = ival * val4 + (1. - val4) * pval;
-					out[0] = cast_interpolate<T>(val1);
-					out[stride] = cast_interpolate<T>(val2);
-					out[stride * 2] = cast_interpolate<T>(val3);
-					out[stride * 3] = cast_interpolate<T>(val4);
-					out += 4 * stride;
-					start += 4;
-				}
 				while (start < end) {
 					Double val1 = (Double)(start)*factor;
 					val1 = ival * val1 + (1. - val1) * pval;
