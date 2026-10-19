@@ -14,6 +14,8 @@
 #include <thread>
 #include <cmath>
 #include <iostream>
+#include <stdexcept>
+#include <functional>
 
 #include "../../bits.hpp"
 #include "../../timer.hpp"
@@ -81,7 +83,8 @@ namespace stenos
 			const auto& first = last_pixels[0];
 
 			// Compute slope
-			int64_t diff_t = time(*val) - time(first);
+			// Subtract before conversion, without signed overflow across the timestamp origin.
+			uint64_t diff_t = (uint64_t)time(*val) - (uint64_t)time(first);
 			Double s = slope(first.value, val->value, (Double)diff_t);
 
 			if (pos == 1) {
@@ -119,7 +122,7 @@ namespace stenos
 
 			// Compute upper and lower slope based on maximum error,
 			// and update min/max slopes.
-			diff_t = time(*val) - time(last_pixels[0]);
+			diff_t = (uint64_t)time(*val) - (uint64_t)time(last_pixels[0]);
 			Double upper_slope = slope((Double)last_pixels[0].value, (Double)val->value + err, (Double)diff_t);
 			Double lower_slope = slope((Double)last_pixels[0].value, (Double)val->value - err, (Double)diff_t);
 			min_slope = std::min(min_slope, upper_slope);
@@ -196,6 +199,9 @@ namespace stenos
 
 			if (!is_finite(value)) {
 				finish(error);
+				last_pixels.push_back(VType{ value, val_pos });
+				// Preserve the raw sample, but exclude it from the next finite run.
+				last_pixels.erase(last_pixels.end());
 				points.push_back(VType{ value, val_pos });
 				return;
 			}
@@ -214,6 +220,7 @@ namespace stenos
 			}
 		}
 
+		STENOS_ALWAYS_INLINE std::vector<VType>& decimation() noexcept { return points; }
 		STENOS_ALWAYS_INLINE const std::vector<VType>& decimation() const noexcept { return points; }
 		STENOS_ALWAYS_INLINE void decimation(std::vector<VType>& out) noexcept { out = std::move(points); }
 		STENOS_ALWAYS_INLINE VType* pixel_buffer() noexcept { return buffer; }
@@ -234,23 +241,26 @@ namespace stenos
 		{
 			std::vector<char> tmp(stenos_bound(bytes));
 			size_t r = stenos_compress_generic(ctx, data, bytesoftype, bytes, tmp.data(), tmp.size());
+			// The string-returning compression API propagates failures as exceptions.
+			// Never use an encoded error as a byte count or emit a partial sub-buffer.
+			if (stenos_has_error(r))
+				throw std::runtime_error("Time trace compression failed");
 			write_uint64(out, r);
 			out.insert(out.size(), tmp.data(), r);
-
-			if (stenos_has_error(r))
-				return r;
 
 			return r + 8;
 		}
 
-		static inline uint64_t read_uint64(stenos_input* in)
+		// Check the callback result: a failed read does not change the input pointer.
+		static inline bool read_uint64(stenos_input* in, uint64_t& v)
 		{
-			uint64_t v = 0;
-			in->read((char*)&v, 8, in->opaque);
+			v = 0;
+			if (!in || !in->read || in->read((char*)&v, 8, in->opaque) != 8)
+				return false;
 #if STENOS_BYTEORDER_ENDIAN == STENOS_BYTEORDER_BIG_ENDIAN
 			v = stenos::byte_swap_64(v);
 #endif
-			return v;
+			return true;
 		}
 
 		static inline stenos_context* get_context()
@@ -273,21 +283,45 @@ namespace stenos
 		{
 			stenos_context* ctx = get_context();
 			stenos_set_threads(ctx, threads);
-			size_t csize = read_uint64(in);
-			vec.resize(bytes / sizeof(T));
+			uint64_t csize = 0;
+			// Do not advertise more destination bytes than the vector actually owns.
+			if (bytes % sizeof(T) || bytes > std::numeric_limits<size_t>::max() ||
+				!read_uint64(in, csize) || csize > std::numeric_limits<size_t>::max() ||
+				csize > (uint64_t)std::numeric_limits<int64_t>::max())
+				return false;
+			vec.resize((size_t)(bytes / sizeof(T)));
 			std::vector<char> tmp(csize);
 			if (in->read(tmp.data(), csize, in->opaque) != (int64_t)csize)
 				return false;
 			size_t r = stenos_decompress_generic(ctx, tmp.data(), sizeof(T), csize, vec.data(), bytes);
-			return stenos_has_error(r) == 0;
+			return !stenos_has_error(r) && r == bytes;
 		}
 
-		template<class T>
-		static STENOS_ALWAYS_INLINE T fround_to(double v) noexcept
+		template<class T, class Double>
+		static STENOS_ALWAYS_INLINE T cast_interpolate(Double v) noexcept
 		{
-			if (std::is_integral<T>::value)
-				return (T)std::llrint(v);
-			return (T)v;
+			if constexpr (std::is_integral_v<T>) {
+				if constexpr (sizeof(T) <= 4 && std::is_unsigned_v<T>) {
+					// Double is at least double precision. For unsigned types up to
+					// 32 bits, adding 0.5 is safe for values interpolated within T's range.
+					return static_cast<T>(v + (Double)(0.5));
+				}
+				else {
+					const Double rounded = std::round(v);
+					const Double lo = static_cast<Double>(std::numeric_limits<T>::lowest());
+					const Double hi = static_cast<Double>(std::numeric_limits<T>::max());
+
+					if (rounded <= lo)
+						return std::numeric_limits<T>::lowest();
+					if (rounded >= hi)
+						return std::numeric_limits<T>::max();
+
+					return static_cast<T>(rounded);
+				}
+			}
+			else {
+				return static_cast<T>(v);
+			}
 		}
 
 	}
@@ -342,6 +376,7 @@ namespace stenos
 		size_t d_max_gop{ 0 };
 		size_t d_max_point_count{ 0 };
 		double d_error{ 0 };
+		double d_next_error{ 0 }; // Requested setting; d_error stays fixed during a GOP.
 		int d_device = -1;
 		uint64_t d_max_time = 0;
 		unsigned short d_pos{ 0 };
@@ -402,11 +437,17 @@ namespace stenos
 				return std::string();
 
 #ifdef STENOS_OPENCL
-			if (d_openCL && d_error)
+			if (d_openCL)
 				d_openCL->finish_block();
 			else
 #endif
 				insert_key_frame();
+
+			// Only the CPU lossless path owns a complete contiguous d_buffer.
+			bool direct_buffer = !d_error && d_pos == d_max_gop;
+#ifdef STENOS_OPENCL
+			if (d_openCL) direct_buffer = false;
+#endif
 
 			// write result
 			std::string out;
@@ -442,11 +483,18 @@ namespace stenos
 
 				// Directly take the raw points
 				for (size_t i = 0; i < size; ++i) {
-					auto last_pixels = d_data[i].pixel_buffer();
 					cnts_pix[i] = (uint16_t)d_times.size();
 					total_pixels += d_times.size();
-					if (d_pos != d_max_gop)
+#ifdef STENOS_OPENCL
+					// Keep the selected backend even when the requested error is zero.
+					if (d_openCL)
+						d_openCL->retrieve_raw_pixels(i, (std::vector<CLPixelType<T>>&)pixels);
+					else
+#endif
+					if (!direct_buffer) {
+						auto last_pixels = d_data[i].pixel_buffer();
 						pixels.insert(pixels.end(), last_pixels, last_pixels + d_times.size());
+					}
 				}
 			}
 			else {
@@ -459,7 +507,7 @@ namespace stenos
 					size_t dec_size = 0;
 
 #ifdef STENOS_OPENCL
-					if (d_openCL && d_error) {
+					if (d_openCL) {
 						raw.clear();
 						dec.clear();
 					}
@@ -467,7 +515,7 @@ namespace stenos
 
 					for (size_t x = 0; x < d_width; ++x) {
 #ifdef STENOS_OPENCL
-						if (d_openCL && d_error) {
+						if (d_openCL) {
 							size_t i = x + y * d_width;
 							dec_size += d_openCL->retrieve_decimated_pixels(i, (std::vector<CLPixelType<T>>&)dec);
 							d_openCL->retrieve_raw_pixels(i, (std::vector<CLPixelType<T>>&)raw);
@@ -494,7 +542,7 @@ namespace stenos
 						for (size_t x = 0; x < d_width; ++x) {
 							size_t i = x + y * d_width;
 #ifdef STENOS_OPENCL
-							if (d_openCL && d_error) {
+							if (d_openCL) {
 								cnts_pix[i] = (uint16_t)d_openCL->decimated_pixel_count(i);
 								total_pixels += cnts_pix[i];
 							}
@@ -525,7 +573,7 @@ namespace stenos
 
 			// write total number of pixels
 			uint64_t pix_count = pixels.size();
-			if (!d_error && d_pos == d_max_gop)
+			if (direct_buffer)
 				pix_count = d_buffer.size();
 
 			compress_detail::write_uint64(out, pix_count * sizeof(PixelType));
@@ -533,7 +581,7 @@ namespace stenos
 			set_context_max_time(timer, remaining_ns, 0);
 
 			// auto st = std::chrono::system_clock::now();
-			if (!d_error && d_pos == d_max_gop) {
+			if (direct_buffer) {
 				// Directly use the internal buffer as it contains all pixels in the right order (no decimation)
 				compress_detail::write_compressed_buffer(d_ctx, out, d_buffer.data(), sizeof(PixelType), d_buffer.size() * sizeof(PixelType));
 			}
@@ -556,9 +604,13 @@ namespace stenos
 
 		void init(size_t width, size_t height, double error)
 		{
+			// Header dimensions are uint16; thread-pool ranges use int.
+			if (!width || !height || width > 65535 || height > 65535 ||
+				width > (size_t)std::numeric_limits<int>::max() / height)
+				throw std::invalid_argument("Invalid video dimensions");
 			d_width = width;
 			d_height = height;
-			d_error = (error);
+			if (!std::isfinite(error)) throw std::invalid_argument("Non-finite error");
 			d_data.resize(d_width * d_height);
 			d_pos = 0;
 			d_times.clear();
@@ -566,6 +618,7 @@ namespace stenos
 				error = 0;
 			if constexpr (std::is_integral_v<T>)
 				error = std::floor(error);
+			d_error = d_next_error = error; // Store the normalized value, not the original argument.
 		}
 
 	public:
@@ -575,6 +628,9 @@ namespace stenos
 
 		TimeTraceCompressFast(size_t width, size_t height, double error, size_t GOP, int threads, int device_id = -1)
 		{
+			if (!width || !height || width > 65535 || height > 65535 ||
+				width > (size_t)std::numeric_limits<int>::max() / height || !std::isfinite(error))
+				throw std::invalid_argument("Invalid video dimensions or error");
 			if (error < 0)
 				error = 0;
 			if constexpr (std::is_integral_v<T>)
@@ -584,9 +640,9 @@ namespace stenos
 			if (device_id >= 0 && error) {
 				d_openCL.reset(new TimeTraceCompressCL<T>((unsigned)device_id, width, height, error, GOP));
 				if (d_openCL->is_valid()) {
-					d_max_gop = GOP;
-					d_error = error;
-					d_threads = threads;
+					d_max_gop = d_openCL->gop(); // Use the backend's clamped GOP.
+					d_error = d_next_error = error;
+					set_threads(threads);
 					d_width = width;
 					d_height = height;
 					d_pos = 0;
@@ -608,19 +664,19 @@ namespace stenos
 
 		void set_threads(int threads) noexcept
 		{
-			d_threads = threads;
-			stenos_set_threads(d_ctx, threads);
+			d_threads = std::max(1, threads);
+			stenos_set_threads(d_ctx, d_threads);
 		}
 		int threads() const noexcept { return d_threads; }
 
-		double error() const noexcept { return d_error; }
+		double error() const noexcept { return d_next_error; }
 		void set_error(double error) noexcept
 		{
-			d_error = error;
-#ifdef STENOS_OPENCL
-			if (d_openCL && error)
-				d_openCL->set_error(error);
-#endif
+			// Queue changes until the next GOP; noexcept setters ignore invalid values.
+			if (!std::isfinite(error)) return;
+			error = std::max(0.0, error);
+			if constexpr (std::is_integral_v<T>) error = std::floor(error);
+			d_next_error = error;
 		}
 
 		void set_max_time(uint64_t time_ns) noexcept { d_max_time = time_ns; }
@@ -639,13 +695,17 @@ namespace stenos
 		void set_max_GOP(size_t gop)
 		{
 #ifdef STENOS_OPENCL
-			if (d_openCL && d_error)
+			if (d_openCL)
 				return;
 #endif
 			if (d_pos || gop < 4) {
 				// TODO: print error message
 				return;
 			}
+			// Counts in the serialized format are uint16 (65536 is not representable).
+			gop = std::min<size_t>(gop, 65535);
+			if (gop > std::numeric_limits<size_t>::max() / sizeof(PixelType) / d_width / d_height)
+				throw std::length_error("GOP allocation overflow");
 			d_max_gop = gop;
 			size_t total_pixels = gop * d_width * d_height;
 			d_buffer.resize(total_pixels);
@@ -669,10 +729,10 @@ namespace stenos
 		size_t width() const noexcept { return d_width; }
 		size_t height() const noexcept { return d_height; }
 
-		const std::vector<PixelType>& pixels(size_t x, size_t y) const noexcept { return d_data[x + y * d_width].points; }
-		const std::vector<PixelType>& pixels(size_t i) const noexcept { return d_data[i].points; }
-		std::vector<PixelType>& pixels(size_t x, size_t y) noexcept { return d_data[x + y * d_width].points; }
-		std::vector<PixelType>& pixels(size_t i) noexcept { return d_data[i].points; }
+		const std::vector<PixelType>& pixels(size_t x, size_t y) const noexcept { return d_data[x + y * d_width].decimation(); }
+		const std::vector<PixelType>& pixels(size_t i) const noexcept { return d_data[i].decimation(); }
+		std::vector<PixelType>& pixels(size_t x, size_t y) noexcept { return d_data[x + y * d_width].decimation(); }
+		std::vector<PixelType>& pixels(size_t i) noexcept { return d_data[i].decimation(); }
 
 		std::string finish() { return finish_internal(); }
 
@@ -682,12 +742,14 @@ namespace stenos
 
 		virtual std::string add_frame(const void* img, std::int64_t time) { return this->add_image(static_cast<const T*>(img), time); }
 
-		virtual std::string add_frame_bytes(const void* img, int inner_stride_bytes, std::int64_t time) { return this->add_image_bytes(img, (size_t)inner_stride_bytes, time); }
+		virtual std::string add_frame_bytes(const void* img, int inner_stride_bytes, std::int64_t time) { return inner_stride_bytes <= 0 ? std::string() : this->add_image_bytes(img, (size_t)inner_stride_bytes, time); }
 
 		std::string add_image_bytes(const void* _img, size_t inner_bytes, int64_t time)
 		{
-			if (inner_bytes < sizeof(T))
+			if (!_img || inner_bytes < sizeof(T))
 				return {};
+			if (d_pos && time <= d_times.back())
+				throw std::invalid_argument("Timestamps must strictly increase within a GOP");
 
 			static constexpr size_t alignment = alignof(T);
 			bool is_aligned = ((uintptr_t)_img % alignment) == 0 && (inner_bytes % alignment) == 0 && (inner_bytes % sizeof(T) == 0);
@@ -695,13 +757,17 @@ namespace stenos
 			const T* t_img = static_cast<const T*>(_img);
 			const char* c_img = static_cast<const char*>(_img);
 
-			if (d_pos == 0)
+			if (d_pos == 0) {
 				d_times.clear();
-			d_times.push_back(time);
+				d_error = d_next_error;
+#ifdef STENOS_OPENCL
+				if (d_openCL) d_openCL->set_error(d_error);
+#endif
+			}
 
 #ifdef STENOS_OPENCL
 
-			if (d_openCL && d_error) {
+			if (d_openCL) {
 				bool has_finish = false;
 				if (is_aligned && inner == 1)
 					has_finish = d_openCL->add_image(static_cast<const T*>(_img), time);
@@ -720,6 +786,7 @@ namespace stenos
 					}
 					has_finish = d_openCL->add_image(d_tmp_img.data(), time);
 				}
+				d_times.push_back(time);
 				++d_pos;
 				if (has_finish)
 					return finish();
@@ -727,6 +794,7 @@ namespace stenos
 			}
 
 #endif
+			d_times.push_back(time);
 			if (d_max_gop == 0) {
 				// initialize with 500MB
 				set_max_memory(500000000u);
@@ -822,7 +890,7 @@ namespace stenos
 
 	private:
 		std::vector<int64_t> d_times;
-		stenosv_block_header d_header;
+		stenosv_block_header d_header{};
 		std::uint64_t d_pos{ 0 };
 		std::vector<uint64_t> d_trace_pos;
 		int d_threads{ 1 };
@@ -833,13 +901,41 @@ namespace stenos
 		std::vector<PixelType> d_partial_time_traces;
 		std::vector<std::pair<size_t, size_t>> d_partial_poss;
 
+		// Validate records once on input; reconstruction can then use unchecked indices.
+		bool valid_trace(const PixelType* tr, size_t count) const noexcept
+		{
+			if (!count || tr[0].index != 0 || tr[count - 1].index != d_times.size() - 1) return false;
+			for (size_t i = 1; i < count; ++i) {
+				if (tr[i].index <= tr[i-1].index || tr[i].index >= d_times.size()) return false;
+				if ((!is_finite(tr[i-1].value) || !is_finite(tr[i].value)) &&
+					tr[i].index != tr[i-1].index + 1) return false;
+			}
+			return true;
+		}
+
+		T reconstruct(const PixelType& prev, const PixelType& next, size_t count, uint64_t& cursor) const noexcept
+		{
+			// Copy retained values as T: no NaN*0 and no 64-bit integer conversion loss.
+			if (d_pos == next.index) {
+				cursor += cursor < count - 1;
+				return next.value;
+			}
+			if (d_pos == prev.index) return prev.value;
+			using Double = typename MakeDouble<T>::type;
+			// Subtract integer nanoseconds first, including across the signed origin.
+			const uint64_t elapsed = (uint64_t)d_times[d_pos] - (uint64_t)d_times[prev.index];
+			const uint64_t duration = (uint64_t)d_times[next.index] - (uint64_t)d_times[prev.index];
+			const Double fraction = (Double)elapsed / (Double)duration;
+			return compress_detail::cast_interpolate<T>(
+				(Double)next.value * fraction + (Double)prev.value * ((Double)1 - fraction));
+		}
+
 		bool open_skip_size(stenos_input* in, bool read_content = true)
 		{
 			if (!in)
 				return false;
 
-			in->read((char*)&d_header, sizeof(d_header), in->opaque);
-			if (!in) {
+			if (in->read((char*)&d_header, sizeof(d_header), in->opaque) != sizeof(d_header)) {
 				close();
 				return false;
 			}
@@ -850,7 +946,9 @@ namespace stenos
 				d_header.pixel_type = StenosUInt16;
 			}
 
-			if (d_header.pixel_type != stenos_to_numeric_type<T>())
+			if (d_header.pixel_type != stenos_to_numeric_type<T>() ||
+				d_header.version != STENOS_VIDEO_TRACE_VERSION || !d_header.width || !d_header.height || !d_header.count ||
+				(size_t)d_header.width > (size_t)std::numeric_limits<int>::max() / d_header.height)
 				return false;
 
 			d_times.resize(d_header.count);
@@ -863,6 +961,10 @@ namespace stenos
 				return false;
 			}
 
+			if (std::adjacent_find(d_times.begin(), d_times.end(), std::greater_equal<int64_t>()) != d_times.end()) {
+				close(); return false;
+			}
+
 			if (!read_content)
 				return true;
 
@@ -873,7 +975,15 @@ namespace stenos
 				return false;
 			}
 
-			uint64_t pix_bytes = compress_detail::read_uint64(in);
+			uint64_t pix_bytes = 0, expected_records = 0;
+			for (auto count : cnts_pix) {
+				if (!count || count > d_times.size()) { close(); return false; }
+				expected_records += count;
+			}
+			if (expected_records > std::numeric_limits<size_t>::max() / sizeof(PixelType) ||
+				!compress_detail::read_uint64(in, pix_bytes) || pix_bytes != expected_records * sizeof(PixelType)) {
+				close(); return false;
+			}
 			d_time_traces.clear();
 			if (!compress_detail::read_compressed_vector(d_threads, in, d_time_traces, pix_bytes) || d_time_traces.size() < cnts_pix.size()) {
 				close();
@@ -883,6 +993,7 @@ namespace stenos
 			size_t cum_count = 0;
 			for (size_t i = 0; i < cnts_pix.size(); ++i) {
 				d_poss[i] = { cum_count, cnts_pix[i] };
+				if (!valid_trace(d_time_traces.data() + cum_count, cnts_pix[i])) { close(); return false; }
 				cum_count += cnts_pix[i];
 			}
 			d_pos = 0;
@@ -978,7 +1089,9 @@ namespace stenos
 				d_header.pixel_type = StenosUInt16;
 			}
 
-			if (d_header.pixel_type != stenos_to_numeric_type<T>()) {
+			if (d_header.pixel_type != stenos_to_numeric_type<T>() ||
+				d_header.version != STENOS_VIDEO_TRACE_VERSION || !d_header.width || !d_header.height || !d_header.count ||
+				(size_t)d_header.width > (size_t)std::numeric_limits<int>::max() / d_header.height) {
 				close();
 				return res;
 			}
@@ -993,6 +1106,10 @@ namespace stenos
 				return res;
 			}
 
+			if (std::adjacent_find(d_times.begin(), d_times.end(), std::greater_equal<int64_t>()) != d_times.end()) {
+				close(); return res;
+			}
+
 			// Read ALL sizes
 			std::vector<unsigned short> cnts_pix(size);
 			if (!compress_detail::read_compressed_vector(d_threads, in, cnts_pix, size * 2)) {
@@ -1000,8 +1117,14 @@ namespace stenos
 				return res;
 			}
 
-			/*uint64_t pix_bytes = */ compress_detail::read_uint64(in);
-			/*uint64_t csize = */ compress_detail::read_uint64(in);
+			uint64_t pix_bytes = 0, csize = 0, expected_records = 0;
+			for (auto n : cnts_pix) {
+				if (!n || n > d_times.size()) { close(); return res; }
+				expected_records += n;
+			}
+			if (expected_records > std::numeric_limits<size_t>::max() / sizeof(PixelType) ||
+				!compress_detail::read_uint64(in, pix_bytes) || pix_bytes != expected_records * sizeof(PixelType) ||
+				!compress_detail::read_uint64(in, csize)) { close(); return res; }
 			int64_t stream_pos = (int64_t)in->tell(in->opaque);
 
 			// Unlock the lock during heavy computation, relock at the end
@@ -1028,6 +1151,9 @@ namespace stenos
 				unsigned pos = c.x + c.y * d_header.width;
 				ranges[i] = { d_poss[pos].first, d_poss[pos].first + d_poss[pos].second };
 				d_partial_poss[i] = { partial_pixels, d_poss[pos].second };
+				if (d_poss[pos].second > std::numeric_limits<size_t>::max() / sizeof(PixelType) - partial_pixels) {
+					close(); return {};
+				}
 				partial_pixels += d_poss[pos].second;
 			}
 			d_partial_time_traces.resize(partial_pixels);
@@ -1053,6 +1179,7 @@ namespace stenos
 			res.resize(count);
 			for (size_t i = 0; i < count; ++i) {
 				const auto* start = d_partial_time_traces.data() + d_partial_poss[i].first;
+				if (!valid_trace(start, d_partial_poss[i].second)) { close(); return {}; }
 				res[i] = { start, start + d_partial_poss[i].second };
 			}
 
@@ -1069,7 +1196,7 @@ namespace stenos
 		TimeTraceDecompressBlock& operator=(TimeTraceDecompressBlock&&) noexcept = default;
 
 		int threads() const noexcept { return d_threads; }
-		void set_threads(int threads) noexcept { d_threads = threads; }
+		void set_threads(int threads) noexcept { d_threads = std::max(1, threads); }
 
 		bool empty() const noexcept { return d_times.empty() || d_time_traces.empty(); }
 		const stenosv_block_header& header() const noexcept { return d_header; }
@@ -1078,7 +1205,8 @@ namespace stenos
 		std::pair<int64_t, int64_t> bounds() const noexcept { return d_times.empty() ? std::pair<int64_t, int64_t>{ 0ll, 0ll } : std::pair<int64_t, int64_t>{ d_times[0], d_times.back() }; }
 		TimeTraceRange time_trace(unsigned x, unsigned y) const
 		{
-			unsigned pos = x + y * d_header.width;
+			if (x >= d_header.width || y >= d_header.height || d_time_traces.empty()) return { nullptr, nullptr };
+			size_t pos = x + (size_t)y * d_header.width;
 			if (pos >= d_poss.size())
 				return { nullptr, nullptr };
 			const auto* start = d_time_traces.data() + d_poss[pos].first;
@@ -1119,15 +1247,15 @@ namespace stenos
 		bool open(stenos_input* in, bool read_content = true)
 		{
 			close();
-			uint64_t full_block_size = compress_detail::read_uint64(in);
+			uint64_t full_block_size = 0;
+			if (!compress_detail::read_uint64(in, full_block_size)) return false;
 			auto pos = in->tell(in->opaque);
-			if (!in)
+			if (pos < 0 || full_block_size > (uint64_t)std::numeric_limits<int64_t>::max() - (uint64_t)pos)
 				return false;
 			if (!open_skip_size(in, read_content))
 				return false;
 			if (!read_content) {
-				in->seek(pos + (int64_t)full_block_size, STENOS_SEEK_SET, in->opaque);
-				if (!in)
+				if (in->seek(pos + (int64_t)full_block_size, STENOS_SEEK_SET, in->opaque) < 0)
 					return false;
 			}
 			return true;
@@ -1173,13 +1301,14 @@ namespace stenos
 		{
 			close();
 
-			/*uint64_t full_block_size = */ compress_detail::read_uint64(in);
+			uint64_t full_block_size = 0;
+			if (!compress_detail::read_uint64(in, full_block_size) || (count && !coords)) return {};
 			return open_skip_size_partial(in, coords, count, lock);
 		}
 
 		virtual bool seek_pos(uint64_t pos)
 		{
-			if (pos < 0 || pos >= (size_t)d_times.size())
+			if (empty() || pos >= (size_t)d_times.size())
 				return false;
 			if (pos == d_pos)
 				return true;
@@ -1187,7 +1316,7 @@ namespace stenos
 			d_pos = pos;
 			auto time = d_times[pos];
 
-			size_t size = d_header.width * d_header.height;
+			size_t size = (size_t)d_header.width * d_header.height;
 			if (d_trace_pos.empty())
 				d_trace_pos.resize(size, 0);
 
@@ -1218,6 +1347,7 @@ namespace stenos
 
 		virtual bool read(void* img, size_t inner_stride = 1)
 		{
+			if (!inner_stride) return false;
 			if (inner_stride == 1)
 				return read_next<1>(static_cast<T*>(img), 1);
 			else if (inner_stride == 2)
@@ -1245,16 +1375,13 @@ namespace stenos
 		template<size_t InnerStride = 1>
 		bool read_next(T* img, size_t inner)
 		{
-			if (d_pos >= d_times.size())
+			if (empty() || d_pos >= d_times.size() || !img)
 				return false;
 
 			if (d_trace_pos.empty())
-				d_trace_pos.resize(d_header.width * d_header.height, 0);
+				d_trace_pos.resize((size_t)d_header.width * d_header.height, 0);
 
-			int64_t utime = d_times[d_pos];
-			double time = (double)d_times[d_pos];
-
-			size_t size = d_header.width * d_header.height;
+			size_t size = (size_t)d_header.width * d_header.height;
 			size_t pixels_per_thread = size / (size_t)d_threads;
 			size_t remaining = size % (size_t)d_threads;
 
@@ -1291,40 +1418,15 @@ namespace stenos
 					const auto next_val3 = (pos3 == tr_size3 - 1) ? tr3[pos3] : tr3[pos3 + 1];
 					const auto next_val4 = (pos4 == tr_size4 - 1) ? tr4[pos4] : tr4[pos4 + 1];
 
-					double value1 = (double)next_val1.value;
-					double value2 = (double)next_val2.value;
-					double value3 = (double)next_val3.value;
-					double value4 = (double)next_val4.value;
+					T value1 = reconstruct(prev_val1, next_val1, tr_size1, this->d_trace_pos[j]);
+					T value2 = reconstruct(prev_val2, next_val2, tr_size2, this->d_trace_pos[j + 1]);
+					T value3 = reconstruct(prev_val3, next_val3, tr_size3, this->d_trace_pos[j + 2]);
+					T value4 = reconstruct(prev_val4, next_val4, tr_size4, this->d_trace_pos[j + 3]);
 
-					if (utime == d_times[next_val1.index])
-						this->d_trace_pos[j] += (pos1 < tr_size1 - 1);
-					else {
-						double advance1 = (time - (double)d_times[prev_val1.index]) / ((double)d_times[next_val1.index] - (double)d_times[prev_val1.index]);
-						value1 = value1 * advance1 + (1. - advance1) * prev_val1.value;
-					}
-					if (utime == d_times[next_val2.index])
-						this->d_trace_pos[j + 1] += (pos2 < tr_size2 - 1);
-					else {
-						double advance2 = (time - (double)d_times[prev_val2.index]) / ((double)d_times[next_val2.index] - (double)d_times[prev_val2.index]);
-						value2 = value2 * advance2 + (1. - advance2) * prev_val2.value;
-					}
-					if (utime == d_times[next_val3.index])
-						this->d_trace_pos[j + 2] += (pos3 < tr_size3 - 1);
-					else {
-						double advance3 = (time - (double)d_times[prev_val3.index]) / ((double)d_times[next_val3.index] - (double)d_times[prev_val3.index]);
-						value3 = value3 * advance3 + (1. - advance3) * prev_val3.value;
-					}
-					if (utime == d_times[next_val4.index])
-						this->d_trace_pos[j + 3] += (pos4 < tr_size4 - 1);
-					else {
-						double advance4 = (time - (double)d_times[prev_val4.index]) / ((double)d_times[next_val4.index] - (double)d_times[prev_val4.index]);
-						value4 = value4 * advance4 + (1. - advance4) * prev_val4.value;
-					}
-
-					img[j * get<InnerStride>(inner)] = compress_detail::fround_to<T>(value1);
-					img[(j + 1) * get<InnerStride>(inner)] = compress_detail::fround_to<T>(value2);
-					img[(j + 2) * get<InnerStride>(inner)] = compress_detail::fround_to<T>(value3);
-					img[(j + 3) * get<InnerStride>(inner)] = compress_detail::fround_to<T>(value4);
+					img[j * get<InnerStride>(inner)] = value1;
+					img[(j + 1) * get<InnerStride>(inner)] = value2;
+					img[(j + 2) * get<InnerStride>(inner)] = value3;
+					img[(j + 3) * get<InnerStride>(inner)] = value4;
 				}
 
 				for (; j < end; ++j) {
@@ -1334,15 +1436,8 @@ namespace stenos
 					const auto prev_val = tr[pos];
 					const auto next_val = (pos == tr_size - 1) ? tr[pos] : tr[pos + 1];
 
-					double value = (double)next_val.value;
-					if (utime == d_times[next_val.index]) {
-						this->d_trace_pos[j] += (pos < tr_size - 1);
-					}
-					else {
-						double advance = (time - (double)d_times[prev_val.index]) / ((double)d_times[next_val.index] - (double)d_times[prev_val.index]);
-						value = value * advance + (1. - advance) * prev_val.value;
-					}
-					img[j * get<InnerStride>(inner)] = compress_detail::fround_to<T>(value);
+					T value = reconstruct(prev_val, next_val, tr_size, this->d_trace_pos[j]);
+					img[j * get<InnerStride>(inner)] = value;
 				}
 			});
 
@@ -1352,19 +1447,16 @@ namespace stenos
 
 		bool read_bytes(void* img, size_t inner_bytes)
 		{
-			if (d_pos >= d_times.size())
+			if (empty() || d_pos >= d_times.size() || !img)
 				return false;
 
 			if (inner_bytes < sizeof(T))
 				return false;
 
 			if (d_trace_pos.empty())
-				d_trace_pos.resize(d_header.width * d_header.height, 0);
+				d_trace_pos.resize((size_t)d_header.width * d_header.height, 0);
 
-			int64_t utime = d_times[d_pos];
-			double time = (double)d_times[d_pos];
-
-			size_t size = d_header.width * d_header.height;
+			size_t size = (size_t)d_header.width * d_header.height;
 			size_t pixels_per_thread = size / (size_t)d_threads;
 			size_t remaining = size % (size_t)d_threads;
 
@@ -1407,48 +1499,23 @@ namespace stenos
 					const auto next_val3 = (pos3 == tr_size3 - 1) ? tr3[pos3] : tr3[pos3 + 1];
 					const auto next_val4 = (pos4 == tr_size4 - 1) ? tr4[pos4] : tr4[pos4 + 1];
 
-					double value1 = (double)next_val1.value;
-					double value2 = (double)next_val2.value;
-					double value3 = (double)next_val3.value;
-					double value4 = (double)next_val4.value;
-
-					if (utime == d_times[next_val1.index])
-						this->d_trace_pos[j] += (pos1 < tr_size1 - 1);
-					else {
-						double advance1 = (time - (double)d_times[prev_val1.index]) / ((double)d_times[next_val1.index] - (double)d_times[prev_val1.index]);
-						value1 = value1 * advance1 + (1. - advance1) * prev_val1.value;
-					}
-					if (utime == d_times[next_val2.index])
-						this->d_trace_pos[j + 1] += (pos2 < tr_size2 - 1);
-					else {
-						double advance2 = (time - (double)d_times[prev_val2.index]) / ((double)d_times[next_val2.index] - (double)d_times[prev_val2.index]);
-						value2 = value2 * advance2 + (1. - advance2) * prev_val2.value;
-					}
-					if (utime == d_times[next_val3.index])
-						this->d_trace_pos[j + 2] += (pos3 < tr_size3 - 1);
-					else {
-						double advance3 = (time - (double)d_times[prev_val3.index]) / ((double)d_times[next_val3.index] - (double)d_times[prev_val3.index]);
-						value3 = value3 * advance3 + (1. - advance3) * prev_val3.value;
-					}
-					if (utime == d_times[next_val4.index])
-						this->d_trace_pos[j + 3] += (pos4 < tr_size4 - 1);
-					else {
-						double advance4 = (time - (double)d_times[prev_val4.index]) / ((double)d_times[next_val4.index] - (double)d_times[prev_val4.index]);
-						value4 = value4 * advance4 + (1. - advance4) * prev_val4.value;
-					}
+					T value1 = reconstruct(prev_val1, next_val1, tr_size1, this->d_trace_pos[j]);
+					T value2 = reconstruct(prev_val2, next_val2, tr_size2, this->d_trace_pos[j + 1]);
+					T value3 = reconstruct(prev_val3, next_val3, tr_size3, this->d_trace_pos[j + 2]);
+					T value4 = reconstruct(prev_val4, next_val4, tr_size4, this->d_trace_pos[j + 3]);
 
 					if (is_aligned) {
 
-						t_img[j * inner] = compress_detail::fround_to<T>(value1);
-						t_img[(j + 1) * inner] = compress_detail::fround_to<T>(value2);
-						t_img[(j + 2) * inner] = compress_detail::fround_to<T>(value3);
-						t_img[(j + 3) * inner] = compress_detail::fround_to<T>(value4);
+						t_img[j * inner] = value1;
+						t_img[(j + 1) * inner] = value2;
+						t_img[(j + 2) * inner] = value3;
+						t_img[(j + 3) * inner] = value4;
 					}
 					else {
-						T tmp1 = compress_detail::fround_to<T>(value1);
-						T tmp2 = compress_detail::fround_to<T>(value2);
-						T tmp3 = compress_detail::fround_to<T>(value3);
-						T tmp4 = compress_detail::fround_to<T>(value4);
+						T tmp1 = value1;
+						T tmp2 = value2;
+						T tmp3 = value3;
+						T tmp4 = value4;
 						memcpy(c_img + j * inner_bytes, &tmp1, sizeof(T));
 						memcpy(c_img + (j + 1) * inner_bytes, &tmp2, sizeof(T));
 						memcpy(c_img + (j + 2) * inner_bytes, &tmp3, sizeof(T));
@@ -1463,18 +1530,11 @@ namespace stenos
 					const auto prev_val = tr[pos];
 					const auto next_val = (pos == tr_size - 1) ? tr[pos] : tr[pos + 1];
 
-					double value = (double)next_val.value;
-					if (utime == d_times[next_val.index]) {
-						this->d_trace_pos[j] += (pos < tr_size - 1);
-					}
-					else {
-						double advance = (time - (double)d_times[prev_val.index]) / ((double)d_times[next_val.index] - (double)d_times[prev_val.index]);
-						value = value * advance + (1. - advance) * prev_val.value;
-					}
+					T value = reconstruct(prev_val, next_val, tr_size, this->d_trace_pos[j]);
 					if (is_aligned)
-						t_img[j * inner] = compress_detail::fround_to<T>(value);
+						t_img[j * inner] = value;
 					else {
-						T tmp = compress_detail::fround_to<T>(value);
+						T tmp = value;
 						memcpy(c_img + j * inner_bytes, &tmp, sizeof(T));
 					}
 				}
