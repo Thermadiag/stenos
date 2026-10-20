@@ -579,7 +579,7 @@ namespace stenos
 			return STENOS_ERROR_DST_OVERFLOW;
 
 		uint8_t* out = (uint8_t*)dst;
-		*out++ = (uint8_t)stenos_to_numeric_type<T>();
+		*out++ = (uint8_t)to_numeric_type<T>();
 		write_uint64_7(out, count);
 		out += 7;
 		dst_bytes -= 8;
@@ -668,7 +668,7 @@ namespace stenos
 			return STENOS_ERROR_SRC_OVERFLOW;
 
 		const uint8_t* in = (const uint8_t*)src;
-		if STENOS_UNLIKELY (*in != (uint8_t)stenos_to_numeric_type<T>())
+		if STENOS_UNLIKELY (*in != (uint8_t)to_numeric_type<T>())
 			return STENOS_ERROR_INVALID_PARAMETER;
 		++in;
 		size_t elements = read_uint64_7(in);

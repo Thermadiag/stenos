@@ -1,4 +1,5 @@
 #include <stenos/stenos_video.h>
+#include <stenos/stenos.h>
 #include <vector>
 #include <fstream>
 #include <sstream>
@@ -67,12 +68,12 @@ template<class T, class Fun>
 void test_codec(int width, int height, int GOP, double error, int threads, int device, Fun pattern)
 {
 
-	
+	using namespace stenos;
 
 
 	static constexpr size_t frames = 100;
 
-	auto pixel_type = stenosv_to_pixel_type<T>();
+	auto pixel_type = to_numeric_type<T>();
 	std::vector<T> image((size_t)(width * height));
 
 	// Open output video file
@@ -354,89 +355,7 @@ static auto msecs_since_epoch()
 int test_video_codec(int, char*[]) 
 {
 	using namespace stenos;
-	{
-		const double error = 1;
-		int level = 2;
-		constexpr size_t count =  1000000;
-
-		using vtype = int;
-		constexpr stenosv_pixel_type pix = stenosv_to_pixel_type<vtype>();
-
-		// Test decimation
-		std::vector<vtype> values(count);
-		for (size_t i = 0; i < values.size(); ++i)
-			//values[i] =  (int)i;
-			values[i] = (vtype)(10 * std::cos(i * 0.1));
-
-		//TEST
-		//values.erase(values.begin(), values.begin() + (1000000 - 737856));
-		//values.resize((1000000 - 737856));
-
-		{
-			using pixtype = detail::ValueIndex<vtype,size_t>;
-			std::vector<pixtype> decold(values.size()), decnew(values.size());
-
-			auto rold = detail::decimate_raw_old(values.data(), values.size(), decold.data(), error);
-			auto rnew = detail::decimate_raw_new(values.data(), values.size(), decnew.data(), error);
-			std::cout << "old: " << rold << std::endl;
-			std::cout << "new: " << rnew << std::endl;
-			
-
-			std::vector<vtype> out(values.size());
-			auto dec = detail::undecimate_raw(decold.data(), rold, out.data(), out.size());
-			bool ok = dec == out.size();
-			if (ok) {
-				for (size_t i = 0; i < dec; ++i) {
-					// std::cout << values[i] << "\t" << decomp[i] << std::endl;
-					if (std::abs((double)out[i] - (double)values[i]) > error) {
-						ok = false;
-						break;
-					}
-				}
-			}
-			std::cout << "ok " << ok << std::endl;
-			return 0;
-		}
-
-		std::vector<char> dst(stenos_bound( values.size() * sizeof(vtype)*2));
-		std::vector<vtype> decomp(count);
-
-		int64_t st, el;
-
-		st = msecs_since_epoch();
-		size_t ret1 = stenos_compress(values.data(), sizeof(vtype), values.size() * sizeof(vtype), dst.data(), dst.size(), level);
-		el = msecs_since_epoch() - st;
-		std::cout << "compress: " << el << " ms " <<ret1<< std::endl;
-
-		st = msecs_since_epoch();
-		stenos_decompress(dst.data(), ret1, sizeof(vtype), decomp.data(), decomp.size() * sizeof(vtype));
-		el = msecs_since_epoch() - st;
-		std::cout << "decompress: " << el << " ms" << std::endl;
-
-
-		st = msecs_since_epoch();
-		size_t ret2 = stenosv_compress_numeric(values.data(), pix, values.size(), dst.data(), dst.size(), error, level);
-		el = msecs_since_epoch() - st;
-		std::cout << "num compress: " << el << " ms " << ret2<< std::endl;
-
-		st = msecs_since_epoch();
-		size_t dec = stenosv_decompress_numeric(dst.data(), ret2, decomp.data(), decomp.size() * sizeof(vtype), pix);
-		el = msecs_since_epoch() - st;
-		std::cout << "num decompress: " << el << " ms" << std::endl;
-
-		bool ok = dec == decomp.size();
-		if (ok) {
-			for (size_t i = 0; i < dec; ++i) {
-				//std::cout << values[i] << "\t" << decomp[i] << std::endl;
-				if (std::abs((double)decomp[i] - (double)values[i]) > error) {
-					ok = false;
-					break;
-				}
-			}
-		}
-		std::cout << "ok " << ok << std::endl;
-		return 0;
-	}
+	
 
 
 	////////////////////////////////

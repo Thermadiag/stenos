@@ -75,7 +75,7 @@ namespace stenos
 	 * @note The mapping is based on type category, signedness, and sizeof(T).
 	 */
 	template<class T>
-	inline constexpr stenos_numeric_type stenos_to_numeric_type()
+	inline constexpr stenos_numeric_type to_numeric_type()
 	{
 		static_assert(std::is_arithmetic_v<T>, "invalid type");
 		if STENOS_CONSTEXPR (sizeof(T) == 1) {

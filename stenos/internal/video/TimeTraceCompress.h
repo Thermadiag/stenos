@@ -467,7 +467,7 @@ namespace stenos
 			h.height = (uint16_t)d_height;
 			h.version = STENOS_VIDEO_TRACE_VERSION;
 			h.count = (uint16_t)d_times.size();
-			h.pixel_type = (unsigned char)stenos_to_numeric_type<T>();
+			h.pixel_type = (unsigned char)to_numeric_type<T>();
 
 			out.insert(out.size(), (char*)&h, sizeof(h));
 
@@ -953,7 +953,7 @@ namespace stenos
 				d_header.pixel_type = StenosUInt16;
 			}
 
-			if (d_header.pixel_type != stenos_to_numeric_type<T>() || d_header.version != STENOS_VIDEO_TRACE_VERSION || !d_header.width || !d_header.height || !d_header.count ||
+			if (d_header.pixel_type != to_numeric_type<T>() || d_header.version != STENOS_VIDEO_TRACE_VERSION || !d_header.width || !d_header.height || !d_header.count ||
 			    (size_t)d_header.width > (size_t)std::numeric_limits<int>::max() / d_header.height)
 				return false;
 
@@ -1103,7 +1103,7 @@ namespace stenos
 				d_header.pixel_type = StenosUInt16;
 			}
 
-			if (d_header.pixel_type != stenos_to_numeric_type<T>() || d_header.version != STENOS_VIDEO_TRACE_VERSION || !d_header.width || !d_header.height || !d_header.count ||
+			if (d_header.pixel_type != to_numeric_type<T>() || d_header.version != STENOS_VIDEO_TRACE_VERSION || !d_header.width || !d_header.height || !d_header.count ||
 			    (size_t)d_header.width > (size_t)std::numeric_limits<int>::max() / d_header.height) {
 				close();
 				return res;
