@@ -1579,9 +1579,9 @@ size_t stenos_get_frame_size(const void* _src, size_t bytesoftype, size_t bytes)
 		if STENOS_UNLIKELY (src + 4 > end_src)
 			return STENOS_ERROR_SRC_OVERFLOW;
 
-		uint8_t code = *src++;
+		src++; // skip code
 		unsigned csize = stenos::read_uint32_3(src);
-		unsigned dsize = (i == super_block_count - 1) ? (unsigned)super_block_remaining : (unsigned)superblock_size;
+		//unsigned dsize = (i == super_block_count - 1) ? (unsigned)super_block_remaining : (unsigned)superblock_size;
 		src += 3;
 		if STENOS_UNLIKELY (src + csize > end_src)
 			return STENOS_ERROR_INVALID_INPUT;

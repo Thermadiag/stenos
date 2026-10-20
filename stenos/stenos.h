@@ -78,21 +78,21 @@ namespace stenos
 	inline constexpr stenos_numeric_type to_numeric_type()
 	{
 		static_assert(std::is_arithmetic_v<T>, "invalid type");
-		if STENOS_CONSTEXPR (sizeof(T) == 1) {
-			if STENOS_CONSTEXPR (std::is_signed_v<T>)
+		if constexpr (sizeof(T) == 1) {
+			if constexpr (std::is_signed_v<T>)
 				return StenosInt8;
 			else
 				return StenosUInt8;
 		}
-		else if STENOS_CONSTEXPR (sizeof(T) == 2) {
-			if STENOS_CONSTEXPR (std::is_signed_v<T>)
+		else if constexpr (sizeof(T) == 2) {
+			if constexpr (std::is_signed_v<T>)
 				return StenosInt16;
 			else
 				return StenosUInt16;
 		}
-		else if STENOS_CONSTEXPR (sizeof(T) == 4) {
-			if STENOS_CONSTEXPR (std::is_integral_v<T>) {
-				if STENOS_CONSTEXPR (std::is_signed_v<T>)
+		else if constexpr (sizeof(T) == 4) {
+			if constexpr (std::is_integral_v<T>) {
+				if constexpr (std::is_signed_v<T>)
 					return StenosInt32;
 				else
 					return StenosUInt32;
@@ -101,8 +101,8 @@ namespace stenos
 				return StenosFloat32;
 		}
 		else {
-			if STENOS_CONSTEXPR (std::is_integral_v<T>) {
-				if STENOS_CONSTEXPR (std::is_signed_v<T>)
+			if constexpr (std::is_integral_v<T>) {
+				if constexpr (std::is_signed_v<T>)
 					return StenosInt64;
 				else
 					return StenosUInt64;

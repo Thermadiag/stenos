@@ -143,8 +143,8 @@ namespace stenos
 		if (diff < 128)
 			*out++ = static_cast<uint8_t>(diff);
 		else {
-			out[0] = (diff & 127) | (1 << 7);
-			out[1] = (diff >> 7);
+			out[0] = (uint8_t)((diff & 127) | (1 << 7));
+			out[1] = (uint8_t)(diff >> 7);
 			out += 2;
 		}
 		return out;

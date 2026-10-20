@@ -158,12 +158,6 @@
 #endif
 #endif
 
-// If constexpr
-#ifdef STENOS_HAS_CPP_17
-#define STENOS_CONSTEXPR constexpr
-#else
-#define STENOS_CONSTEXPR
-#endif
 
 // Unreachable code
 #ifdef _MSC_VER
@@ -1122,7 +1116,7 @@ namespace stenos
 		size_t res = 0;
 		memcpy(&res, src, sizeof(size_t));
 #if STENOS_BYTEORDER_ENDIAN != STENOS_BYTEORDER_LITTLE_ENDIAN
-		if (sizeof(size_t) == 8)
+		if constexpr (sizeof(size_t) == 8)
 			res = byte_swap_64(res);
 		else
 			res = byte_swap_32(res);
@@ -1135,7 +1129,7 @@ namespace stenos
 		size_t res = 0;
 		memcpy(&res, src, sizeof(size_t));
 #if STENOS_BYTEORDER_ENDIAN != STENOS_BYTEORDER_BIG_ENDIAN
-		if (sizeof(size_t) == 8) {
+		if constexpr (sizeof(size_t) == 8) {
 			res = static_cast<size_t>(byte_swap_64(res));
 		}
 		else {

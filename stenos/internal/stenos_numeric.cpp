@@ -73,8 +73,6 @@ namespace stenos
 		index_type index = 0;
 	};
 
-	
-
 	template<class T>
 	struct MakeDouble
 	{
@@ -89,8 +87,7 @@ namespace stenos
 		int64_t numerator = 0;
 		int64_t denominator = 1;
 	};
-	static STENOS_ALWAYS_INLINE bool numeric_slope_less(
-		NumericIntegerSlope a, NumericIntegerSlope b) noexcept
+	static STENOS_ALWAYS_INLINE bool numeric_slope_less(NumericIntegerSlope a, NumericIntegerSlope b) noexcept
 	{
 		return a.numerator * b.denominator < b.numerator * a.denominator;
 	}
@@ -149,8 +146,7 @@ namespace stenos
 	// Round to nearest, with ties toward the larger value. The product fits
 	// uint64_t even for the full uint32_t range and maximum uint32_t gap.
 	template<class T>
-	static STENOS_ALWAYS_INLINE T numeric_interpolate_small_integer(
-		T a, T b, uint64_t k, uint64_t length) noexcept
+	static STENOS_ALWAYS_INLINE T numeric_interpolate_small_integer(T a, T b, uint64_t k, uint64_t length) noexcept
 	{
 		static_assert(std::is_integral_v<T> && sizeof(T) <= 4);
 		const int64_t left = static_cast<int64_t>(a);
@@ -161,7 +157,8 @@ namespace stenos
 		const uint64_t product = delta * position;
 		uint64_t quotient = product / length;
 		const uint64_t remainder = product % length;
-		if (remainder >= length - remainder) ++quotient;
+		if (remainder >= length - remainder)
+			++quotient;
 		return static_cast<T>(lo + static_cast<int64_t>(quotient));
 	}
 
@@ -215,17 +212,17 @@ namespace stenos
 		STENOS_ALWAYS_INLINE void advance_integer() noexcept
 		{
 			const auto* val = &last_pixels[pos];
-			constexpr int64_t safe_distance = int64_t{1} << 29;
-			const int64_t limit = std::min<int64_t>(
-				static_cast<int64_t>(std::numeric_limits<Index>::max()), safe_distance);
+			constexpr int64_t safe_distance = int64_t{ 1 } << 29;
+			const int64_t limit = std::min<int64_t>(static_cast<int64_t>(std::numeric_limits<Index>::max()), safe_distance);
 			bool restart = pos >= limit;
 			if (!restart) {
-				const NumericIntegerSlope slope{
-					static_cast<int64_t>(val->value) - static_cast<int64_t>(last_pixels[0].value), pos};
-				if (pos == 1 || !integer_bounds_valid) candidate = pos;
+				const NumericIntegerSlope slope{ static_cast<int64_t>(val->value) - static_cast<int64_t>(last_pixels[0].value), pos };
+				if (pos == 1 || !integer_bounds_valid)
+					candidate = pos;
 				else if (numeric_slope_less(integer_upper, slope) || numeric_slope_less(slope, integer_lower))
 					restart = numeric_slope_less(integer_upper, integer_lower);
-				else candidate = pos;
+				else
+					candidate = pos;
 			}
 			if (restart) {
 				// A positive candidate exists: the adjacent sample always qualifies.
@@ -237,17 +234,19 @@ namespace stenos
 				clear_slopes();
 			}
 			const int64_t distance = val - &last_pixels[0];
-			const int64_t delta = static_cast<int64_t>(val->value)
-				- static_cast<int64_t>(last_pixels[0].value);
-			const NumericIntegerSlope lower{delta - integer_error, distance};
-			const NumericIntegerSlope upper{delta + integer_error, distance};
+			const int64_t delta = static_cast<int64_t>(val->value) - static_cast<int64_t>(last_pixels[0].value);
+			const NumericIntegerSlope lower{ delta - integer_error, distance };
+			const NumericIntegerSlope upper{ delta + integer_error, distance };
 			if (!integer_bounds_valid) {
 				integer_lower = lower;
 				integer_upper = upper;
 				integer_bounds_valid = true;
-			} else {
-				if (numeric_slope_less(integer_lower, lower)) integer_lower = lower;
-				if (numeric_slope_less(upper, integer_upper)) integer_upper = upper;
+			}
+			else {
+				if (numeric_slope_less(integer_lower, lower))
+					integer_lower = lower;
+				if (numeric_slope_less(upper, integer_upper))
+					integer_upper = upper;
 			}
 		}
 
@@ -256,70 +255,71 @@ namespace stenos
 		{
 			if constexpr (std::is_integral_v<T> && sizeof(T) <= 4) {
 				advance_integer();
-				return;
-			}
-			const auto* val = &last_pixels[pos];
-			const auto& first = last_pixels[0];
-
-			size_t diff_t;
-			Double s;
-
-			// We need to take into account the index type maximum size
-			if STENOS_UNLIKELY (pos == std::numeric_limits<Index>::max())
-				goto stop_here;
-
-			// Compute slope
-			diff_t = (size_t)(val - &first);
-			s = slope((Double)first.value, (Double)val->value, (Double)diff_t);
-
-			if (pos == 1) {
-				// This is the first point, always valid
-				candidate = pos;
 			}
 			else {
-				// Get the minimum upper slope and maximum lower slope
-				if ((min_slope < s) || (s < max_slope)) {
+				const auto* val = &last_pixels[pos];
+				const auto& first = last_pixels[0];
 
-					// This point is outside: we cannot discard it.
-					// However, next point(s) might bring back the slope
-					// into the valid range, so we can keep investigating,
-					// but without updating the last valid candidate.
+				size_t diff_t;
+				Double s;
 
-					if (min_slope < max_slope) {
-						// Ok, we know that next point won't be able to bring back
-						// the slope to the valid range, add the last valid candidate to output
-						// and restart from there.
+				// We need to take into account the index type maximum size
+				if STENOS_UNLIKELY ((Index)pos == std::numeric_limits<Index>::max())
+					goto stop_here;
 
-					stop_here:
-						if (candidate == -1)
-							candidate = pos;
+				// Compute slope
+				diff_t = (size_t)(val - &first);
+				s = slope((Double)first.value, (Double)val->value, (Double)diff_t);
 
-						update_last_pos();
-						last_pixels.erase(last_pixels.begin() + candidate);
-						val = &last_pixels[1];
-						pos = 0;
-						candidate = -1;
-						clear_slopes();
-					}
-				}
-				else
+				if (pos == 1) {
+					// This is the first point, always valid
 					candidate = pos;
-			}
+				}
+				else {
+					// Get the minimum upper slope and maximum lower slope
+					if ((min_slope < s) || (s < max_slope)) {
 
-			// Compute upper and lower slope based on maximum error,
-			// and add them to their corresponding heap structures.
-			diff_t = (size_t)(val - &last_pixels[0]);
-			Double upper_slope, lower_slope;
-			if (diff_t == 1) {
-				upper_slope = ((Double)val->value + (Double)err - (Double)last_pixels[0].value);
-				lower_slope = ((Double)val->value - (Double)err - (Double)last_pixels[0].value);
+						// This point is outside: we cannot discard it.
+						// However, next point(s) might bring back the slope
+						// into the valid range, so we can keep investigating,
+						// but without updating the last valid candidate.
+
+						if (min_slope < max_slope) {
+							// Ok, we know that next point won't be able to bring back
+							// the slope to the valid range, add the last valid candidate to output
+							// and restart from there.
+
+						stop_here:
+							if (candidate == -1)
+								candidate = pos;
+
+							update_last_pos();
+							last_pixels.erase(last_pixels.begin() + candidate);
+							val = &last_pixels[1];
+							pos = 0;
+							candidate = -1;
+							clear_slopes();
+						}
+					}
+					else
+						candidate = pos;
+				}
+
+				// Compute upper and lower slope based on maximum error,
+				// and add them to their corresponding heap structures.
+				diff_t = (size_t)(val - &last_pixels[0]);
+				Double upper_slope, lower_slope;
+				if (diff_t == 1) {
+					upper_slope = ((Double)val->value + (Double)err - (Double)last_pixels[0].value);
+					lower_slope = ((Double)val->value - (Double)err - (Double)last_pixels[0].value);
+				}
+				else {
+					upper_slope = slope((Double)last_pixels[0].value, (Double)val->value + err, (Double)diff_t);
+					lower_slope = slope((Double)last_pixels[0].value, (Double)val->value - err, (Double)diff_t);
+				}
+				min_slope = std::min(min_slope, upper_slope);
+				max_slope = std::max(max_slope, lower_slope);
 			}
-			else {
-				upper_slope = slope((Double)last_pixels[0].value, (Double)val->value + err, (Double)diff_t);
-				lower_slope = slope((Double)last_pixels[0].value, (Double)val->value - err, (Double)diff_t);
-			}
-			min_slope = std::min(min_slope, upper_slope);
-			max_slope = std::max(max_slope, lower_slope);
 		}
 	};
 
@@ -332,9 +332,9 @@ namespace stenos
 	template<class T>
 	size_t decimate_raw_internal(const T* in, size_t count, size_t stride, ValueIndex<T>* out, double err)
 	{
-		using VType = ValueIndex<T>;
 
-		if (!std::isfinite(err) || stride == 0) return STENOS_ERROR_INVALID_PARAMETER;
+		if (!std::isfinite(err) || stride == 0)
+			return STENOS_ERROR_INVALID_PARAMETER;
 		if (count == 0)
 			return 0;
 		if (err < 0)
@@ -346,8 +346,7 @@ namespace stenos
 		Decimate<T> d;
 		if constexpr (std::is_integral_v<T> && sizeof(T) <= 4) {
 			// Capping at the type's total range cannot tighten the requested bound.
-			const int64_t range = static_cast<int64_t>(std::numeric_limits<T>::max())
-				- static_cast<int64_t>(std::numeric_limits<T>::lowest());
+			const int64_t range = static_cast<int64_t>(std::numeric_limits<T>::max()) - static_cast<int64_t>(std::numeric_limits<T>::lowest());
 			d.integer_error = static_cast<int64_t>(std::min(err, static_cast<double>(range)));
 		}
 		d.candidate = -1;
@@ -400,7 +399,8 @@ namespace stenos
 	{
 		using VType = ValueIndex<T>;
 
-		if (!std::isfinite(err) || stride == 0) return STENOS_ERROR_INVALID_PARAMETER;
+		if (!std::isfinite(err) || stride == 0)
+			return STENOS_ERROR_INVALID_PARAMETER;
 		if constexpr (std::is_integral_v<T>)
 			return decimate_raw_internal(in, count, stride, out, err);
 		else {
@@ -442,7 +442,6 @@ namespace stenos
 			return (size_t)(out - dst);
 		}
 	}
-
 
 	template<class T, class Double>
 	static STENOS_ALWAYS_INLINE T cast_interpolate(Double v) noexcept
@@ -498,12 +497,12 @@ namespace stenos
 
 			if (src[i].index > 1) {
 
-				if STENOS_UNLIKELY ((src[i].index - 1) > dst_size)
+				if STENOS_UNLIKELY ((size_t)(src[i].index - 1) > dst_size)
 					return STENOS_ERROR_DST_OVERFLOW;
 
 				if constexpr (std::is_integral_v<T> && sizeof(T) <= 4) {
 					const uint64_t length = src[i].index;
-					
+
 					NumericInterpolateSmallInteger<T> interpolate(src[i - 1].value, src[i].value, length);
 					for (uint64_t k = 1; k < length; ++k) {
 						*out = interpolate.next();
@@ -511,24 +510,25 @@ namespace stenos
 					}
 
 					dst_size -= static_cast<size_t>(length - 1);
-					continue;
 				}
+				else {
 
-				// Interpolate
-				Double factor = (Double)1. / (Double)(src[i].index);
-				Double ival = (Double)src[i].value;
-				Double pval = (Double)src[i - 1].value;
-				index_type start = 1;
-				index_type end = src[i].index;
+					// Interpolate
+					Double factor = (Double)1. / (Double)(src[i].index);
+					Double ival = (Double)src[i].value;
+					Double pval = (Double)src[i - 1].value;
+					index_type start = 1;
+					index_type end = src[i].index;
 
-				while (start < end) {
-					Double val1 = (Double)(start)*factor;
-					val1 = ival * val1 + (1. - val1) * pval;
-					*out = cast_interpolate<T>(val1);
-					out += stride;
-					++start;
+					while (start < end) {
+						Double val1 = (Double)(start)*factor;
+						val1 = ival * val1 + (1. - val1) * pval;
+						*out = cast_interpolate<T>(val1);
+						out += stride;
+						++start;
+					}
+					dst_size -= (size_t)(src[i].index - 1);
 				}
-				dst_size -= (src[i].index - 1);
 			}
 		}
 		if (count) {
@@ -614,7 +614,8 @@ namespace stenos
 		while (count) {
 			size_t rem = std::min(count, step_size);
 			size_t ret = decimate_raw(src, rem, stride, buf.data(), error);
-			if (stenos_has_error(ret)) return ret;
+			if (stenos_has_error(ret))
+				return ret;
 			size_t r = 0;
 
 			if (level > 1) {

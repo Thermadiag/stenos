@@ -418,13 +418,13 @@ unshuffle_neon(const int32_t bytesoftype, const int32_t blocksize,
 
 #else /* defined(__ARM_NEON) */
 
-void shuffle_neon(const int32_t bytesoftype, const int32_t blocksize,
-                  const uint8_t* const _src, uint8_t* const _dest) {
+void shuffle_neon(const int32_t , const int32_t ,
+                  const uint8_t* const , uint8_t* const ) {
   abort();
 }
 
-void unshuffle_neon(const int32_t bytesoftype, const int32_t blocksize,
-                    const uint8_t *_src, uint8_t *_dest) {
+void unshuffle_neon(const int32_t , const int32_t ,
+                    const uint8_t *, uint8_t *) {
   abort();
 }
 

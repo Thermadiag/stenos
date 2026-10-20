@@ -71,8 +71,8 @@ namespace stenos
         auto extract_time_trace(const stenosv_trace_query& query, stenosv_trace_result& out, time_type first_time = invalid_time, time_type last_time = invalid_time, std::atomic<size_t> * progress = nullptr) -> size_t;
 
     protected:
-	    virtual bool write_file_header(std::ostream& out) { return true; }
-	    virtual bool read_file_header(std::istream& in) { return true; }
+	    virtual bool write_file_header(std::ostream& ) { return true; }
+	    virtual bool read_file_header(std::istream& ) { return true; }
 
     private:
 	    void closeNoLock();

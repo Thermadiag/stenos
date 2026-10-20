@@ -1391,7 +1391,7 @@ namespace stenos
 			get_pool().loop_for(d_threads, 0, d_threads, 1, [&](auto i) {
 				size_t first = (size_t)i * pixels_per_thread;
 				size_t end = first + ((i == d_threads - 1) ? (pixels_per_thread + remaining) : pixels_per_thread);
-				size_t count = end - first;
+				//size_t count = end - first;
 				size_t j = first;
 
 				char* dst = c_img + j * inner_bytes;
