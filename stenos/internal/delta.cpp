@@ -287,7 +287,7 @@ namespace stenos
 		if (bytes == 0)
 			return;
 
-		__m128i mask = _mm_setr_epi8((char)0xFF, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
+		__m128i mask = _mm_setr_epi8((char)(unsigned char)0xFF, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
 
 		if (bytes <= 2048) {
 
@@ -393,8 +393,8 @@ namespace stenos
 		if (bytes == 0)
 			return;
 
-		const __m256i mask = _mm256_setr_epi8((char)0xFF, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
-		const __m256i shuffle = _mm256_set_m128i(_mm_set1_epi8(15), _mm_set1_epi8((char)0x80));
+		const __m256i mask = _mm256_setr_epi8((char)(unsigned char)0xFF, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
+		const __m256i shuffle = _mm256_set_m128i(_mm_set1_epi8(15), _mm_set1_epi8((char)(unsigned char)0x80));
 
 		if (bytes <= 2048) {
 

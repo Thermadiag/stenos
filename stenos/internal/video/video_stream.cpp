@@ -364,7 +364,7 @@ namespace stenos
 				}
 			}
 			if (!comp)
-				comp = stenosv_compress_make((stenosv_pixel_type)p.pixel_type, p.width, p.height, p.error, p.maxGOP, p.device);
+				comp = stenosv_compress_make((stenos_numeric_type)p.pixel_type, p.width, p.height, p.error, p.maxGOP, p.device);
 			if (!comp)
 				return false;
 			stenosv_compress_set_threads(comp, (int)p.threads);
@@ -399,7 +399,7 @@ namespace stenos
 		int w = d_data->params.width;
 		int h = d_data->params.height;
 		int pix = d_data->params.pixel_type;
-		size_t image_size = w * h * stenosv_sizeof_pixel_type((stenosv_pixel_type)pix);
+		size_t image_size = w * h * stenos_sizeof_numeric_type((stenos_numeric_type)pix); 
 
 		{
 			Unlocker unlock(&d_data->lock);

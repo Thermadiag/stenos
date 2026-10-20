@@ -11,7 +11,7 @@ set(
 include(FetchContent)
 
 project(stenos
-    VERSION 1.0
+    VERSION 1.1
     DESCRIPTION "Compression library for structured binary data and video"
     HOMEPAGE_URL "https://github.com/Thermadiag/stenos"
     LANGUAGES C CXX

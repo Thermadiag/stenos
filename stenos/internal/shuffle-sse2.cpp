@@ -366,7 +366,7 @@ static void unshuffle8_sse2(uint8_t* const dest, const uint8_t* const src, const
 template<class... Args>
 STENOS_ALWAYS_INLINE __m128i setr_epi8(Args... values) noexcept
 {
-	return _mm_setr_epi8(std::forward<char>(values)...);
+	return _mm_setr_epi8(static_cast<char>(values).../* std::forward<char>(values)...*/);
 }
 
 /* Routine optimized for unshuffling a buffer for a type size of 12 bytes. */

@@ -55,38 +55,14 @@ int stenosv_default_gpu_device()
 }
 
 
-size_t stenosv_sizeof_pixel_type(stenosv_pixel_type type)
-{
-	switch(type) {
-		case StenosInt8:
-		case StenosUInt8:
-			return 1;
-		case StenosInt16:
-		case StenosUInt16:
-			return 2;
-		case StenosInt32:
-		case StenosUInt32:
-			return 4;
-		case StenosInt64:
-		case StenosUInt64:
-			return 8;
-		case StenosFloat32:
-			return 4;
-		case StenosFloat64:
-			return 8;
-		default:
-			return 0;
-	}
-}
-
 struct stenosv_compress_s
 {
 	std::unique_ptr<BaseTimeTraceCompress> compress;
-	stenosv_pixel_type pixel_type;
+	stenos_numeric_type pixel_type;
 	std::string payload;
 };
 
-stenosv_compress* stenosv_compress_make(stenosv_pixel_type type, int width, int height, double error, int GOP, int device)
+stenosv_compress* stenosv_compress_make(stenos_numeric_type type, int width, int height, double error, int GOP, int device)
 {
 	stenosv_compress* ret = nullptr;
 
@@ -161,8 +137,7 @@ void stenosv_compress_set_max_time(stenosv_compress* ctx, uint64_t max_nanosecon
 	ctx->compress->set_max_time(max_nanoseconds);
 }
 
-
-stenosv_pixel_type stenosv_compress_pixel_type(stenosv_compress* ctx)
+stenos_numeric_type stenosv_compress_pixel_type(stenosv_compress* ctx)
 {
 	return ctx->pixel_type;
 }
@@ -204,11 +179,11 @@ size_t stenosv_compress_add_image(stenosv_compress* ctx, void* img, int64_t time
 {
 	try {
 		const auto& times = ctx->compress->times();
-		if (!times.empty() && ctx->compress->current_pos() > 0 ){
+		if (!times.empty() && ctx->compress->current_pos() > 0) {
 			auto last_time = times.back();
-			if(timestamp <= last_time)
+			if (timestamp <= last_time)
 				return STENOS_ERROR_INVALID_PARAMETER;
-		} 
+		}
 
 		ctx->payload.clear();
 		ctx->payload = ctx->compress->add_frame(img, timestamp);
@@ -298,11 +273,11 @@ struct stenosv_decompress_s
 {
 	std::unique_ptr<BaseTimeTraceDecompressBlock> dec;
 	stenos_input input;
-	stenosv_pixel_type pixel_type;
+	stenos_numeric_type pixel_type;
 	InputBuffer buffer;
 };
 
-static BaseTimeTraceDecompressBlock* from_type(stenosv_pixel_type type)
+static BaseTimeTraceDecompressBlock* from_type(stenos_numeric_type type)
 {
 	BaseTimeTraceDecompressBlock* ret = nullptr;
 	try {
@@ -389,19 +364,19 @@ stenosv_block_header stenosv_read_block_header_stream(stenos_input* input, uint6
 		else
 			memcpy(&ret, tmp + 8, sizeof(ret));
 
-		if (ret.version == 0 || ret.version > STENOS_VIDEO_TRACE_VERSION || ret.pixel_type > StenosFloat64){
+		if (ret.version == 0 || ret.version > STENOS_VIDEO_TRACE_VERSION || ret.pixel_type > StenosFloat64) {
 
 			// Handle old format
-			if(ret.version == 0 && ret.pixel_type == 0 && ret.width && ret.height && ret.count){
+			if (ret.version == 0 && ret.pixel_type == 0 && ret.width && ret.height && ret.count) {
 				ret.version = STENOS_VIDEO_TRACE_VERSION;
 				ret.pixel_type = StenosUInt16;
-			} 
-			else{ 
+			}
+			else {
 				memset(&ret, 0, sizeof(ret));
 				return ret;
-			}	
-		}	
-		
+			}
+		}
+
 		if (full_block_size)
 			*full_block_size = read_LE_64(tmp) + 8;
 
@@ -425,7 +400,7 @@ stenosv_decompress* stenosv_decompress_make_buffer(stenosv_payload buffer, int t
 	if (h.version == 0)
 		return ret;
 
-	stenosv_pixel_type ptype = (stenosv_pixel_type)h.pixel_type;
+	stenos_numeric_type ptype = (stenos_numeric_type)h.pixel_type;
 
 	try {
 		std::unique_ptr<BaseTimeTraceDecompressBlock> dec(from_type(ptype));
@@ -463,7 +438,7 @@ stenosv_decompress* stenosv_decompress_make_stream(stenos_input* read, int threa
 	if (h.version == 0)
 		return ret;
 
-	stenosv_pixel_type ptype = (stenosv_pixel_type)h.pixel_type;
+	stenos_numeric_type ptype = (stenos_numeric_type)h.pixel_type;
 
 	try {
 		std::unique_ptr<BaseTimeTraceDecompressBlock> dec(from_type(ptype));
@@ -487,7 +462,7 @@ stenosv_decompress* stenosv_decompress_make_stream(stenos_input* read, int threa
 	return ret;
 }
 
-size_t stenosv_extract_timestamps(stenos_input* input, int64_t * timestamps, size_t count)
+size_t stenosv_extract_timestamps(stenos_input* input, int64_t* timestamps, size_t count)
 {
 	int threads = 1;
 
@@ -496,7 +471,7 @@ size_t stenosv_extract_timestamps(stenos_input* input, int64_t * timestamps, siz
 	if (h.version == 0)
 		return STENOS_ERROR_INVALID_INPUT;
 
-	stenosv_pixel_type ptype = (stenosv_pixel_type)h.pixel_type;
+	stenos_numeric_type ptype = (stenos_numeric_type)h.pixel_type;
 
 	try {
 		std::unique_ptr<BaseTimeTraceDecompressBlock> dec(from_type(ptype));
@@ -507,13 +482,13 @@ size_t stenosv_extract_timestamps(stenos_input* input, int64_t * timestamps, siz
 			ret->input = *input;
 			ret->dec->set_threads(threads);
 			bool ok = ret->dec->open(&ret->input, false);
-			if(!ok) {
+			if (!ok) {
 				delete ret;
 				return STENOS_ERROR_INVALID_INPUT;
 			}
 
-			const auto & times = ret->dec->times();
-			if(count < times.size()) {
+			const auto& times = ret->dec->times();
+			if (count < times.size()) {
 				delete ret;
 				return STENOS_ERROR_INVALID_PARAMETER;
 			}
@@ -560,7 +535,7 @@ size_t stenosv_decompress_read_image(stenosv_decompress* ctx, uint64_t pos, int 
 			return STENOS_ERROR_INVALID_PARAMETER;
 		if (!ctx->dec->seek_pos(pos))
 			return STENOS_ERROR_INVALID_PARAMETER;
-		if (ctx->dec->read(out_image, (size_t)inner_stride))
+		if (ctx->dec->read_bytes(out_image, (size_t)inner_stride * stenos_sizeof_numeric_type(ctx->pixel_type)))
 			return 0;
 		return STENOS_ERROR_INVALID_INPUT;
 	}
@@ -639,7 +614,7 @@ struct stenosv_bytestream_s
 	int width = 0;
 	int height = 0;
 	int threads = 1;
-	stenosv_pixel_type type = StenosInt8;
+	stenos_numeric_type type = StenosInt8;
 	stenos_input input;
 	uint64_t bytes = 0;
 	Block* current = nullptr;
@@ -682,7 +657,7 @@ stenosv_bytestream* stenosv_bytestream_open(stenos_input input)
 			if (ret->bytes == 0) {
 				ret->width = (int)h.width;
 				ret->height = (int)h.height;
-				ret->type = (stenosv_pixel_type)h.pixel_type;
+				ret->type = (stenos_numeric_type)h.pixel_type;
 				ret->input = input;
 			}
 			ret->bytes += full_size;
@@ -716,7 +691,7 @@ int stenosv_bytestream_threads(stenosv_bytestream* ctx)
 {
 	return ctx->threads;
 }
-stenosv_pixel_type stenosv_bytestream_pixel_type(stenosv_bytestream* ctx)
+stenos_numeric_type stenosv_bytestream_pixel_type(stenosv_bytestream* ctx)
 {
 	return ctx->type;
 }
@@ -766,7 +741,7 @@ size_t stenosv_bytestream_read(stenosv_bytestream* ctx, uint64_t pos, void* img)
 		s.pos = 0;
 		s.start = ctx->current->pos;
 		s.input = ctx->input;
-		if(ctx->input.seek(s.start, SEEK_SET, ctx->input.opaque) < 0)
+		if (ctx->input.seek(s.start, SEEK_SET, ctx->input.opaque) < 0)
 			return STENOS_ERROR_INVALID_IO;
 		stenos_input in;
 		in.opaque = &s;
@@ -1031,7 +1006,7 @@ static Error compute_trace_block(stenos_input* in, const stenosv_trace_query& qu
 	return compute_block_time_trace<T>(query.threads, query.components, in, query.pixels, query.pixel_count, ret, count, lock);
 }
 
-static Error compute_trace_block_type(stenosv_pixel_type type, stenos_input* in, const stenosv_trace_query& query, stenosv_trace_result& ret, size_t& count, stenos_lock* lock)
+static Error compute_trace_block_type(stenos_numeric_type type, stenos_input* in, const stenosv_trace_query& query, stenosv_trace_result& ret, size_t& count, stenos_lock* lock)
 {
 	switch (type) {
 		case StenosUInt8:
@@ -1085,7 +1060,7 @@ size_t stenosv_extract_time_trace(stenos_input* in, stenosv_trace_query* query, 
 			return STENOS_ERROR_INVALID_INPUT;
 
 		size_t count = 0;
-		auto err = compute_trace_block_type((stenosv_pixel_type)h.pixel_type, in, *query, *out_trace, count, lock);
+		auto err = compute_trace_block_type((stenos_numeric_type)h.pixel_type, in, *query, *out_trace, count, lock);
 		if (err.error)
 			return STENOS_ERROR_INVALID_INPUT;
 		return count;
@@ -1130,7 +1105,6 @@ size_t stenosv_bytestream_extract_time_trace(stenosv_bytestream* input, int64_t*
 		std::atomic<size_t> ret{ 0 };
 
 		std::mutex mutex;
-		
 
 		stenos::get_pool().loop_for(threads, 0, (int)input->blocks.size(), 1, [&](auto i) {
 			if (err.load())
@@ -1139,7 +1113,7 @@ size_t stenosv_bytestream_extract_time_trace(stenosv_bytestream* input, int64_t*
 			size_t idx = (size_t)i;
 
 			auto start_t = times[input->blocks[idx].start_frame];
-			auto last_t = times[input->blocks[idx].start_frame + input->blocks[idx].count -1];
+			auto last_t = times[input->blocks[idx].start_frame + input->blocks[idx].count - 1];
 
 			if (last_t < time_bounds.first || start_t > time_bounds.second)
 				return;
@@ -1148,7 +1122,7 @@ size_t stenosv_bytestream_extract_time_trace(stenosv_bytestream* input, int64_t*
 			p.pos = 0;
 			p.start = input->blocks[idx].pos;
 			p.input = input->input;
-			
+
 			stenos_input stream;
 			stream.opaque = &p;
 			stream.read = read_stream_pos;

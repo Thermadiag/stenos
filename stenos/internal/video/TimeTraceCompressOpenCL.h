@@ -12,6 +12,12 @@
 #include <algorithm>
 #include <vector>
 #include <memory>
+#include <cmath>
+#include <cstddef>
+#include <cstdint>
+#include <limits>
+#include <stdexcept>
+#include <string>
 #include "../../bits.hpp"
 #include "CL/opencl.hpp"
 
@@ -43,7 +49,7 @@ namespace stenos
 			p.getDevices(CL_DEVICE_TYPE_GPU, &devices);
 			for (auto& d : devices) {
 				auto fp = d.getInfo<CL_DEVICE_DOUBLE_FP_CONFIG>();
-				if (fp & cl_khr_fp64) {
+				if (fp != 0) {
 					GPUDevice g;
 					g.name = d.getInfo<CL_DEVICE_NAME>();
 					g.compute_units = d.getInfo<CL_DEVICE_MAX_COMPUTE_UNITS>();
@@ -87,42 +93,7 @@ namespace stenos
 		return ret;
 	}
 
-	/* struct TimeTraceContext
-	{
-		int device_id = -1;
-		cl::Device device;
-		cl::Context context;
-		cl::Program program;
-		std::string error;
-	};
-
-	// Returns all opencl
-	static inline TimeTraceContext* getContext(int device)
-	{
-		static std::deque<TimeTraceContext> inst;
-		static std::mutex mutex;
-
-		if (device < 0 || device >= (int)getSupportedGPUs().size())
-			return nullptr;
-
-		std::scoped_lock<std::mutex> lock(mutex);
-
-		for (TimeTraceContext& c : inst) {
-			if (c.device_id == device)
-				return &c;
-		}
-		TimeTraceContext& c = inst.emplace_back();
-		c.device = (getSupportedGPUs()[(size_t)device].device);
-		c.context = cl::Context(c.device);
-		cl::Program::Sources sources;
-		sources.push_back(kernel_code);
-		c.program = cl::Program(c.context, sources);
-		if (c.program.build(c.device) != CL_SUCCESS)
-			c.error = c.program.getBuildInfo<CL_PROGRAM_BUILD_LOG>(c.device);
-		return &c;
-	}*/
-
-#pragma pack(1)
+#pragma pack(push, 1)
 	// Pixel value and temporal position, similar to the one in TimeTraceCompressionFast.h
 	// and within time_trace_kernel.cl
 	template<class T>
@@ -131,26 +102,30 @@ namespace stenos
 		T value;
 		unsigned short index;
 	};
-#pragma pack()
+#pragma pack(pop)
 
-	// Mimic structures used in time_trace_kernel.cl
-	// for memory exchange purpose
+	// Fixed-width device buffer layout. buffer/data are element offsets into
+	// d_buffer_pixels, never pointers copied between host and device.
 	template<class T>
-	struct CL_FIFO
+	struct alignas(8) CL_FIFO
 	{
-		CLPixelType<T>* buffer;
-		CLPixelType<T>* data;
-		int size;
+		cl_ulong buffer;
+		cl_ulong data;
+		cl_int size;
+		cl_int reserved;
 	};
 
 	template<class T>
-	struct CLPixelData
+	struct alignas(8) CLPixelData
 	{
 		CL_FIFO<T> points;
 		CL_FIFO<T> last_pixels;
-		int candidate;
-		int pos;
-		int start;
+		cl_int candidate;
+		cl_int pos;
+		cl_int finished;
+		cl_int reserved;
+		cl_double max_slope;
+		cl_double min_slope;
 	};
 
 	/// Generate 2 things:
@@ -191,7 +166,10 @@ namespace stenos
 	}
 
 	/// @brief OpenCL implementation of the video time trace compression algorithm.
-	/// The CPU based implementation is available in TimeTraceCompressFast.h
+	/// The CPU based implementation is available in TimeTraceCompressFast.h.
+	/// Uses best-effort slope bounds and preserves non-finite samples as run
+	/// boundaries. Retrieve traces after finish_block() and before adding the
+	/// next GOP. The kernel and header must be updated together.
 	template<class T>
 	class TimeTraceCompressCL
 	{
@@ -205,6 +183,8 @@ namespace stenos
 		size_t d_height{ 0 };
 		size_t d_gop{ 100 };
 		double d_error{ 0 };
+		double d_active_error{ 0 };
+		bool d_ready{ false };
 		int d_pos{ 0 };
 
 		std::string d_name = generateTypeName<T>().second;
@@ -222,88 +202,96 @@ namespace stenos
 		cl::Buffer d_buffer_img;
 		cl::Event d_last_evt;
 		std::vector<PixelType> d_trace;
-		size_t d_trace_h = ((size_t)-1) - retrieve_line_count;
+		size_t d_trace_h = std::numeric_limits<size_t>::max();
 
 		using advance_pixel_data_type = cl::KernelFunctor<cl::Buffer, cl::Buffer, cl::Buffer, int, double, int, cl::Buffer>;
 		std::unique_ptr<advance_pixel_data_type> d_advance_pixel_data;
 
-		using insert_key_frame_type = cl::KernelFunctor<cl::Buffer, int, double, cl::Buffer>;
+		using insert_key_frame_type = cl::KernelFunctor<cl::Buffer, cl::Buffer, int, double, cl::Buffer>;
 		std::unique_ptr<insert_key_frame_type> d_insert_key_frame;
+
+		static size_t checked_product(size_t a, size_t b)
+		{
+			if (b && a > std::numeric_limits<size_t>::max() / b)
+				throw std::length_error("TimeTraceCompressCL buffer size overflow");
+			return a * b;
+		}
+
+		void check_retrieval(size_t idx) const
+		{
+			if (!d_ready) throw std::logic_error("Finish the GOP before retrieving traces");
+			if (idx >= d_width * d_height) throw std::out_of_range("Invalid pixel index");
+		}
+
+		void flush_runs()
+		{
+			cl::EnqueueArgs args(d_queue, cl::NullRange, cl::NDRange(d_width * d_height), cl::NullRange);
+			(*d_insert_key_frame)(args, d_buffer_data, d_buffer_pixels, d_pos, d_active_error, d_buffer_times);
+		}
 
 		PixelType* bufferize_time_trace(size_t idx)
 		{
-			// We need to grab the decimated time trace for given pixel idx
-			size_t h = idx / d_width;
-			size_t w = idx % d_width;
-			size_t start_line = (h / retrieve_line_count) * retrieve_line_count;
-
-			if (h < d_trace_h || h >= d_trace_h + retrieve_line_count) {
-
-				size_t lines = retrieve_line_count;
-				if (start_line + lines > d_height)
-					lines = d_height - start_line;
-
-				d_queue.enqueueReadBuffer(
-				  d_buffer_pixels, CL_TRUE, sizeof(PixelType) * d_width * start_line * d_gop * 2, sizeof(PixelType) * d_width * d_gop * 2 * lines, d_trace.data());
-				d_trace_h = h;
+			check_retrieval(idx);
+			const size_t h = idx / d_width;
+			const size_t w = idx % d_width;
+			const size_t start_line = (h / retrieve_line_count) * retrieve_line_count;
+			if (d_trace_h != start_line) {
+				const size_t lines = std::min(retrieve_line_count, d_height - start_line);
+				d_queue.enqueueReadBuffer(d_buffer_pixels, CL_TRUE,
+					sizeof(PixelType) * d_width * start_line * d_gop * 2,
+					sizeof(PixelType) * d_width * d_gop * 2 * lines, d_trace.data());
+				d_trace_h = start_line;
 			}
-
-			return d_trace.data() + w * d_gop * 2 + (h - start_line) * d_width * d_gop * 2;
+			return d_trace.data() + (w + (h - start_line) * d_width) * d_gop * 2;
 		}
 
 	public:
-		static_assert(std::is_arithmetic<T>::value, "invalid pixel type");
+		static_assert(std::is_arithmetic_v<T> && !std::is_same_v<T, bool> &&
+			(sizeof(T) == 1 || sizeof(T) == 2 || sizeof(T) == 4 || sizeof(T) == 8), "invalid pixel type");
+		static_assert(sizeof(PixelType) == sizeof(T) + 2, "Pixel packing mismatch");
+		static_assert(sizeof(CL_FIFO<T>) == 24 && sizeof(CLPixelData<T>) == 80, "OpenCL state layout mismatch");
+		static_assert(offsetof(CLPixelData<T>, max_slope) == 64, "OpenCL slope alignment mismatch");
 
 		TimeTraceCompressCL(int device_idx, size_t width, size_t height, double error, size_t GOP)
 		{
-			if (device_idx < 0 || device_idx >= (int)getSupportedGPUs().size())
-				return;
-
-			d_device = (getSupportedGPUs()[(size_t)device_idx].device);
-			d_context = cl::Context(d_device);
-			cl::Program::Sources sources;
-			sources.push_back(kernel_code);
-
-			d_program = cl::Program(d_context, sources);
-			if (d_program.build(d_device) != CL_SUCCESS) {
-				// RIR_LOG_ERROR("error building opencl kernel: ", d_program.getBuildInfo<CL_PROGRAM_BUILD_LOG>(d_device));
-				// std::cout << d_program.getBuildInfo<CL_PROGRAM_BUILD_LOG>(d_device) << std::endl;
-				return;
-			}
-
-			d_width = width;
-			d_height = height;
-			d_error = fabs(error);
-			d_pos = 0;
-			d_gop = GOP;
-			d_times.clear();
-
-			if (d_gop < 4)
-				d_gop = 4;
-			else if (d_gop > 512)
-				d_gop = 512;
-
+			if (!width || !height || !std::isfinite(error)) return;
 			try {
+				if (device_idx < 0 || device_idx >= (int)getSupportedGPUs().size()) return;
+				d_device = getSupportedGPUs()[(size_t)device_idx].device;
+				// The packed sample buffers and state buffers use native byte order.
+				const uint16_t one = 1;
+				const bool host_little = *reinterpret_cast<const unsigned char*>(&one) != 0;
+				if ((d_device.getInfo<CL_DEVICE_ENDIAN_LITTLE>() != 0) != host_little) return;
+				d_context = cl::Context(d_device);
+				cl::Program::Sources sources;
+				sources.push_back(kernel_code);
+				d_program = cl::Program(d_context, sources);
+				// Finite-math/fast-relaxed-math would invalidate non-finite handling.
+				if (d_program.build(d_device, "-cl-std=CL1.2") != CL_SUCCESS) return;
 
-				// Build OCL command queue
-				d_queue = cl::CommandQueue(d_context, d_device);
-
-				// Allocate memory on device
-				d_buffer_times = cl::Buffer(d_context, CL_MEM_READ_WRITE, sizeof(double) * GOP);
-				d_buffer_pixels = cl::Buffer(d_context, CL_MEM_READ_WRITE, width * height * 2 * GOP * sizeof(PixelType));
-				d_buffer_data = cl::Buffer(d_context, CL_MEM_READ_WRITE, sizeof(CLPixelData<T>) * width * height);
-				d_buffer_img = cl::Buffer(d_context, CL_MEM_READ_WRITE, d_width * d_height * sizeof(T));
-
-				// Retrieve kernel functions
+				d_width = width;
+				d_height = height;
+				d_error = std::fabs(error);
+				d_active_error = d_error;
+				// Preserve the existing public GOP policy.
+				d_gop = std::max<size_t>(4, std::min<size_t>(512, GOP));
+				const size_t pixel_count = checked_product(d_width, d_height);
+				const size_t trace_bytes = checked_product(
+					checked_product(pixel_count, 2 * d_gop), sizeof(PixelType));
+				d_queue = cl::CommandQueue(d_context, d_device); // In-order queue.
+				d_buffer_times = cl::Buffer(d_context, CL_MEM_READ_ONLY, sizeof(cl_long) * d_gop);
+				d_buffer_pixels = cl::Buffer(d_context, CL_MEM_READ_WRITE, trace_bytes);
+				d_buffer_data = cl::Buffer(d_context, CL_MEM_READ_WRITE,
+					checked_product(sizeof(CLPixelData<T>), pixel_count));
+				d_buffer_img = cl::Buffer(d_context, CL_MEM_READ_ONLY, checked_product(sizeof(T), pixel_count));
 				d_advance_pixel_data.reset(new advance_pixel_data_type(d_program, "advance_pixel_data_" + d_name));
 				d_insert_key_frame.reset(new insert_key_frame_type(d_program, "insert_key_frame_" + d_name));
-
-				// Internal buffers
-				d_data.resize(d_width * d_height);
-				d_trace.resize(d_gop * 2 * d_width * retrieve_line_count);
+				d_times.reserve(d_gop);
+				d_data.resize(pixel_count);
+				d_trace.resize(checked_product(checked_product(2 * d_gop, d_width),
+					std::min(d_height, retrieve_line_count)));
 			}
 			catch (...) {
-				// RIR_LOG_ERROR("error while initializing opencl context and buffers");
 				d_width = d_height = 0;
 			}
 		}
@@ -317,46 +305,51 @@ namespace stenos
 		size_t height() const noexcept { return d_height; }
 		bool is_valid() const noexcept { return d_width > 0; }
 
-		void set_error(double error) noexcept { d_error = error; }
+		// Applied at the next frame. A changed error closes current finite runs
+		// under the previous bound; it does not retroactively alter old segments.
+		void set_error(double error) noexcept { d_error = std::fabs(error); }
 		double error() const noexcept { return d_error; }
 
 		void finish_block()
 		{
-			// Finish a block of images (or GOP)
-
-			if (d_pos == 0)
-				return;
-
-			// Launch kernel
-			cl::EnqueueArgs args(d_queue, cl::NullRange, cl::NDRange(d_width * d_height), cl::NullRange);
-			(*d_insert_key_frame)(args, d_buffer_data, d_pos, d_error, d_buffer_times);
-
-			// We need to retrieve the data buffer
-			d_queue.enqueueReadBuffer(d_buffer_data, CL_TRUE, 0, sizeof(CLPixelData<T>) * d_width * d_height, d_data.data());
+			if (d_pos == 0) return;
+			flush_runs();
+			d_queue.enqueueReadBuffer(d_buffer_data, CL_TRUE, 0,
+				sizeof(CLPixelData<T>) * d_width * d_height, d_data.data());
 			d_pos = 0;
+			d_ready = true;
+			d_trace_h = std::numeric_limits<size_t>::max();
 		}
 
+		// time is an int64 nanosecond timestamp; it must increase within a GOP.
+		// Uploads complete before return, so img may immediately be reused. The
+		// decimation kernel remains asynchronous until the next frame or finish.
 		bool add_image(const T* img, int64_t time)
 		{
-			if (d_pos == 0)
+			if (!is_valid()) throw std::logic_error("Invalid OpenCL compressor");
+			if (!img || !std::isfinite(d_error)) throw std::invalid_argument("Invalid image or error");
+			if (d_pos != 0 && time <= d_times.back())
+				throw std::invalid_argument("Timestamps must strictly increase within a GOP");
+			if (d_last_evt.get()) d_last_evt.wait();
+
+			if (d_pos == 0) {
 				d_times.clear();
-			d_times.push_back(time);
-
-			double ftime = ((double)time * 1e-3); // convert to ms
-
-			// Wait for previous image to finish (if any)
-			if (d_last_evt.get())
-				d_last_evt.wait();
-
-			// Write timestamp to the device
-			d_queue.enqueueWriteBuffer(d_buffer_times, CL_FALSE, sizeof(double) * d_pos, sizeof(double), &ftime);
-			// Write image to the device
-			d_queue.enqueueWriteBuffer(d_buffer_img, CL_FALSE, 0, sizeof(T) * d_width * d_height, img);
-
-			// Launch kernel without waiting
+				d_active_error = d_error;
+				d_ready = false;
+				d_trace_h = std::numeric_limits<size_t>::max();
+			} else if (d_error != d_active_error) {
+				flush_runs();
+				d_active_error = d_error;
+			}
+			const cl_long timestamp = static_cast<cl_long>(time);
+			d_queue.enqueueWriteBuffer(d_buffer_times, CL_TRUE,
+				sizeof(cl_long) * d_pos, sizeof(timestamp), &timestamp);
+			d_queue.enqueueWriteBuffer(d_buffer_img, CL_TRUE, 0,
+				sizeof(T) * d_width * d_height, img);
 			cl::EnqueueArgs args(d_queue, cl::NullRange, cl::NDRange(d_width * d_height), cl::NullRange);
-			d_last_evt = (*d_advance_pixel_data)(args, d_buffer_data, d_buffer_pixels, d_buffer_img, d_pos, d_error, (int)d_gop, d_buffer_times);
-
+			d_last_evt = (*d_advance_pixel_data)(args, d_buffer_data, d_buffer_pixels,
+				d_buffer_img, d_pos, d_active_error, (int)d_gop, d_buffer_times);
+			d_times.push_back(time);
 			++d_pos;
 			if (d_pos >= (int)d_gop) {
 				finish_block();
@@ -367,12 +360,14 @@ namespace stenos
 
 		size_t decimated_pixel_count(size_t idx) const
 		{
+			check_retrieval(idx);
 			auto* data = d_data.data() + idx;
 			return (size_t)data->points.size;
 		}
 
 		size_t retrieve_decimated_pixels(size_t idx, std::vector<PixelType>& out)
 		{
+			check_retrieval(idx);
 			auto* data = d_data.data() + idx;
 			auto* trace = bufferize_time_trace(idx) + d_gop;
 			trace += (size_t)(data->points.data - data->points.buffer);
@@ -390,7 +385,7 @@ namespace stenos
 			for (size_t i = 0; i < d_times.size(); ++i) {
 				out.push_back(trace[i]);
 			}
-			return (size_t)d_gop;
+			return d_times.size();
 		}
 	};
 }

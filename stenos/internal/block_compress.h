@@ -282,7 +282,7 @@ namespace stenos
 
 		// Write delta rle encoded row (compute_rle_row must be called before)
 		template<bool First>
-		static STENOS_ALWAYS_INLINE uint8_t* write_delta_rle(PackBits* p, __m128i mask, uint8_t* STENOS_RESTRICT dst, uint32_t i, const vector16* STENOS_RESTRICT src) noexcept
+		static STENOS_ALWAYS_INLINE uint8_t* write_delta_rle(PackBits* p, __m128i , uint8_t* STENOS_RESTRICT dst, uint32_t i, const vector16* STENOS_RESTRICT src) noexcept
 		{
 			__m128i row = from_vector16(src[i]);
 			__m128i prev = _mm_slli_si128(row, 1);
@@ -473,7 +473,7 @@ namespace stenos
 
 				all_rle = _mm_or_si128(use_rle, use_delta_rle);
 
-				pack->size = hsum_epu8(sizes) + 8u;
+				pack->size = (uint16_t)(hsum_epu8(sizes) + 8u);
 
 				// Encode mins with rle
 
@@ -484,13 +484,13 @@ namespace stenos
 				auto mins_rle_size = pack->mins_rle_count + 2u;
 				if (mins_rle_size < (16u - count8)) {
 					pack->all_type = __STENOS_BLOCK_NORMAL_RLE;
-					pack->size -= (16u - count8) - mins_rle_size;
+					pack->size -= (uint16_t)((16u - count8) - mins_rle_size);
 					// remove 1 to all sizes except those with 8 bits and rle
 					sizes = _mm_sub_epi8(sizes, _mm_andnot_si128(_mm_or_si128(bits_8, all_rle), _mm_set1_epi8(1)));
 				}
 			}
 			else
-				pack->size = hsum_epu8(sizes) + 8;
+				pack->size = (uint16_t)( hsum_epu8(sizes) + 8);
 
 			{
 				// Compute headers
@@ -1109,7 +1109,7 @@ namespace stenos
 							  void* STENOS_RESTRICT __dst,
 							  size_t dst_size,
 							  int block_level,
-							  int full_level,
+							  int ,
 							  TimeConstraint& t,
 							  double* STENOS_RESTRICT target_ratio,
 							  const void* STENOS_RESTRICT __shuffled) noexcept
@@ -1494,7 +1494,7 @@ namespace stenos
 								       const uint8_t* STENOS_RESTRICT src,
 								       uint8_t offset,
 								       uint32_t stride,
-								       bool check_stride = true) noexcept
+								       bool  = true) noexcept
 		{
 			const uint32_t stride2 = stride << 1u;
 			*dst = (src ? src[0] : 0) + offset;

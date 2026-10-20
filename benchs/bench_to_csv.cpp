@@ -41,6 +41,11 @@
 #include "blosc2.h"
 // #endif
 
+#ifdef min
+#undef min
+#undef max
+#endif
+
 static unsigned STENOS_THREADS = 1;
 
 template<class T>

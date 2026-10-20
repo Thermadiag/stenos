@@ -52,76 +52,7 @@
 
 #include "stenos.h"
 
-/**
- * @brief Scalar sample formats supported by the video codec.
- *
- * Every image in a compressed GOP has one fixed scalar type. Multi-channel or
- * compound layouts can be handled by the stride-aware input and output APIs.
- */
-typedef enum
-{
-	StenosInt8,    /**< Signed 8-bit integer. */
-	StenosUInt8,   /**< Unsigned 8-bit integer. */
-	StenosInt16,   /**< Signed 16-bit integer. */
-	StenosUInt16,  /**< Unsigned 16-bit integer. */
-	StenosInt32,   /**< Signed 32-bit integer. */
-	StenosUInt32,  /**< Unsigned 32-bit integer. */
-	StenosInt64,   /**< Signed 64-bit integer. */
-	StenosUInt64,  /**< Unsigned 64-bit integer. */
-	StenosFloat32, /**< IEEE-754 single-precision floating point. */
-	StenosFloat64, /**< IEEE-754 double-precision floating point. */
-} stenosv_pixel_type;
-
 #ifdef __cplusplus
-
-#include "bits.hpp"
-
-/**
- * @brief Map a C++ arithmetic type to its corresponding Stenos pixel type.
- *
- * @tparam T Arithmetic scalar type.
- * @return The matching stenosv_pixel_type value.
- *
- * @note The mapping is based on type category, signedness, and sizeof(T).
- */
-template<class T>
-static STENOS_CONSTEXPR stenosv_pixel_type stenosv_to_pixel_type()
-{
-	static_assert(std::is_arithmetic_v<T>, "invalid type");
-	if STENOS_CONSTEXPR (sizeof(T) == 1) {
-		if STENOS_CONSTEXPR (std::is_signed_v<T>)
-			return StenosInt8;
-		else
-			return StenosUInt8;
-	}
-	else if STENOS_CONSTEXPR (sizeof(T) == 2) {
-		if STENOS_CONSTEXPR (std::is_signed_v<T>)
-			return StenosInt16;
-		else
-			return StenosUInt16;
-	}
-	else if STENOS_CONSTEXPR (sizeof(T) == 4) {
-		if STENOS_CONSTEXPR (std::is_integral_v<T>) {
-			if STENOS_CONSTEXPR (std::is_signed_v<T>)
-				return StenosInt32;
-			else
-				return StenosUInt32;
-		}
-		else
-			return StenosFloat32;
-	}
-	else {
-		if STENOS_CONSTEXPR (std::is_integral_v<T>) {
-			if STENOS_CONSTEXPR (std::is_signed_v<T>)
-				return StenosInt64;
-			else
-				return StenosUInt64;
-		}
-		else
-			return StenosFloat64;
-	}
-}
-
 extern "C" {
 #endif
 
@@ -167,7 +98,7 @@ typedef struct stenosv_payload_s
 typedef struct stenosv_block_header
 {
 	unsigned char version;	  /**< Codec/block format version. */
-	unsigned char pixel_type; /**< Scalar format, castable to stenosv_pixel_type. */
+	unsigned char pixel_type; /**< Scalar format, castable to stenos_numeric_type. */
 	unsigned short width;	  /**< Image width in pixels. */
 	unsigned short height;	  /**< Image height in pixels. */
 	unsigned short count;	  /**< Number of images in the GOP. */
@@ -237,12 +168,7 @@ typedef struct stenosv_trace_result
 /** @brief Opaque temporal video compression context. */
 typedef struct stenosv_compress_s stenosv_compress;
 
-/**
- * @brief Return the storage size of one scalar sample type.
- * @param type Pixel type to inspect.
- * @return Sample size in bytes, or zero for an invalid type.
- */
-STENOS_EXPORT size_t stenosv_sizeof_pixel_type(stenosv_pixel_type type);
+
 
 /**
  * @brief Enumerate compatible GPU devices.
@@ -278,7 +204,7 @@ STENOS_EXPORT int stenosv_default_gpu_device();
  * One context may encode any number of consecutive GOPs with the same geometry
  * and pixel type. Destroy it with stenosv_compress_destroy().
  */
-STENOS_EXPORT stenosv_compress* stenosv_compress_make(stenosv_pixel_type type, int width, int height, double error, int GOP, int device);
+STENOS_EXPORT stenosv_compress* stenosv_compress_make(stenos_numeric_type type, int width, int height, double error, int GOP, int device);
 
 /**
  * @brief Destroy a compression context.
@@ -304,7 +230,7 @@ STENOS_EXPORT void stenosv_compress_set_threads(stenosv_compress* compressor, in
 STENOS_EXPORT void stenosv_compress_set_clevel(stenosv_compress* compressor, int level);
 
 /** @brief Return the compressor pixel type. */
-STENOS_EXPORT stenosv_pixel_type stenosv_compress_pixel_type(stenosv_compress* compressor);
+STENOS_EXPORT stenos_numeric_type stenosv_compress_pixel_type(stenosv_compress* compressor);
 /** @brief Return the configured image width in pixels. */
 STENOS_EXPORT int stenosv_compress_width(stenosv_compress* compressor);
 /** @brief Return the configured image height in pixels. */
@@ -516,7 +442,7 @@ int stenosv_bytestream_height(stenosv_bytestream* stream);
 /** @brief Return the current decoder worker count. */
 int stenosv_bytestream_threads(stenosv_bytestream* stream);
 /** @brief Return the common scalar sample format. */
-stenosv_pixel_type stenosv_bytestream_pixel_type(stenosv_bytestream* stream);
+stenos_numeric_type stenosv_bytestream_pixel_type(stenosv_bytestream* stream);
 /** @brief Return the total number of images across all indexed GOPs. */
 size_t stenosv_bytestream_count(stenosv_bytestream* stream);
 
@@ -602,6 +528,8 @@ STENOS_EXPORT size_t stenosv_extract_time_trace(stenos_input* input, stenosv_tra
  * requested time interval.
  */
 STENOS_EXPORT size_t stenosv_bytestream_extract_time_trace(stenosv_bytestream* input, int64_t* start_time, int64_t* end_time, stenosv_trace_query* query, stenosv_trace_result* out_trace);
+
+
 
 /** @} */
 

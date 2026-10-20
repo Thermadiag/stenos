@@ -1,4 +1,5 @@
 #include <stenos/stenos_video.h>
+#include <stenos/stenos.h>
 #include <vector>
 #include <fstream>
 #include <sstream>
@@ -66,9 +67,13 @@ static bool compare(T v1, T v2, double error)
 template<class T, class Fun>
 void test_codec(int width, int height, int GOP, double error, int threads, int device, Fun pattern)
 {
+
+	using namespace stenos;
+
+
 	static constexpr size_t frames = 100;
 
-	auto pixel_type = stenosv_to_pixel_type<T>();
+	auto pixel_type = to_numeric_type<T>();
 	std::vector<T> image((size_t)(width * height));
 
 	// Open output video file
@@ -338,10 +343,21 @@ void test_codec(int width, int height, int GOP, double error, int threads, int d
 #include <iostream>
 #include <cstddef>
 #include <vector>
+//#include <chrono>
 #include <stenos/stenos_video.h>
+#include "stenos/internal/video/TimeTraceCompress.h"
+
+/* static auto msecs_since_epoch()
+{
+	return std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
+}*/
 
 int test_video_codec(int, char*[]) 
 {
+	using namespace stenos;
+	
+
+
 	////////////////////////////////
 	// Video compression
 	////////////////////////////////
