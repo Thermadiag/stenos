@@ -343,14 +343,14 @@ void test_codec(int width, int height, int GOP, double error, int threads, int d
 #include <iostream>
 #include <cstddef>
 #include <vector>
-#include <chrono>
+//#include <chrono>
 #include <stenos/stenos_video.h>
 #include "stenos/internal/video/TimeTraceCompress.h"
 
-static auto msecs_since_epoch()
+/* static auto msecs_since_epoch()
 {
 	return std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
-}
+}*/
 
 int test_video_codec(int, char*[]) 
 {

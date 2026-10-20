@@ -540,13 +540,6 @@ namespace stenos
 		return (size_t)(out - dst) / stride;
 	}
 
-	/// @brief Helper function, returns the superblock size for given block size (bytesoftype * 256)
-	static STENOS_ALWAYS_INLINE std::size_t internal_super_block_size(std::size_t block_size) noexcept
-	{
-		if (block_size > STENOS_BLOCK_SIZE)
-			return block_size;
-		return (STENOS_BLOCK_SIZE / block_size) * block_size;
-	}
 
 	static STENOS_ALWAYS_INLINE void write_uint64_7(void* dst, uint64_t val) noexcept
 	{
