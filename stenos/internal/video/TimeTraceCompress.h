@@ -85,7 +85,7 @@ namespace stenos
 			// Compute slope
 			// Subtract before conversion, without signed overflow across the timestamp origin.
 			uint64_t diff_t = (uint64_t)time(*val) - (uint64_t)time(first);
-			Double s = slope(first.value, val->value, (Double)diff_t);
+			Double s = slope((Double)first.value, (Double)val->value, (Double)diff_t);
 
 			if (pos == 1) {
 				// This is the first point, always valid

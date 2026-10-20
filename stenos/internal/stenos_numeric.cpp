@@ -262,7 +262,7 @@ namespace stenos
 			const auto& first = last_pixels[0];
 
 			size_t diff_t;
-			Double s, max_sl, min_sl;
+			Double s;
 
 			// We need to take into account the index type maximum size
 			if STENOS_UNLIKELY (pos == std::numeric_limits<Index>::max())
@@ -270,7 +270,7 @@ namespace stenos
 
 			// Compute slope
 			diff_t = (size_t)(val - &first);
-			s = slope(first.value, val->value, (Double)diff_t);
+			s = slope((Double)first.value, (Double)val->value, (Double)diff_t);
 
 			if (pos == 1) {
 				// This is the first point, always valid
