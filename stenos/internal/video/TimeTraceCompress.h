@@ -439,8 +439,10 @@ namespace stenos
 			if (d_openCL)
 				d_openCL->finish_block();
 			else
-#endif
 				insert_key_frame();
+#else
+			insert_key_frame();
+#endif
 
 			// Only the CPU lossless path owns a complete contiguous d_buffer.
 			bool direct_buffer = !d_error && d_pos == d_max_gop;
@@ -491,7 +493,7 @@ namespace stenos
 						d_openCL->retrieve_raw_pixels(i, (std::vector<CLPixelType<T>>&)pixels);
 					else
 #endif
-					  if (!direct_buffer) {
+					if (!direct_buffer) {
 						auto last_pixels = d_data[i].pixel_buffer();
 						pixels.insert(pixels.end(), last_pixels, last_pixels + d_times.size());
 					}
@@ -919,7 +921,7 @@ namespace stenos
 			return true;
 		}
 
-		STENOS_ALWAYS_INLINE T reconstruct(const PixelType &prev, const PixelType &next, size_t count, uint64_t& cursor) const noexcept
+		STENOS_ALWAYS_INLINE T reconstruct(const PixelType& prev, const PixelType& next, size_t count, uint64_t& cursor) const noexcept
 		{
 			// Copy retained values as T: no NaN*0 and no 64-bit integer conversion loss.
 			if (d_pos == next.index) {
@@ -1391,11 +1393,11 @@ namespace stenos
 			get_pool().loop_for(d_threads, 0, d_threads, 1, [&](auto i) {
 				size_t first = (size_t)i * pixels_per_thread;
 				size_t end = first + ((i == d_threads - 1) ? (pixels_per_thread + remaining) : pixels_per_thread);
-				//size_t count = end - first;
+				// size_t count = end - first;
 				size_t j = first;
 
 				char* dst = c_img + j * inner_bytes;
-				
+
 				for (; j < end; ++j, dst += inner_bytes) {
 					const PixelType* tr = d_time_traces.data() + d_poss[j].first;
 					const size_t tr_size = d_poss[j].second;
