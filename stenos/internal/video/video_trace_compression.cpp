@@ -535,7 +535,7 @@ size_t stenosv_decompress_read_image(stenosv_decompress* ctx, uint64_t pos, int 
 			return STENOS_ERROR_INVALID_PARAMETER;
 		if (!ctx->dec->seek_pos(pos))
 			return STENOS_ERROR_INVALID_PARAMETER;
-		if (ctx->dec->read(out_image, (size_t)inner_stride))
+		if (ctx->dec->read_bytes(out_image, (size_t)inner_stride * stenos_sizeof_numeric_type(ctx->pixel_type)))
 			return 0;
 		return STENOS_ERROR_INVALID_INPUT;
 	}
