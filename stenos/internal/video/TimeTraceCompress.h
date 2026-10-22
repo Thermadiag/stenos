@@ -79,6 +79,12 @@ namespace stenos
 		// Process last added point
 		STENOS_ALWAYS_INLINE void advance_min_max(double err)
 		{
+			if constexpr (std::is_integral_v<T> && sizeof(T) <= 4) {
+				// Integer reconstruction rounds to nearest. Allow almost half
+				// a unit of extra interpolation error, leaving a small margin.
+				err += 0.4999;
+			}
+
 			const auto* val = &last_pixels[pos];
 			const auto& first = last_pixels[0];
 
