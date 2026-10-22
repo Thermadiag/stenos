@@ -33,7 +33,7 @@ option(STENOS_NO_WARNINGS "Treat warnings as errors" OFF)
 option(STENOS_WITH_OPENCL "Use OpenCL implementation of the video compressor" ON)
 option(STENOS_BUILD_SHARED "Build shared library" ON)
 option(STENOS_BUILD_STATIC "Build static library" ON)
-option(STENOS_NATIVE_ARCH "Optimize for the build machine CPU; binaries may not be portable" ON)
+option(STENOS_NATIVE_ARCH "Optimize for the build machine CPU; binaries may not be portable" OFF)
 
 # tests and benchs require static build
 if((STENOS_BUILD_TESTS OR STENOS_BUILD_BENCHS) AND NOT STENOS_BUILD_STATIC)
@@ -181,11 +181,13 @@ else()
 		if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
 			target_compile_options(stenos_obj PRIVATE -march=native)
 		endif()
-	endif()
-	if (NOT ${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
-		target_compile_options(stenos_obj PRIVATE -mno-avx512f)
+		if (NOT ${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
+			target_compile_options(stenos_obj PRIVATE -mno-avx512f)
+		endif()
 	endif()
 endif()
+
+message(STATUS "Native arch: ${STENOS_NATIVE_ARCH}")
 
 # Wide table support
 if(STENOS_WIDE_TABLE)

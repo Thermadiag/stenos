@@ -32,6 +32,7 @@
 #include "delta.h"
 #include "context.h"
 
+
 #define STENOS_FRAME_HEADER_BLOCK (1)		      // Bytes compressed with block encoder only
 #define STENOS_FRAME_HEADER_ZSTD (2)		      // Bytes compressed with zstd only
 #define STENOS_FRAME_HEADER_TRANSPOSED_ZSTD (3)	      // Bytes compressed with zstd on transposed input
@@ -200,6 +201,13 @@ std::size_t stenos_bound(std::size_t bytes)
 
 namespace stenos
 {
+	tiny_pool& get_pool()
+	{
+		// Create static thread pool
+		static tiny_pool pool(std::thread::hardware_concurrency() * 2u);
+		return pool;
+	}
+	
 	static STENOS_ALWAYS_INLINE void write_uint32_3(void* dst, unsigned val) noexcept
 	{
 		// Write 32 bits integer on 3 bytes
